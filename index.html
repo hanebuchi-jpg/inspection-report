@@ -1,0 +1,738 @@
+<title>現場点検レポート</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap">
+<style>
+/* Layout: field tool — sticky header + tab bar, single column cards, full-screen camera sheet */
+:root{
+  --bg:#eef1f3; --surface:#ffffff; --ink:#18242e; --muted:#5b6872; --line:#d3dade;
+  --brand:#1f4e5f; --brand-ink:#ffffff; --accent:#e8a33d; --accent-ink:#2a1a00;
+  --ok:#2e7d4f; --ng:#c0392b; --na:#7a8790; --chip:#e3e9ec;
+  --f-display:"Zen Kaku Gothic New","BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11181d; --surface:#1a242b; --ink:#e4eaee; --muted:#9aa8b1; --line:#2c3a43;
+  --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
+  --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11181d; --surface:#1a242b; --ink:#e4eaee; --muted:#9aa8b1; --line:#2c3a43;
+  --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
+  --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--brand)}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--brand);color:var(--brand-ink)}
+.top-in{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 0}
+.brandrow{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brandrow h1{font-family:var(--f-display);font-weight:900;font-size:20px;margin:0;letter-spacing:.04em}
+.brandrow .site{font-size:13px;opacity:.85;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.progress{display:flex;gap:14px;font-size:12px;opacity:.9;font-variant-numeric:tabular-nums;margin-top:4px}
+.tabs{display:flex;gap:2px;margin-top:10px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--brand-ink);opacity:.7;padding:10px 4px;font-weight:700;border-bottom:3px solid transparent;font-size:14px}
+.tabs button[aria-selected="true"]{opacity:1;border-bottom-color:var(--accent)}
+main{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px}
+.panel{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card h2{font-family:var(--f-display);font-size:16px;margin:0 0 10px;font-weight:700}
+.hint{color:var(--muted);font-size:13px;margin:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.04em}
+label.f input,label.f textarea,label.f select{font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px;font-weight:400;letter-spacing:0}
+textarea{resize:vertical}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 14px;font-weight:700;display:inline-flex;align-items:center;gap:6px;justify-content:center}
+.btn.pri{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.btn.acc{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.warn{color:var(--ng);border-color:var(--ng)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+
+/* photo slots */
+.slot{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.slot-head{grid-column:1/-1;display:flex;align-items:center;gap:8px}
+.slot-no{font-family:var(--f-display);font-weight:900;font-size:13px;background:var(--chip);border-radius:4px;padding:1px 7px;font-variant-numeric:tabular-nums}
+.slot-name{font-weight:700;flex:1;min-width:0}
+.shot{display:flex;flex-direction:column;gap:6px;min-width:0}
+.shot-label{font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--muted)}
+.thumb{position:relative;aspect-ratio:4/3;max-width:100%;border-radius:6px;background:var(--chip);border:1px dashed var(--line);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;padding:0}
+.thumb.has{border-style:solid}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .badge{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 6px;border-radius:3px;letter-spacing:.08em}
+.shot .btnrow .btn{flex:1;padding:8px 6px;font-size:13px}
+.ref-note{font-size:11px;color:var(--muted)}
+
+/* checklist */
+.chk{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;padding:10px 0;border-top:1px solid var(--line);align-items:center}
+.chk:first-of-type{border-top:0}
+.chk .no{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px;width:2em;text-align:right}
+.chk .txt{min-width:0}
+.seg{grid-column:2;display:flex;gap:6px;flex-wrap:wrap}
+.seg button{border:1px solid var(--line);background:var(--bg);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;min-width:64px}
+.seg button[aria-pressed="true"][data-v="ok"]{background:var(--ok);border-color:var(--ok);color:#fff}
+.seg button[aria-pressed="true"][data-v="ng"]{background:var(--ng);border-color:var(--ng);color:#fff}
+.seg button[aria-pressed="true"][data-v="na"]{background:var(--na);border-color:var(--na);color:#fff}
+.chk input.note{grid-column:2;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 8px;font-size:13px}
+.chk.ng .txt{color:var(--ng);font-weight:700}
+.bulk{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* report */
+.pages{display:flex;flex-direction:column;gap:14px;align-items:center}
+.pages img{width:100%;max-width:620px;box-shadow:0 2px 10px rgba(0,0,0,.18);background:#fff}
+.stat{display:flex;gap:16px;flex-wrap:wrap;font-variant-numeric:tabular-nums;font-size:13px}
+.stat b{font-size:18px;font-family:var(--f-display)}
+
+/* camera sheet */
+.cam{position:fixed;inset:0;z-index:50;background:#000;color:#fff;display:flex;flex-direction:column}
+.cam-top{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top,0px) + 10px) max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));background:rgba(0,0,0,.6)}
+.cam-top .t{flex:1;min-width:0;font-weight:700;font-size:14px}
+.cam-top .t small{display:block;font-weight:400;opacity:.75;font-size:11px}
+.cam-stage{position:relative;flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.cam-box{position:relative;width:100%;max-height:100%;aspect-ratio:4/3;max-width:100%}
+.cam-box video,.cam-box img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-box img.ghost{pointer-events:none}
+.cam-box.diff img.ghost{mix-blend-mode:difference}
+.gridlines{position:absolute;inset:0;pointer-events:none;background-image:linear-gradient(to right,rgba(255,255,255,.35) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.35) 1px,transparent 1px);background-size:33.333% 33.333%;background-position:-1px -1px}
+.cam-ctrl{padding:12px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 14px) max(16px,env(safe-area-inset-left,0px));background:rgba(0,0,0,.75);display:flex;flex-direction:column;gap:10px}
+.cam-ctrl .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cam-ctrl input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+.cam-ctrl .tog{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:16px;padding:4px 12px;font-size:12px}
+.cam-ctrl .tog[aria-pressed="true"]{background:#fff;color:#000}
+.shutter{width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:var(--accent);margin:0 auto;display:block}
+.shutter:active{transform:scale(.94)}
+.cam-btn{border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700}
+.cam-btn.acc{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.cam-msg{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(0,0,0,.65);font-size:12px;padding:8px 10px;border-radius:6px}
+
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:80;max-width:calc(100% - 32px)}
+.inline-confirm{background:var(--chip);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.mode-note{font-size:12px;color:var(--muted);background:var(--chip);border-radius:6px;padding:8px 10px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brandrow">
+      <h1>現場点検レポート</h1>
+      <span class="site" id="hdrSite"></span>
+    </div>
+    <div class="progress" id="hdrProg"></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" id="tab-info" aria-selected="false" data-tab="info">現場</button>
+      <button role="tab" id="tab-photo" aria-selected="true" data-tab="photo">写真</button>
+      <button role="tab" id="tab-check" aria-selected="false" data-tab="check">チェック</button>
+      <button role="tab" id="tab-report" aria-selected="false" data-tab="report">報告書</button>
+      <button role="tab" id="tab-set" aria-selected="false" data-tab="set">設定</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- 現場情報 -->
+  <section class="panel" id="p-info" hidden>
+    <div class="card">
+      <h2>点検情報</h2>
+      <div class="grid2">
+        <label class="f">現場名<input id="m-site"></label>
+        <label class="f">点検日<input id="m-date" type="date"></label>
+        <label class="f">点検者<input id="m-inspector"></label>
+        <label class="f">作業内容<input id="m-work"></label>
+        <label class="f">立会者<input id="m-witness"></label>
+        <label class="f">天候<input id="m-weather"></label>
+      </div>
+      <label class="f" style="margin-top:10px">特記事項<textarea id="m-note" rows="4"></textarea></label>
+    </div>
+    <div class="card">
+      <h2>新しい点検を始める</h2>
+      <p class="hint">今の内容を消して次の点検に切り替えます。前回の「作業後」写真は次回の撮影ガイドとして残せます。</p>
+      <div id="newArea" style="margin-top:10px">
+        <button class="btn" id="btnNew">新しい点検へ</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 写真 -->
+  <section class="panel" id="p-photo">
+    <p class="mode-note" id="camMode"></p>
+    <div class="panel" id="slots"></div>
+  </section>
+
+  <!-- チェック -->
+  <section class="panel" id="p-check" hidden>
+    <div class="card">
+      <div class="bulk">
+        <span class="hint" style="flex:1">各項目の結果を選んでください。「否」にすると備考欄が出ます。</span>
+        <button class="btn" id="btnAllOk">未記入をすべて「良」</button>
+      </div>
+    </div>
+    <div class="card" id="checks"></div>
+  </section>
+
+  <!-- 報告書 -->
+  <section class="panel" id="p-report" hidden>
+    <div class="card">
+      <h2>出力・連携</h2>
+      <div class="stat" id="repStat"></div>
+      <div class="btnrow" style="margin-top:12px">
+        <button class="btn pri" id="btnPdf">報告書PDFを保存</button>
+        <button class="btn" id="btnShare" hidden>PDFを共有</button>
+        <button class="btn" id="btnCsv">チェック結果CSV</button>
+        <button class="btn" id="btnJson">点検データ書き出し</button>
+        <label class="btn" for="jsonIn">点検データ読み込み</label>
+        <input type="file" id="jsonIn" accept="application/json,.json" hidden>
+      </div>
+      <p class="hint" style="margin-top:10px">CSVはExcelでそのまま開けます。点検データ（写真込み）は別の端末やシステムに渡すときに使います。</p>
+    </div>
+    <div class="pages" id="pages"><p class="hint">報告書を作成中…</p></div>
+  </section>
+
+  <!-- 設定 -->
+  <section class="panel" id="p-set" hidden>
+    <div class="card">
+      <h2>写真の撮影箇所</h2>
+      <p class="hint">1行に1箇所。並び順がそのまま報告書の順番になります。</p>
+      <textarea id="setSlots" rows="11" style="width:100%;margin-top:8px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--bg)"></textarea>
+    </div>
+    <div class="card">
+      <h2>チェック項目</h2>
+      <p class="hint">1行に1項目。</p>
+      <textarea id="setItems" rows="14" style="width:100%;margin-top:8px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--bg)"></textarea>
+    </div>
+    <div class="card">
+      <h2>報告書</h2>
+      <div class="grid2">
+        <label class="f">会社名（報告書の差出人）<input id="setCompany"></label>
+        <label class="f">報告書タイトル<input id="setTitle"></label>
+      </div>
+      <div class="btnrow" style="margin-top:12px"><button class="btn pri" id="btnSaveSet">設定を保存</button></div>
+    </div>
+  </section>
+</main>
+
+<!-- camera sheet -->
+<div class="cam" id="cam" hidden>
+  <div class="cam-top">
+    <div class="t" id="camTitle"></div>
+    <button class="cam-btn" id="camClose">閉じる</button>
+  </div>
+  <div class="cam-stage">
+    <div class="cam-box" id="camBox">
+      <video id="video" playsinline muted autoplay></video>
+      <img id="reviewImg" alt="" hidden>
+      <img class="ghost" id="ghost" alt="">
+      <div class="gridlines" id="gridl"></div>
+    </div>
+    <div class="cam-msg" id="camMsg" hidden></div>
+  </div>
+  <div class="cam-ctrl">
+    <div class="row" id="ghostRow">
+      <span style="font-size:12px;white-space:nowrap">ガイド濃さ</span>
+      <input type="range" id="ghostOp" min="0" max="90" value="45" aria-label="ガイド写真の濃さ">
+      <button class="tog" id="togGrid" aria-pressed="true">グリッド</button>
+      <button class="tog" id="togDiff" aria-pressed="false">ずれ強調</button>
+    </div>
+    <div class="row" id="liveRow" style="justify-content:center">
+      <button class="shutter" id="shutter" aria-label="撮影"></button>
+    </div>
+    <div class="row" id="reviewRow" hidden style="justify-content:center">
+      <button class="cam-btn" id="retake">撮り直す</button>
+      <button class="cam-btn acc" id="accept">この写真を使う</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="fileLib" accept="image/*" hidden>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+const LS_KEY="inspect-app-v1";
+
+const DEFAULT_SLOTS=["エントランス床面","エントランスガラス","風除室マット","通路床面","トイレ（男）床・便器","トイレ（女）床・便器","洗面台・鏡","エスカレーター手すり","空調吹出口","ゴミ置場"];
+const DEFAULT_ITEMS=["床面に汚れ・シミの残りがない","床面ワックスにムラ・剥がれがない","ガラス面に拭き跡・指紋がない","マット下に砂・ゴミがたまっていない","巾木・壁際にホコリがない","トイレ便器・小便器に汚れがない","トイレ床に水濡れ・臭気がない","洗面台・鏡に水垢がない","トイレットペーパー・ハンドソープを補充した","ゴミ箱を空にし袋を交換した","手すり・ドアノブを除菌した","空調吹出口にホコリ・カビがない","照明器具にホコリ・虫の付着がない","案内表示・サインに汚れがない","清掃用具を所定の場所に片付けた","使用薬剤を適正に希釈・保管した","作業中の安全表示を設置・撤去した","床の滑り・つまずき箇所がない","設備の破損・不具合がない（あれば備考へ）","作業後に施設担当者へ報告した"];
+
+function today(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function defaultState(){
+  const st={
+    meta:{site:"（例）〇〇ショッピングセンター 定期清掃",date:today(),inspector:"",work:"定期清掃（床洗浄・ワックス）",witness:"",weather:"晴れ",note:""},
+    company:"株式会社オーアンドケー",title:"清掃点検報告書",
+    slots:DEFAULT_SLOTS.map((n,i)=>({id:"s"+(i+1),name:n})),
+    items:DEFAULT_ITEMS.map((t,i)=>({id:"c"+(i+1),text:t})),
+    checks:{}
+  };
+  ["c1","c2","c3","c4","c5"].forEach(id=>st.checks[id]={v:"ok",note:""});
+  return st;
+}
+let S;
+try{S=JSON.parse(localStorage.getItem(LS_KEY))||defaultState()}catch(e){S=defaultState()}
+function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(S))}catch(e){} reportDirty=true; renderHeader();}
+
+/* ---------- photo store (IndexedDB, falls back to memory) ---------- */
+const mem=new Map(); let idb=null;
+const idbReady=new Promise(res=>{
+  try{
+    const r=indexedDB.open("inspect-photos",1);
+    r.onupgradeneeded=()=>r.result.createObjectStore("p");
+    r.onsuccess=()=>{idb=r.result;res()};
+    r.onerror=()=>res();
+  }catch(e){res()}
+});
+function tx(mode){return idb.transaction("p",mode).objectStore("p")}
+async function putPhoto(key,blob){
+  mem.set(key,blob);
+  await idbReady; if(!idb) return;
+  try{await new Promise((ok,ng)=>{const q=tx("readwrite").put(blob,key);q.onsuccess=ok;q.onerror=ng})}catch(e){}
+}
+async function delPhoto(key){
+  mem.delete(key); await idbReady; if(!idb) return;
+  try{await new Promise(ok=>{const q=tx("readwrite").delete(key);q.onsuccess=ok;q.onerror=ok})}catch(e){}
+}
+async function loadAllPhotos(){
+  await idbReady; if(!idb) return;
+  try{
+    await new Promise(ok=>{
+      const q=tx("readonly").openCursor();
+      q.onsuccess=()=>{const c=q.result;if(c){mem.set(c.key,c.value);c.continue()}else ok()};
+      q.onerror=ok;
+    });
+  }catch(e){}
+}
+const urlCache=new Map();
+function photoURL(key){
+  const b=mem.get(key); if(!b) return null;
+  const c=urlCache.get(key); if(c&&c.b===b) return c.u;
+  if(c) URL.revokeObjectURL(c.u);
+  const u=URL.createObjectURL(b); urlCache.set(key,{b,u}); return u;
+}
+
+/* ---------- image helpers ---------- */
+function loadImg(src){return new Promise((ok,ng)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ng;i.src=src})}
+function canvasToBlob(c,q){return new Promise(ok=>c.toBlob(ok,"image/jpeg",q||0.82))}
+async function shrink(source,w,h){
+  const max=1600, k=Math.min(1,max/Math.max(w,h));
+  const c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);
+  c.getContext("2d").drawImage(source,0,0,c.width,c.height);
+  return canvasToBlob(c,0.82);
+}
+
+/* ---------- toast ---------- */
+let tt;function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2600)}
+
+/* ---------- header / tabs ---------- */
+function counts(){
+  let ok=0,ng=0,na=0;S.items.forEach(it=>{const v=(S.checks[it.id]||{}).v;if(v==="ok")ok++;else if(v==="ng")ng++;else if(v==="na")na++});
+  let b=0,a=0;S.slots.forEach(s=>{if(mem.has(s.id+"_before"))b++;if(mem.has(s.id+"_after"))a++});
+  return {ok,ng,na,blank:S.items.length-ok-ng-na,b,a};
+}
+function renderHeader(){
+  $("#hdrSite").textContent=(S.meta.site||"現場名未入力")+"　"+(S.meta.date||"");
+  const c=counts();
+  $("#hdrProg").textContent="";
+  [["作業前",c.b+"/"+S.slots.length],["作業後",c.a+"/"+S.slots.length],["チェック",(S.items.length-c.blank)+"/"+S.items.length],["否",c.ng]].forEach(([k,v])=>{
+    const s=document.createElement("span");s.textContent=k+" "+v;$("#hdrProg").appendChild(s);
+  });
+}
+let reportDirty=true;
+function showTab(name){
+  document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===name)));
+  ["info","photo","check","report","set"].forEach(n=>$("#p-"+n).hidden=n!==name);
+  if(name==="report") buildReport();
+  if(name==="set") fillSettings();
+  try{localStorage.setItem(LS_KEY+"-tab",name)}catch(e){}
+  window.scrollTo(0,0);
+}
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+
+/* ---------- info ---------- */
+const metaFields=["site","date","inspector","work","witness","weather","note"];
+function fillMeta(){metaFields.forEach(f=>{$("#m-"+f).value=S.meta[f]||""})}
+metaFields.forEach(f=>$("#m-"+f).addEventListener("input",e=>{S.meta[f]=e.target.value;save()}));
+
+$("#btnNew").onclick=()=>{
+  const a=$("#newArea");a.innerHTML="";
+  const box=document.createElement("div");box.className="inline-confirm";
+  box.innerHTML='<strong>今の点検内容（写真・チェック）を消します。</strong><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="keepRef" checked> 今回の「作業後」写真を次回の撮影ガイドに残す</label><p class="hint">先に「報告書」タブでPDFや点検データを保存しておくと安心です。</p><div class="btnrow"><button class="btn warn" id="newGo">消して新しい点検へ</button><button class="btn" id="newCancel">やめる</button></div>';
+  a.appendChild(box);
+  $("#newCancel").onclick=resetNewArea;
+  $("#newGo").onclick=async()=>{
+    const keep=$("#keepRef").checked;
+    for(const s of S.slots){
+      const after=mem.get(s.id+"_after");
+      if(keep&&after) await putPhoto(s.id+"_ref",after);
+      else if(!keep) await delPhoto(s.id+"_ref");
+      await delPhoto(s.id+"_before");await delPhoto(s.id+"_after");
+    }
+    S.checks={};S.meta.date=today();S.meta.note="";S.meta.witness="";
+    save();fillMeta();renderSlots();renderChecks();resetNewArea();
+    toast("新しい点検を始めました");showTab("photo");
+  };
+};
+function resetNewArea(){$("#newArea").innerHTML='<button class="btn" id="btnNew2">新しい点検へ</button>';$("#btnNew2").onclick=$("#btnNew").onclick}
+
+/* ---------- slots ---------- */
+function renderSlots(){
+  const wrap=$("#slots");wrap.innerHTML="";
+  S.slots.forEach((s,i)=>{
+    const el=document.createElement("div");el.className="slot";
+    const head=document.createElement("div");head.className="slot-head";
+    head.innerHTML='<span class="slot-no"></span><span class="slot-name"></span>';
+    head.querySelector(".slot-no").textContent=String(i+1).padStart(2,"0");
+    head.querySelector(".slot-name").textContent=s.name;
+    el.appendChild(head);
+    ["before","after"].forEach(kind=>{
+      const key=s.id+"_"+kind,u=photoURL(key);
+      const sh=document.createElement("div");sh.className="shot";
+      const lb=document.createElement("div");lb.className="shot-label";lb.textContent=kind==="before"?"作業前":"作業後";
+      const th=document.createElement("button");th.className="thumb"+(u?" has":"");th.type="button";
+      th.setAttribute("aria-label",s.name+" "+lb.textContent+(u?"を撮り直す":"を撮影"));
+      if(u){const im=document.createElement("img");im.src=u;im.alt="";th.appendChild(im)}
+      else{
+        const ref=kind==="before"?photoURL(s.id+"_ref"):photoURL(s.id+"_before");
+        th.textContent=ref?"ガイドあり・タップで撮影":"タップで撮影";
+      }
+      th.onclick=()=>openCamera(s,kind);
+      const row=document.createElement("div");row.className="btnrow";
+      const lib=document.createElement("button");lib.className="btn";lib.textContent="写真を選ぶ";lib.onclick=()=>pickFromLibrary(s,kind);
+      row.appendChild(lib);
+      if(u){const d=document.createElement("button");d.className="btn";d.textContent="削除";d.onclick=async()=>{await delPhoto(key);renderSlots();save()};row.appendChild(d)}
+      sh.append(lb,th,row);
+      if(kind==="before"&&mem.has(s.id+"_ref")&&!u){const n=document.createElement("div");n.className="ref-note";n.textContent="前回の作業後写真をガイドに表示します";sh.appendChild(n)}
+      el.appendChild(sh);
+    });
+    wrap.appendChild(el);
+  });
+  renderHeader();
+}
+
+/* ---------- camera ---------- */
+let stream=null, cur=null, reviewBlob=null, liveOK=null;
+const video=$("#video"),ghost=$("#ghost");
+function ghostKey(slot,kind){return kind==="after"?slot.id+"_before":slot.id+"_ref"}
+function setGhost(slot,kind){
+  const u=photoURL(ghostKey(slot,kind));
+  if(u){ghost.src=u;ghost.hidden=false;$("#ghostRow").style.display="";applyOpacity()}
+  else{ghost.removeAttribute("src");ghost.hidden=true;$("#ghostRow").style.display="none"}
+  return !!u;
+}
+function applyOpacity(){ghost.style.opacity=String($("#ghostOp").value/100)}
+$("#ghostOp").oninput=applyOpacity;
+$("#togGrid").onclick=e=>{const on=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",String(on));$("#gridl").hidden=!on};
+$("#togDiff").onclick=e=>{const on=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",String(on));$("#camBox").classList.toggle("diff",on)};
+
+async function startStream(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error("no media");
+  return navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1440}},audio:false});
+}
+function stopStream(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null}
+
+async function openCamera(slot,kind){
+  cur={slot,kind};
+  if(liveOK===false){fallbackCapture();return}
+  try{
+    stream=await startStream();liveOK=true;updateModeNote();
+  }catch(e){liveOK=false;updateModeNote();fallbackCapture();return}
+  $("#cam").hidden=false;document.body.style.overflow="hidden";
+  $("#camTitle").innerHTML="";
+  const t=document.createElement("span");t.textContent=slot.name+"（"+(kind==="before"?"作業前":"作業後")+"）";
+  const sm=document.createElement("small");
+  const has=setGhost(slot,kind);
+  sm.textContent=has?(kind==="after"?"作業前の写真に重ねて同じ角度で撮影":"前回の写真に重ねて同じ角度で撮影"):"ガイド写真なし";
+  $("#camTitle").append(t,sm);
+  video.hidden=false;$("#reviewImg").hidden=true;
+  $("#liveRow").hidden=false;$("#reviewRow").hidden=true;$("#camMsg").hidden=true;
+  video.srcObject=stream;
+  try{await video.play()}catch(e){}
+  video.onloadedmetadata=()=>{if(video.videoWidth) $("#camBox").style.aspectRatio=video.videoWidth+"/"+video.videoHeight};
+  if(has){ghost.onload=()=>{$("#camBox").style.aspectRatio=ghost.naturalWidth+"/"+ghost.naturalHeight}}
+}
+function closeCamera(){stopStream();$("#cam").hidden=true;document.body.style.overflow="";reviewBlob=null;cur=null}
+$("#camClose").onclick=closeCamera;
+
+$("#shutter").onclick=async()=>{
+  if(!video.videoWidth) return;
+  // crop to the box's aspect so the saved photo matches what was framed against the guide
+  const box=$("#camBox").getBoundingClientRect(), ar=box.width/box.height;
+  let sw=video.videoWidth, sh=video.videoHeight, sx=0, sy=0;
+  if(sw/sh>ar){const nw=sh*ar;sx=(sw-nw)/2;sw=nw}else{const nh=sw/ar;sy=(sh-nh)/2;sh=nh}
+  const c=document.createElement("canvas");const k=Math.min(1,1600/Math.max(sw,sh));
+  c.width=Math.round(sw*k);c.height=Math.round(sh*k);
+  c.getContext("2d").drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
+  reviewBlob=await canvasToBlob(c,0.82);
+  showReview(reviewBlob);
+};
+function showReview(blob){
+  const u=URL.createObjectURL(blob);const ri=$("#reviewImg");ri.src=u;ri.hidden=false;video.hidden=true;
+  $("#liveRow").hidden=true;$("#reviewRow").hidden=false;
+  const m=$("#camMsg");
+  if(!ghost.hidden){m.textContent="ガイド濃さを動かして、ずれがないか確認できます";m.hidden=false}else m.hidden=true;
+}
+$("#retake").onclick=()=>{
+  if(liveOK){video.hidden=false;$("#reviewImg").hidden=true;$("#liveRow").hidden=false;$("#reviewRow").hidden=true;$("#camMsg").hidden=true;reviewBlob=null}
+  else{fallbackCapture(true)}
+};
+$("#accept").onclick=async()=>{
+  if(!reviewBlob||!cur) return;
+  await putPhoto(cur.slot.id+"_"+cur.kind,reviewBlob);
+  const name=cur.slot.name,kind=cur.kind;
+  closeCamera();renderSlots();save();
+  toast(name+"の"+(kind==="before"?"作業前":"作業後")+"写真を報告書に入れました");
+};
+
+/* fallback: device camera via file input, then align-check review */
+function fallbackCapture(){ $("#fileCam").value="";$("#fileCam").click() }
+function pickFromLibrary(slot,kind){cur={slot,kind};$("#fileLib").value="";$("#fileLib").click()}
+async function handleFile(file){
+  if(!file||!cur) return;
+  try{
+    const u=URL.createObjectURL(file);const im=await loadImg(u);
+    const blob=await shrink(im,im.naturalWidth,im.naturalHeight);URL.revokeObjectURL(u);
+    reviewBlob=blob;
+    const has=setGhost(cur.slot,cur.kind);
+    if(!has){ // nothing to compare: accept directly
+      await putPhoto(cur.slot.id+"_"+cur.kind,blob);
+      const n=cur.slot.name,k=cur.kind;cur=null;reviewBlob=null;renderSlots();save();
+      toast(n+"の"+(k==="before"?"作業前":"作業後")+"写真を報告書に入れました");return;
+    }
+    $("#cam").hidden=false;document.body.style.overflow="hidden";
+    $("#camTitle").innerHTML="";
+    const t=document.createElement("span");t.textContent=cur.slot.name+"（"+(cur.kind==="before"?"作業前":"作業後")+"）";
+    const sm=document.createElement("small");sm.textContent="ガイド写真と重ねて角度を確認";
+    $("#camTitle").append(t,sm);
+    $("#camBox").style.aspectRatio=im.naturalWidth+"/"+im.naturalHeight;
+    showReview(blob);
+  }catch(e){toast("写真を読み込めませんでした。別の写真でお試しください")}
+}
+$("#fileCam").onchange=e=>handleFile(e.target.files[0]);
+$("#fileLib").onchange=e=>handleFile(e.target.files[0]);
+
+function updateModeNote(){
+  const n=$("#camMode");
+  if(liveOK===false) n.textContent="この画面ではカメラの映像を直接表示できないため、端末のカメラで撮影したあとにガイド写真と重ねて角度を確認する方式で動いています。撮影中から重ねて表示するには、このアプリを社内サーバーなど https のページで開いてください。";
+  else if(liveOK===true) n.textContent="撮影画面に前の写真が半透明で重なります。輪郭を合わせてシャッターを押してください。";
+  else n.textContent="各箇所の写真枠をタップすると撮影します。作業後の撮影では、作業前の写真が半透明で重なります。";
+}
+
+/* ---------- checklist ---------- */
+function renderChecks(){
+  const w=$("#checks");w.innerHTML="";
+  S.items.forEach((it,i)=>{
+    const ck=S.checks[it.id]||{v:"",note:""};
+    const row=document.createElement("div");row.className="chk"+(ck.v==="ng"?" ng":"");
+    const no=document.createElement("span");no.className="no";no.textContent=i+1;
+    const tx=document.createElement("span");tx.className="txt";tx.textContent=it.text;
+    const seg=document.createElement("div");seg.className="seg";
+    [["ok","良"],["ng","否"],["na","該当なし"]].forEach(([v,l])=>{
+      const b=document.createElement("button");b.dataset.v=v;b.textContent=l;b.setAttribute("aria-pressed",String(ck.v===v));
+      b.onclick=()=>{const c=S.checks[it.id]||{v:"",note:""};c.v=c.v===v?"":v;S.checks[it.id]=c;save();renderChecks()};
+      seg.appendChild(b);
+    });
+    row.append(no,tx,seg);
+    if(ck.v==="ng"||ck.note){
+      const n=document.createElement("input");n.className="note";n.placeholder="備考（状況・対応）";n.value=ck.note||"";n.id="note-"+it.id;
+      n.oninput=()=>{const c=S.checks[it.id]||{v:"",note:""};c.note=n.value;S.checks[it.id]=c;save()};
+      row.appendChild(n);
+    }
+    w.appendChild(row);
+  });
+}
+$("#btnAllOk").onclick=()=>{S.items.forEach(it=>{const c=S.checks[it.id];if(!c||!c.v)S.checks[it.id]={v:"ok",note:(c&&c.note)||""}});save();renderChecks();toast("未記入の項目を「良」にしました")};
+
+/* ---------- settings ---------- */
+function fillSettings(){
+  $("#setSlots").value=S.slots.map(s=>s.name).join("\n");
+  $("#setItems").value=S.items.map(i=>i.text).join("\n");
+  $("#setCompany").value=S.company||"";$("#setTitle").value=S.title||"";
+}
+$("#btnSaveSet").onclick=()=>{
+  const sl=$("#setSlots").value.split("\n").map(x=>x.trim()).filter(Boolean);
+  const its=$("#setItems").value.split("\n").map(x=>x.trim()).filter(Boolean);
+  if(!sl.length||!its.length){toast("撮影箇所とチェック項目は1つ以上必要です");return}
+  S.slots=sl.map((n,i)=>({id:"s"+(i+1),name:n}));
+  S.items=its.map((t,i)=>({id:"c"+(i+1),text:t}));
+  S.company=$("#setCompany").value.trim();S.title=$("#setTitle").value.trim()||"点検報告書";
+  save();renderSlots();renderChecks();toast("設定を保存しました");
+};
+
+/* ---------- report rendering (canvas A4 @150dpi) ---------- */
+const PW=1240,PH=1754,M=90;
+const FONT='"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif';
+const FONTD='"Zen Kaku Gothic New","BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif';
+function newPage(){const c=document.createElement("canvas");c.width=PW;c.height=PH;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,PW,PH);g.textBaseline="middle";return [c,g]}
+function txt(g,s,x,y,size,opt){opt=opt||{};g.font=(opt.bold?"700 ":"400 ")+size+"px "+(opt.display?FONTD:FONT);g.fillStyle=opt.color||"#18242e";g.textAlign=opt.align||"left";g.fillText(s,x,y)}
+function fitText(g,s,maxW){if(g.measureText(s).width<=maxW) return s;while(s.length&&g.measureText(s+"…").width>maxW)s=s.slice(0,-1);return s+"…"}
+function wrapLines(g,s,maxW){const out=[];String(s).split("\n").forEach(p=>{let line="";for(const ch of p){if(g.measureText(line+ch).width>maxW){out.push(line);line=ch}else line+=ch}out.push(line)});return out}
+function footer(g,n,total){
+  g.strokeStyle="#c9d1d6";g.lineWidth=1;g.beginPath();g.moveTo(M,PH-70);g.lineTo(PW-M,PH-70);g.stroke();
+  txt(g,(S.company||"")+"　"+(S.meta.site||""),M,PH-48,18,{color:"#5b6872"});
+  txt(g,n+" / "+total,PW-M,PH-48,18,{color:"#5b6872",align:"right"});
+}
+function drawContain(g,img,x,y,w,h){
+  g.fillStyle="#eef1f3";g.fillRect(x,y,w,h);
+  if(!img){txt(g,"写真なし",x+w/2,y+h/2,22,{color:"#9aa8b1",align:"center"});return}
+  const k=Math.min(w/img.naturalWidth,h/img.naturalHeight),dw=img.naturalWidth*k,dh=img.naturalHeight*k;
+  g.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+}
+async function renderPages(){
+  try{await document.fonts.ready}catch(e){}
+  const pages=[];const c=counts();
+  // --- page 1+: info and checklist ---
+  let [cv,g]=newPage();pages.push(cv);
+  g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
+  txt(g,S.title||"点検報告書",M,110,52,{bold:true,display:true});
+  txt(g,"提出日 "+today().replace(/-/g,"/"),PW-M,96,20,{align:"right",color:"#5b6872"});
+  txt(g,S.company||"",PW-M,128,22,{align:"right",bold:true});
+  // info table
+  const rows=[["現場名",S.meta.site],["点検日",(S.meta.date||"").replace(/-/g,"/")],["作業内容",S.meta.work],["点検者",S.meta.inspector],["立会者",S.meta.witness],["天候",S.meta.weather]];
+  let y=180;const lw=170,rh=50;
+  g.strokeStyle="#9aa8b1";g.lineWidth=1.5;
+  // two-column info grid: row0 full, row1 full, rest pairs
+  const full=[rows[0],rows[1],rows[2]],pairs=[[rows[3],rows[4]],[rows[5],null]];
+  full.forEach(([k,v])=>{g.fillStyle="#e3e9ec";g.fillRect(M,y,lw,rh);g.strokeRect(M,y,PW-2*M,rh);g.beginPath();g.moveTo(M+lw,y);g.lineTo(M+lw,y+rh);g.stroke();
+    txt(g,k,M+16,y+rh/2,22,{bold:true});g.font="400 24px "+FONT;txt(g,fitText(g,v||"",PW-2*M-lw-32),M+lw+16,y+rh/2,24);y+=rh});
+  const half=(PW-2*M)/2;
+  pairs.forEach(pr=>{pr.forEach((cell,j)=>{const x=M+j*half;g.strokeRect(x,y,half,rh);if(!cell)return;g.fillStyle="#e3e9ec";g.fillRect(x,y,lw,rh);g.strokeRect(x,y,half,rh);g.beginPath();g.moveTo(x+lw,y);g.lineTo(x+lw,y+rh);g.stroke();
+    txt(g,cell[0],x+16,y+rh/2,22,{bold:true});g.font="400 24px "+FONT;txt(g,fitText(g,cell[1]||"",half-lw-32),x+lw+16,y+rh/2,24)});y+=rh});
+  // summary
+  y+=36;
+  txt(g,"点検結果",M,y,30,{bold:true,display:true});
+  const sums=[["良",c.ok,"#2e7d4f"],["否",c.ng,"#c0392b"],["該当なし",c.na,"#7a8790"],["未記入",c.blank,"#18242e"]];
+  let sx=M+170;sums.forEach(([k,v,col])=>{txt(g,k,sx,y,22,{color:"#5b6872"});g.font="400 22px "+FONT;const kw=g.measureText(k).width;txt(g,String(v),sx+kw+10,y,30,{bold:true,color:col});sx+=kw+90});
+  y+=34;
+  // checklist table
+  const colNo=60,colRes=130,colNote=330,colTxt=PW-2*M-colNo-colRes-colNote,crh=48;
+  function tableHead(){
+    g.fillStyle="#1f4e5f";g.fillRect(M,y,PW-2*M,crh);
+    [["No",M+colNo/2,"center"],["点検項目",M+colNo+14,"left"],["結果",M+colNo+colTxt+colRes/2,"center"],["備考",M+colNo+colTxt+colRes+14,"left"]].forEach(([s,x,a])=>txt(g,s,x,y+crh/2,20,{bold:true,color:"#fff",align:a}));
+    y+=crh;
+  }
+  tableHead();
+  for(let i=0;i<S.items.length;i++){
+    if(y+crh>PH-110){footer(g,0,0);[cv,g]=newPage();pages.push(cv);y=M;tableHead()}
+    const it=S.items[i],ck=S.checks[it.id]||{};
+    if(i%2===1){g.fillStyle="#f4f6f7";g.fillRect(M,y,PW-2*M,crh)}
+    g.strokeStyle="#c9d1d6";g.lineWidth=1;g.beginPath();g.moveTo(M,y+crh);g.lineTo(PW-M,y+crh);g.stroke();
+    txt(g,String(i+1),M+colNo/2,y+crh/2,20,{align:"center",color:"#5b6872"});
+    g.font="400 21px "+FONT;txt(g,fitText(g,it.text,colTxt-24),M+colNo+14,y+crh/2,21);
+    const res={ok:["良","#2e7d4f"],ng:["否","#c0392b"],na:["該当なし","#7a8790"]}[ck.v]||["—","#9aa8b1"];
+    txt(g,res[0],M+colNo+colTxt+colRes/2,y+crh/2,22,{bold:true,align:"center",color:res[1]});
+    g.font="400 18px "+FONT;txt(g,fitText(g,ck.note||"",colNote-24),M+colNo+colTxt+colRes+14,y+crh/2,18,{color:"#3a4750"});
+    y+=crh;
+  }
+  // note box
+  if(S.meta.note){
+    g.font="400 21px "+FONT;const lines=wrapLines(g,S.meta.note,PW-2*M-32);
+    const need=60+lines.length*32+20;
+    if(y+30+need>PH-110){footer(g,0,0);[cv,g]=newPage();pages.push(cv);y=M}
+    y+=30;txt(g,"特記事項",M,y+16,26,{bold:true,display:true});y+=40;
+    g.strokeStyle="#9aa8b1";g.strokeRect(M,y,PW-2*M,lines.length*32+24);
+    lines.forEach((l,i)=>txt(g,l,M+16,y+28+i*32,21));
+  }
+  // --- photo pages: 3 pairs per page ---
+  const imgs={};
+  for(const s of S.slots){for(const k of ["before","after"]){const u=photoURL(s.id+"_"+k);if(u){try{imgs[s.id+"_"+k]=await loadImg(u)}catch(e){}}}}
+  const per=3,gap=24,iw=(PW-2*M-gap)/2,blockH=(PH-M-130-40)/per;
+  for(let p=0;p<S.slots.length;p+=per){
+    [cv,g]=newPage();pages.push(cv);
+    g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
+    txt(g,"写真記録",M,70,32,{bold:true,display:true});
+    txt(g,"作業前",M+iw/2,110,20,{bold:true,align:"center",color:"#5b6872"});
+    txt(g,"作業後",M+iw+gap+iw/2,110,20,{bold:true,align:"center",color:"#5b6872"});
+    S.slots.slice(p,p+per).forEach((s,j)=>{
+      const by=130+j*blockH;
+      g.fillStyle="#18242e";g.font="700 22px "+FONT;
+      txt(g,String(p+j+1).padStart(2,"0")+"　"+fitText(g,s.name,PW-2*M-80),M,by+20,22,{bold:true});
+      const ih=blockH-60;
+      drawContain(g,imgs[s.id+"_before"],M,by+42,iw,ih);
+      drawContain(g,imgs[s.id+"_after"],M+iw+gap,by+42,iw,ih);
+    });
+  }
+  // footers with numbering
+  pages.forEach((p,i)=>{const gg=p.getContext("2d");gg.fillStyle="#fff";gg.fillRect(0,PH-90,PW,90);footer(gg,i+1,pages.length)});
+  return pages;
+}
+let lastPages=null;
+async function buildReport(){
+  const c=counts();
+  $("#repStat").innerHTML="";
+  [["作業前写真",c.b+"/"+S.slots.length],["作業後写真",c.a+"/"+S.slots.length],["良",c.ok],["否",c.ng],["未記入",c.blank]].forEach(([k,v])=>{const s=document.createElement("span");s.textContent=k+" ";const b=document.createElement("b");b.textContent=v;s.appendChild(b);$("#repStat").appendChild(s)});
+  if(!reportDirty&&lastPages) return;
+  const pg=$("#pages");pg.innerHTML='<p class="hint">報告書を作成中…</p>';
+  lastPages=await renderPages();reportDirty=false;
+  pg.innerHTML="";
+  lastPages.forEach((cv,i)=>{const im=document.createElement("img");im.alt="報告書 "+(i+1)+"ページ";im.src=cv.toDataURL("image/jpeg",0.7);pg.appendChild(im)});
+}
+
+/* ---------- export ---------- */
+function fname(ext){return ((S.meta.date||today())+"_"+(S.meta.site||"点検").replace(/[\\/:*?"<>|（）()]/g,"").slice(0,30)+"_"+(S.title||"点検報告書")+"."+ext)}
+async function saveFile(blob,filename){
+  try{
+    if(window.claude&&window.claude.use){
+      const d=await window.claude.use("downloads");
+      if(d){await d.save({filename,data:blob});toast("保存しました");return}
+    }
+  }catch(e){if(e&&e.code==="declined"){return}}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);toast("保存しました");
+}
+async function makePdf(){
+  if(!window.jspdf){toast("PDF作成部品を読み込めませんでした。通信状態を確認してください");return null}
+  if(reportDirty||!lastPages){lastPages=await renderPages();reportDirty=false}
+  const pdf=new window.jspdf.jsPDF({unit:"mm",format:"a4",compress:true});
+  lastPages.forEach((cv,i)=>{if(i)pdf.addPage();pdf.addImage(cv.toDataURL("image/jpeg",0.85),"JPEG",0,0,210,297)});
+  return pdf.output("blob");
+}
+$("#btnPdf").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="作成中…";try{const blob=await makePdf();if(blob)await saveFile(blob,fname("pdf"))}finally{b.disabled=false;b.textContent="報告書PDFを保存"}};
+if(navigator.canShare){try{if(navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))$("#btnShare").hidden=false}catch(e){}}
+$("#btnShare").onclick=async()=>{
+  const blob=await makePdf();if(!blob)return;
+  const f=new File([blob],fname("pdf"),{type:"application/pdf"});
+  try{await navigator.share({files:[f],title:S.title})}catch(e){if(e.name!=="AbortError")toast("共有できませんでした。PDFを保存して送ってください")}
+};
+function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+$("#btnCsv").onclick=()=>{
+  const L={ok:"良",ng:"否",na:"該当なし"};
+  const head=["現場名","点検日","作業内容","点検者","No","点検項目","結果","備考"];
+  const rows=S.items.map((it,i)=>{const c=S.checks[it.id]||{};return [S.meta.site,S.meta.date,S.meta.work,S.meta.inspector,i+1,it.text,L[c.v]||"",c.note||""]});
+  const csv="﻿"+[head,...rows].map(r=>r.map(csvCell).join(",")).join("\r\n");
+  saveFile(new Blob([csv],{type:"text/csv"}),fname("csv"));
+};
+function blobToDataURL(b){return new Promise(ok=>{const r=new FileReader();r.onload=()=>ok(r.result);r.readAsDataURL(b)})}
+$("#btnJson").onclick=async()=>{
+  const photos={};
+  for(const [k,b] of mem){photos[k]=await blobToDataURL(b)}
+  const data={format:"inspection-report/v1",exportedAt:new Date().toISOString(),state:S,photos};
+  saveFile(new Blob([JSON.stringify(data)],{type:"application/json"}),fname("json"));
+};
+$("#jsonIn").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const d=JSON.parse(await f.text());
+    if(!d||!d.state||!d.state.slots) throw new Error("bad");
+    for(const k of [...mem.keys()]) await delPhoto(k);
+    for(const [k,u] of Object.entries(d.photos||{})){const b=await (await fetch(u)).blob();await putPhoto(k,b)}
+    S=d.state;save();fillMeta();renderSlots();renderChecks();reportDirty=true;buildReport();
+    toast("点検データを読み込みました");
+  }catch(err){toast("このファイルは読み込めません。点検データ（.json）を選んでください")}
+  e.target.value="";
+};
+
+/* ---------- boot ---------- */
+(async function boot(){
+  try{
+    if(!window.isSecureContext||!navigator.mediaDevices) liveOK=false;
+    const pp=document.permissionsPolicy||document.featurePolicy;
+    if(pp&&pp.allowsFeature&&!pp.allowsFeature("camera")) liveOK=false;
+  }catch(e){}
+  fillMeta();renderChecks();renderSlots();updateModeNote();
+  await loadAllPhotos();renderSlots();
+  let t="photo";try{t=localStorage.getItem(LS_KEY+"-tab")||"photo"}catch(e){}
+  showTab(t);
+})();
+window.addEventListener("pagehide",stopStream);
+})();
+</script>
