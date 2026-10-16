@@ -1,3 +1,10 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f4e5f">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>現場点検レポート</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@500;700;900&display=swap">
@@ -19,6 +26,10 @@
   --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
   --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font-size:15px}
+img{max-width:100%}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--brand)}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -110,7 +121,8 @@ textarea{resize:vertical}
 .mode-note{font-size:12px;color:var(--muted);background:var(--chip);border-radius:6px;padding:8px 10px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
-
+</head>
+<body>
 <header class="top">
   <div class="top-in">
     <div class="brandrow">
@@ -736,3 +748,5 @@ $("#jsonIn").onchange=async e=>{
 window.addEventListener("pagehide",stopStream);
 })();
 </script>
+</body>
+</html>
