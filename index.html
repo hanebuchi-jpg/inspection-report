@@ -94,6 +94,11 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .seg button[aria-pressed="true"][data-v="na"]{background:var(--na);border-color:var(--na);color:#fff}
 .chk input.note{grid-column:2;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 8px;font-size:13px;min-width:0}
 .chk.ng .txt{color:var(--ng);font-weight:700}
+.ngstrip{grid-column:2;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;background:var(--chip);border-radius:8px;padding:8px}
+.ngshot{display:flex;flex-direction:column;gap:4px;width:96px}
+.ngshot .btn{padding:4px;font-size:12px}
+.ngacts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.btn.ngcam{background:var(--ng);border-color:var(--ng);color:#fff}
 
 /* settings */
 .brow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:6px}
@@ -199,7 +204,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
   <section class="panel" id="p-check" hidden>
     <div class="card">
       <div class="toolbar">
-        <span class="hint" style="flex:1">結果を選んでください。「否」にすると備考欄が出ます。</span>
+        <span class="hint" style="flex:1">結果を選んでください。「否」にすると異常箇所の写真を3枚まで撮影できます。備考は全項目に入力できます。</span>
         <button class="btn" id="btnAllOk">未記入をすべて「良」</button>
       </div>
     </div>
@@ -211,6 +216,12 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <div class="card">
       <h2>出力・連携</h2>
       <div class="stat" id="repStat"></div>
+      <div class="chkrow" role="radiogroup" aria-label="報告書の種類">
+        <label class="tg"><input type="radio" name="outMode" id="om-both" value="both" checked> 写真付き報告書</label>
+        <label class="tg"><input type="radio" name="outMode" id="om-checks" value="checks"> チェック表のみ</label>
+        <label class="tg"><input type="radio" name="outMode" id="om-photos" value="photos"> 写真台帳のみ</label>
+      </div>
+      <p class="hint" id="modeHint"></p>
       <div class="btnrow">
         <button class="btn pri" id="btnPdf">報告書PDFを保存</button>
         <button class="btn" id="btnShare" hidden>PDFを共有</button>
@@ -260,6 +271,8 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <div class="card">
       <h2>施工看板</h2>
       <label class="tg"><input type="checkbox" id="bdOn"> 写真に施工看板を入れる</label>
+      <label class="tg"><input type="checkbox" id="bdLink"> 看板の「箇所」「区分」を、撮影する箇所・区分と連動させる</label>
+      <p class="hint">連動をオンにすると、項目名が「箇所」「区分」の行には撮影中の箇所名と施工前・中・後が自動で入ります。オフにすると、入力した文字がそのまま入ります。</p>
       <div class="grid2">
         <label class="f">看板の位置<select id="bdPos"><option value="bl">左下</option><option value="br">右下</option><option value="tl">左上</option><option value="tr">右上</option></select></label>
         <label class="f">看板の大きさ<select id="bdSize"><option value="s">小</option><option value="m">中</option><option value="l">大</option></select></label>
@@ -333,7 +346,10 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 const $=s=>document.querySelector(s);
 const LS="inspect-app-v2";
 const STAGES=[["before","施工前"],["during","施工中"],["after","施工後"]];
-const STAGE_LABEL={before:"施工前",during:"施工中",after:"施工後"};
+const STAGE_LABEL={before:"施工前",during:"施工中",after:"施工後",ng1:"異常",ng2:"異常",ng3:"異常"};
+const NG_MAX=3;
+const ngSid=id=>"ng-"+id;
+const isLinked=b=>!b||b.link!==false;
 const POS_LABEL={bl:"左下",br:"右下",tl:"左上",tr:"右上"};
 const MAX=100, MAX_BOARD=10;
 const FONT='"BIZ UDPGothic","Hiragino Sans","Yu Gothic","Meiryo",sans-serif';
@@ -351,11 +367,11 @@ function defaultTemplates(){
     {id:"t-floor",name:"定期清掃（床洗浄・ワックス）",stages:["before","after"],
      slots:["エントランス床面","エントランスガラス","風除室マット","通路床面","トイレ（男）床・便器","トイレ（女）床・便器","洗面台・鏡","エスカレーター手すり","空調吹出口","ゴミ置場"],
      items:["床面に汚れ・シミの残りがない","床面ワックスにムラ・剥がれがない","ガラス面に拭き跡・指紋がない","マット下に砂・ゴミがたまっていない","巾木・壁際にホコリがない","トイレ便器・小便器に汚れがない","トイレ床に水濡れ・臭気がない","洗面台・鏡に水垢がない","トイレットペーパー・ハンドソープを補充した","ゴミ箱を空にし袋を交換した","手すり・ドアノブを除菌した","空調吹出口にホコリ・カビがない","照明器具にホコリ・虫の付着がない","案内表示・サインに汚れがない","清掃用具を所定の場所に片付けた","使用薬剤を適正に希釈・保管した","作業中の安全表示を設置・撤去した","床の滑り・つまずき箇所がない","設備の破損・不具合がない（あれば備考へ）","作業後に施設担当者へ報告した"],
-     board:{on:true,pos:"bl",size:"m",rows:clone(BOARD_ROWS)},company:"株式会社オーアンドケー",title:"清掃点検報告書",hideEmpty:true},
+     board:{on:true,link:true,pos:"bl",size:"m",rows:clone(BOARD_ROWS)},company:"株式会社オーアンドケー",title:"清掃点検報告書",hideEmpty:true},
     {id:"t-ac",name:"エアコン洗浄",stages:["before","during","after"],
      slots:["室内機 外観","前面パネル","エアフィルター","熱交換器（フィン）","ドレンパン","送風ファン","吹出口・ルーバー","室外機 外観"],
      items:["養生を行い周囲を汚さなかった","フィルターの汚れ・破れを確認した","熱交換器にすすぎ残しがない","ドレンパン・排水経路が詰まっていない","送風ファンにカビ・汚れの残りがない","吹出口・ルーバーを拭き上げた","試運転で異音・水漏れがない","リモコン・室内機の動作を確認した","使用薬剤を適正に希釈・回収した","作業後に設備担当者へ報告した"],
-     board:{on:true,pos:"bl",size:"m",rows:clone(BOARD_ROWS)},company:"株式会社オーアンドケー",title:"エアコン洗浄報告書",hideEmpty:true}
+     board:{on:true,link:true,pos:"bl",size:"m",rows:clone(BOARD_ROWS)},company:"株式会社オーアンドケー",title:"エアコン洗浄報告書",hideEmpty:true}
   ];
 }
 function cfgFromTpl(t){
@@ -424,7 +440,13 @@ function wrapLines(g,s,maxW){const out=[];String(s).split("\n").forEach(p=>{let 
 /* ---------- 施工看板 ---------- */
 function boardRows(cfg,meta,slotName,stage){
   const map={"現場名":meta.site,"箇所":slotName,"区分":STAGE_LABEL[stage]||"","日付":fmtDate(meta.date),"作業内容":meta.work,"点検者":meta.inspector,"会社名":cfg.company};
-  return (cfg.board.rows||[]).map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").replace(/\{([^}]+)\}/g,(m,k)=>k in map?(map[k]||""):m).trim()})).filter(r=>r.l&&r.v);
+  const link=isLinked(cfg.board);
+  return (cfg.board.rows||[]).map(r=>{
+    const l=String(r.l||"").trim();
+    if(link&&l==="箇所")return {l,v:String(slotName||"").trim()};
+    if(link&&l==="区分")return {l,v:map["区分"]};
+    return {l,v:String(r.v||"").replace(/\{([^}]+)\}/g,(m,k)=>k in map?(map[k]||""):m).trim()};
+  }).filter(r=>r.l&&r.v);
 }
 function drawBoard(g,W,H,rows,pos,size){
   if(!rows.length)return;
@@ -678,7 +700,7 @@ $("#accept").onclick=async()=>{
   try{const th=await makeThumb(reviewBlob);await pPut(k,reviewBlob);await pPut(k+"|t",th);dropThumb(k)}
   finally{b.disabled=false}
   const name=cur.slot.name,stage=cur.stage;
-  closeCamera();renderSlots();persist();
+  closeCamera();renderSlots();renderChecks();persist();
   toast(name+"の"+STAGE_LABEL[stage]+"写真を報告書に入れました");
 };
 async function handleFile(file){
@@ -719,10 +741,34 @@ function renderChecks(){
       seg.appendChild(b);
     });
     row.append(no,tx,seg);
-    if(ck.v==="ng"||ck.note){
-      const n=document.createElement("input");n.className="note";n.placeholder="備考（状況・対応）";n.value=ck.note||"";n.id="note-"+it.id;
-      n.oninput=()=>{const c=rep.checks[it.id]||{v:"",note:""};c.note=n.value;rep.checks[it.id]=c;persist()};
-      row.appendChild(n);
+    const n=document.createElement("input");n.className="note";n.placeholder=ck.v==="ng"?"備考（異常の状況・対応）":"備考";n.value=ck.note||"";n.id="note-"+it.id;
+    n.setAttribute("aria-label",(i+1)+"番 "+it.text+" の備考");
+    n.oninput=()=>{const c=rep.checks[it.id]||{v:"",note:""};c.note=n.value;rep.checks[it.id]=c;persist()};
+    row.appendChild(n);
+    const ngKeys=[];for(let m=1;m<=NG_MAX;m++){const k=pk(rep.id,ngSid(it.id),"ng"+m);if(keys.has(k))ngKeys.push(["ng"+m,k])}
+    if(ck.v==="ng"||ngKeys.length){
+      const strip=document.createElement("div");strip.className="ngstrip";
+      const slotLike={id:ngSid(it.id),name:it.text};
+      ngKeys.forEach(([st,k])=>{
+        const box=document.createElement("div");box.className="ngshot";
+        const th=document.createElement("button");th.type="button";th.className="thumb has";th.setAttribute("aria-label",it.text+" の異常写真を撮り直す");
+        const im=document.createElement("img");im.alt="";th.appendChild(im);thumbURL(k).then(u=>{if(u)im.src=u});
+        th.onclick=()=>openCamera(slotLike,st);
+        const d=document.createElement("button");d.className="btn";d.textContent="削除";d.setAttribute("aria-label",it.text+" の異常写真を削除");
+        d.onclick=async()=>{await delPhoto(k);persist();renderChecks()};
+        box.append(th,d);strip.appendChild(box);
+      });
+      const free=[];for(let m=1;m<=NG_MAX;m++){if(!keys.has(pk(rep.id,ngSid(it.id),"ng"+m)))free.push("ng"+m)}
+      if(free.length){
+        const acts=document.createElement("div");acts.className="ngacts";
+        const cam=document.createElement("button");cam.className="btn ngcam";cam.textContent="異常箇所を撮影";
+        cam.onclick=()=>openCamera(slotLike,free[0]);
+        const lib=document.createElement("button");lib.className="btn";lib.textContent="写真を選ぶ";
+        lib.onclick=()=>{cur={slot:slotLike,stage:free[0]};$("#fileLib").value="";$("#fileLib").click()};
+        const cnt=document.createElement("span");cnt.className="hint";cnt.textContent=ngKeys.length+" / "+NG_MAX+"枚";
+        acts.append(cam,lib,cnt);strip.appendChild(acts);
+      }
+      row.appendChild(strip);
     }
     w.appendChild(row);
   });
@@ -737,7 +783,7 @@ function fillSettings(){
   STAGES.forEach(([k])=>$("#st-"+k).checked=cfg.stages.includes(k));
   $("#setSlots").value=cfg.slots.map(s=>s.name).join("\n");
   $("#setItems").value=cfg.items.map(i=>i.text).join("\n");
-  $("#bdOn").checked=!!cfg.board.on;$("#bdPos").value=cfg.board.pos||"bl";$("#bdSize").value=cfg.board.size||"m";
+  $("#bdOn").checked=!!cfg.board.on;$("#bdLink").checked=isLinked(cfg.board);$("#bdPos").value=cfg.board.pos||"bl";$("#bdSize").value=cfg.board.size||"m";
   $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
   $("#setConfirm").innerHTML="";
   renderBoardRows();updateCounters();renderTplList();drawBoardPreview();
@@ -752,12 +798,16 @@ $("#setSlots").addEventListener("input",()=>{updateCounters();drawBoardPreview()
 $("#setItems").addEventListener("input",updateCounters);
 function renderBoardRows(){
   const w=$("#bdRows");w.innerHTML="";
+  const link=$("#bdLink").checked;
   W.rows.forEach((r,i)=>{
     const row=document.createElement("div");row.className="brow";
     const a=document.createElement("input");a.value=r.l||"";a.placeholder="項目名";a.id="bdl-"+i;a.setAttribute("aria-label","看板 "+(i+1)+"行目の項目名");
     const b=document.createElement("input");b.value=r.v||"";b.placeholder="内容（例：{現場名}）";b.id="bdv-"+i;b.setAttribute("aria-label","看板 "+(i+1)+"行目の内容");
+    const lk=String(r.l||"").trim();
+    if(link&&(lk==="箇所"||lk==="区分")){b.disabled=true;b.value="";b.placeholder=lk==="箇所"?"撮影箇所と連動":"撮影区分と連動"}
     const d=document.createElement("button");d.type="button";d.textContent="削除";
     a.oninput=()=>{W.rows[i].l=a.value;drawBoardPreview()};
+    a.onchange=()=>renderBoardRows();
     b.oninput=()=>{W.rows[i].v=b.value;drawBoardPreview()};
     d.onclick=()=>{W.rows.splice(i,1);renderBoardRows();drawBoardPreview()};
     row.append(a,b,d);w.appendChild(row);
@@ -766,6 +816,14 @@ function renderBoardRows(){
 }
 $("#bdAdd").onclick=()=>{if(W.rows.length>=MAX_BOARD)return;W.rows.push({l:"",v:""});renderBoardRows();const i=W.rows.length-1;const el=$("#bdl-"+i);if(el)el.focus()};
 ["bdOn","bdPos","bdSize","setCompany"].forEach(id=>$("#"+id).addEventListener("input",drawBoardPreview));
+$("#bdLink").addEventListener("change",()=>{
+  if($("#bdLink").checked){
+    const has=l=>W.rows.some(r=>String(r.l||"").trim()===l);
+    if(!has("箇所")&&W.rows.length<MAX_BOARD)W.rows.push({l:"箇所",v:"{箇所}"});
+    if(!has("区分")&&W.rows.length<MAX_BOARD)W.rows.push({l:"区分",v:"{区分}"});
+  }
+  renderBoardRows();drawBoardPreview();
+});
 function drawBoardPreview(){
   const cv=$("#boardPrev"),g=cv.getContext("2d"),Wd=cv.width,H=cv.height;
   const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,"#9aa7ad");gr.addColorStop(1,"#5c6a70");g.fillStyle=gr;g.fillRect(0,0,Wd,H);
@@ -773,7 +831,7 @@ function drawBoardPreview(){
   if(!$("#bdOn").checked){g.font="400 22px "+FONT;g.fillText("施工看板は入りません",Wd/2,H*.42);return}
   const rep=R(),firstSlot=lines($("#setSlots").value)[0]||"（箇所名）";
   const stage=STAGES.map(s=>s[0]).find(s=>$("#st-"+s).checked)||"before";
-  const tmp={company:$("#setCompany").value,board:{rows:W.rows}};
+  const tmp={company:$("#setCompany").value,board:{rows:W.rows,link:$("#bdLink").checked}};
   drawBoard(g,Wd,H,boardRows(tmp,rep.meta,firstSlot,stage),$("#bdPos").value,$("#bdSize").value);
 }
 function readDraft(){
@@ -791,7 +849,8 @@ function readDraft(){
   const lose=[];
   pool.forEach(s=>STAGES.forEach(([st])=>{const k=pk(rep.id,s.id,st);if(keys.has(k))lose.push(k)}));
   slots.forEach(s=>STAGES.forEach(([st])=>{if(!stages.includes(st)){const k=pk(rep.id,s.id,st);if(keys.has(k))lose.push(k)}}));
-  const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
+  ipool.forEach(it=>{for(let n=1;n<=NG_MAX;n++){const k=pk(rep.id,ngSid(it.id),"ng"+n);if(keys.has(k))lose.push(k)}});
+  const board={on:$("#bdOn").checked,link:$("#bdLink").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim()})).filter(r=>r.l||r.v).slice(0,MAX_BOARD)};
   const cfg={stages,slots,items,board,company:$("#setCompany").value.trim(),title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked};
   return {cfg,lose,dropItems:ipool.map(x=>x.id)};
@@ -809,7 +868,7 @@ function applySettings(){
     if(d.err){toast(d.err);resolve(false);return}
     if(!d.lose.length){commitDraft(d).then(()=>{toast("設定を保存しました");resolve(true)});return}
     const box=document.createElement("div");box.className="inline-confirm";
-    const s=document.createElement("strong");s.textContent="撮影済みの写真 "+d.lose.length+"枚が、消した箇所・区分に入っています。保存するとこの写真は削除されます。";
+    const s=document.createElement("strong");s.textContent="撮影済みの写真 "+d.lose.length+"枚が、消した箇所・区分・チェック項目に入っています。保存するとこの写真は削除されます。";
     const row=document.createElement("div");row.className="btnrow";
     const go=document.createElement("button");go.className="btn warn";go.textContent="写真を削除して保存";
     const no=document.createElement("button");no.className="btn";no.textContent="やめる";
@@ -888,7 +947,9 @@ function checkRows(g,rep,items,from,to,y){
     g.font="400 21px "+FONT;txt(g,fit(g,it.text,colTxt-24),M+colNo+14,y+CRH/2,21);
     const res={ok:["良","#2e7d4f"],ng:["否","#c0392b"],na:["該当なし","#7a8790"]}[ck.v]||["—","#9aa8b1"];
     txt(g,res[0],M+colNo+colTxt+colRes/2,y+CRH/2,22,{bold:true,align:"center",color:res[1]});
-    g.font="400 18px "+FONT;txt(g,fit(g,ck.note||"",colNote-24),M+colNo+colTxt+colRes+14,y+CRH/2,18,{color:"#3a4750"});
+    const nph=ngKeysOf(rep,it).length;
+    const noteTxt=(nph?"［写真"+nph+"枚］":"")+(ck.note||"");
+    g.font="400 18px "+FONT;txt(g,fit(g,noteTxt,colNote-24),M+colNo+colTxt+colRes+14,y+CRH/2,18,{color:"#3a4750"});
     y+=CRH;
   }
   return y;
@@ -898,11 +959,14 @@ function drawNote(g,lines_,y){
   g.strokeStyle="#9aa8b1";g.lineWidth=1.5;g.strokeRect(M,y,PW-2*M,lines_.length*32+24);
   lines_.forEach((l,i)=>txt(g,l,M+16,y+28+i*32,21));
 }
-async function renderPages(onProgress){
+function ngKeysOf(rep,it){const out=[];for(let m=1;m<=NG_MAX;m++){const k=pk(rep.id,ngSid(it.id),"ng"+m);if(keys.has(k))out.push(k)}return out}
+async function renderPages(onProgress,mode){
   try{await document.fonts.ready}catch(e){}
   const rep=R(),cfg=rep.cfg,meta=rep.meta,c=counts(rep);
+  const withChecks=mode!=="photos",withPhotos=mode!=="checks";
   const cv=document.createElement("canvas");cv.width=PW;cv.height=PH;const g=cv.getContext("2d");g.textBaseline="middle";
-  const items=cfg.items;
+  const items=withChecks?cfg.items:[];
+  const ngItems=withPhotos?cfg.items.map((it,i)=>({it,i,ks:ngKeysOf(rep,it)})).filter(x=>x.ks.length):[];
   const metaRows=[["現場名",meta.site],["点検日",fmtDate(meta.date)],["作業内容",meta.work],["点検者",meta.inspector],["立会者",meta.witness],["天候",meta.weather]].filter(r=>String(r[1]||"").trim());
   const metaEnd=180+metaRows.length*RH;
   const tableTop0=metaEnd+70;
@@ -921,15 +985,17 @@ async function renderPages(onProgress){
   const st=cfg.stages,N=st.length;
   let slots=cfg.slots.slice();
   if(cfg.hideEmpty)slots=slots.filter(s=>st.some(x=>keys.has(pk(rep.id,s.id,x))));
+  if(!withPhotos)slots=[];
   const per=N===1?6:(N===3?4:3);
   for(let i=0;i<slots.length;i+=per)plan.push({t:"photos",slots:slots.slice(i,i+per),start:i});
+  for(let i=0;i<ngItems.length;i+=3)plan.push({t:"ng",list:ngItems.slice(i,i+3)});
   const total=plan.length,out=[];
   for(let p=0;p<plan.length;p++){
     const pg=plan[p];
     g.fillStyle="#fff";g.fillRect(0,0,PW,PH);
     if(pg.t==="cover"){
       g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
-      txt(g,cfg.title||"点検報告書",M,110,52,{bold:true,display:true});
+      txt(g,(cfg.title||"点検報告書")+(mode==="photos"?"（写真台帳）":""),M,110,52,{bold:true,display:true});
       txt(g,"提出日 "+fmtDate(today()),PW-M,96,20,{align:"right",color:"#5b6872"});
       if(cfg.company)txt(g,cfg.company,PW-M,128,22,{align:"right",bold:true});
       let y=180;const lw=170;
@@ -948,6 +1014,22 @@ async function renderPages(onProgress){
       if(pg.noteY)drawNote(g,noteL,pg.noteY);
     }else if(pg.t==="note"){
       drawNote(g,noteL,M);
+    }else if(pg.t==="ng"){
+      g.fillStyle="#c0392b";g.fillRect(0,0,PW,14);
+      txt(g,"異常箇所の写真",M,70,32,{bold:true,display:true,color:"#c0392b"});
+      const gap=20,iw=(PW-2*M-gap*(NG_MAX-1))/NG_MAX,block=(BOT-110)/3;
+      for(let j=0;j<pg.list.length;j++){
+        const {it,i,ks}=pg.list[j],ck=rep.checks[it.id]||{},by=110+j*block;
+        const res={ok:"良",ng:"否",na:"該当なし"}[ck.v]||"未記入";
+        g.font="700 22px "+FONT;txt(g,fit(g,"No."+(i+1)+"　"+it.text+"（"+res+"）",PW-2*M),M,by+20,22,{bold:true,color:ck.v==="ng"?"#c0392b":"#18242e"});
+        g.font="400 19px "+FONT;txt(g,fit(g,"備考："+(ck.note||"—"),PW-2*M),M,by+52,19,{color:"#3a4750"});
+        for(let ci=0;ci<NG_MAX;ci++){
+          const k=ks[ci];
+          if(!k){continue}
+          const b=await pGet(k);let im=null;if(b){try{im=await blobImg(b)}catch(e){}}
+          drawContain(g,im,M+ci*(iw+gap),by+74,iw,block-90);
+        }
+      }
     }else{
       g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
       txt(g,"写真記録",M,70,32,{bold:true,display:true});
@@ -976,29 +1058,45 @@ async function renderPages(onProgress){
   return out;
 }
 async function loadPhoto(rep,s,stage){const b=await pGet(pk(rep.id,s.id,stage));if(!b)return null;try{return await blobImg(b)}catch(e){return null}}
-let lastPages=null,building=null;
+let lastPages=null,lastMode=null,building=null;
+const MODE_NAME={both:"写真付き報告書",checks:"チェック表",photos:"写真台帳"};
+const MODE_HINT={both:"点検情報・チェック表・撮影箇所の写真・異常箇所の写真をまとめて1つの報告書にします。",checks:"点検情報とチェック表だけの報告書にします（写真は入りません）。",photos:"点検情報と写真（撮影箇所・異常箇所）だけの写真台帳にします。"};
+function outMode(){const el=document.querySelector('input[name="outMode"]:checked');return el?el.value:"both"}
+try{const m=localStorage.getItem(LS+"-mode");if(m&&$("#om-"+m))$("#om-"+m).checked=true}catch(e){}
+document.querySelectorAll('input[name="outMode"]').forEach(r=>r.addEventListener("change",()=>{
+  try{localStorage.setItem(LS+"-mode",outMode())}catch(e){}
+  buildReport();
+}));
 async function getPages(onProgress){
-  if(!dirty&&lastPages)return lastPages;
-  if(building)return building;
-  building=renderPages(onProgress).then(p=>{lastPages=p;dirty=false;building=null;return p},e=>{building=null;throw e});
-  return building;
+  const mode=outMode();
+  if(!dirty&&lastPages&&lastMode===mode)return lastPages;
+  if(building&&building.mode===mode)return building.p;
+  const p=renderPages(onProgress,mode).then(pp=>{if(outMode()===mode){lastPages=pp;lastMode=mode;dirty=false}building=null;return pp},e=>{building=null;throw e});
+  building={mode,p};
+  return p;
 }
 async function buildReport(){
   const rep=R(),c=counts(rep),st=$("#repStat");st.innerHTML="";
   const parts=[["写真",c.shot+"/"+c.cells]];
   if(rep.cfg.items.length)parts.push(["良",c.ok],["否",c.ng],["未記入",c.blank]);
+  const ngN=rep.cfg.items.reduce((a,it)=>a+ngKeysOf(rep,it).length,0);
+  if(ngN)parts.push(["異常写真",ngN]);
   parts.forEach(([k,v])=>{const s=document.createElement("span");s.textContent=k+" ";const b=document.createElement("b");b.textContent=v;s.appendChild(b);st.appendChild(s)});
-  if(!dirty&&lastPages)return;
+  $("#modeHint").textContent=MODE_HINT[outMode()];
+  $("#btnPdf").textContent=MODE_NAME[outMode()]+"PDFを保存";
+  if(!dirty&&lastPages&&lastMode===outMode())return;
   const pg=$("#pages");pg.innerHTML="";const msg=document.createElement("p");msg.className="hint";msg.textContent="報告書を作成中…";pg.appendChild(msg);
   try{
+    const mode=outMode();
     const pages=await getPages((n,t)=>{msg.textContent="報告書を作成中… "+n+" / "+t+"ページ"});
+    if(mode!==outMode())return;
     pg.innerHTML="";
     pages.forEach((u,i)=>{const im=document.createElement("img");im.alt="報告書 "+(i+1)+"ページ";im.src=u;pg.appendChild(im)});
   }catch(e){msg.textContent="報告書を作成できませんでした。もう一度開き直してください。"}
 }
 
 /* ---------- export ---------- */
-function fname(ext){const r=R();return (r.meta.date||today())+"_"+(r.meta.site||"点検").replace(/[\\/:*?"<>|（）()]/g,"").slice(0,30)+"_"+(r.cfg.title||"点検報告書")+"."+ext}
+function fname(ext,suffix){const r=R();return (r.meta.date||today())+"_"+(r.meta.site||"点検").replace(/[\\/:*?"<>|（）()]/g,"").slice(0,30)+"_"+(r.cfg.title||"点検報告書")+(suffix?"_"+suffix:"")+"."+ext}
 async function saveFile(blob,filename){
   try{
     if(window.claude&&window.claude.use){const d=await window.claude.use("downloads");if(d){await d.save({filename,data:blob});toast("保存しました");return}}
@@ -1013,11 +1111,11 @@ async function makePdf(btn){
   pages.forEach((u,i)=>{if(i)pdf.addPage();pdf.addImage(u,"JPEG",0,0,210,297)});
   return pdf.output("blob");
 }
-$("#btnPdf").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="作成中…";try{const blob=await makePdf(b);if(blob)await saveFile(blob,fname("pdf"))}finally{b.disabled=false;b.textContent="報告書PDFを保存"}};
+$("#btnPdf").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="作成中…";try{const blob=await makePdf(b);if(blob)await saveFile(blob,fname("pdf",MODE_NAME[outMode()]))}finally{b.disabled=false;b.textContent=MODE_NAME[outMode()]+"PDFを保存"}};
 try{if(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))$("#btnShare").hidden=false}catch(e){}
 $("#btnShare").onclick=async()=>{
   const blob=await makePdf();if(!blob)return;
-  const f=new File([blob],fname("pdf"),{type:"application/pdf"});
+  const f=new File([blob],fname("pdf",MODE_NAME[outMode()]),{type:"application/pdf"});
   try{await navigator.share({files:[f],title:R().cfg.title})}catch(e){if(e.name!=="AbortError")toast("共有できませんでした。PDFを保存して送ってください")}
 };
 function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
@@ -1033,7 +1131,10 @@ $("#btnJson").onclick=async e=>{
   const b=e.currentTarget;b.disabled=true;
   try{
     const r=R(),photos={};
-    for(const s of r.cfg.slots)for(const st of r.cfg.stages){const k=pk(r.id,s.id,st);if(keys.has(k)){const bl=await pGet(k);if(bl)photos[s.id+"|"+st]=await blobToDataURL(bl)}}
+    for(const k of [...keys]){
+      if(!k.startsWith(r.id+"|")||k.endsWith("|t"))continue;
+      const bl=await pGet(k);if(bl)photos[k.slice(r.id.length+1)]=await blobToDataURL(bl);
+    }
     const tpl=D.templates.find(t=>t.id===r.tplId)||null;
     const data={format:"inspection-report/v2",exportedAt:new Date().toISOString(),report:r,template:tpl,photos};
     await saveFile(new Blob([JSON.stringify(data)],{type:"application/json"}),fname("json"));
