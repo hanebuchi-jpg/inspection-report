@@ -1,4 +1,4 @@
-const VERSION = "v4";
+const VERSION = "v5";
 const CACHE = "inspect-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];

@@ -46,7 +46,19 @@ button{cursor:pointer}
 .brandrow .site{font-size:13px;opacity:.85;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .progress{display:flex;gap:14px;font-size:12px;opacity:.9;font-variant-numeric:tabular-nums;margin-top:4px;flex-wrap:wrap}
 .tabs{display:flex;gap:2px;margin-top:10px}
-.tabs button{flex:1;border:0;background:transparent;color:var(--brand-ink);opacity:.7;padding:10px 4px;font-weight:700;border-bottom:3px solid transparent;font-size:14px}
+.tabs button{flex:1;min-width:0;border:0;background:transparent;color:var(--brand-ink);opacity:.7;padding:10px 2px;font-weight:700;border-bottom:3px solid transparent;font-size:13px;white-space:nowrap}
+.fold{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.fold .ic{width:38px;height:30px;flex:none;border-radius:4px;background:var(--accent);position:relative}
+.fold .ic::before{content:"";position:absolute;left:0;top:-5px;width:16px;height:8px;border-radius:3px 3px 0 0;background:var(--accent)}
+.fold .nm{font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fold .meta{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.docitem{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px}
+.docitem .pv{width:72px;aspect-ratio:210/297;background:#fff;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.docitem .pv img{width:100%;height:100%;object-fit:cover;display:block}
+.docitem .nm{font-weight:700;word-break:break-all;font-size:14px}
+.docitem .meta{font-size:12px;color:var(--muted)}
+.docitem .btnrow .btn{padding:6px 10px;font-size:12px}
+.docitem select{font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:5px;max-width:100%}
 .tabs button[aria-selected="true"]{opacity:1;border-bottom-color:var(--accent)}
 main{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 48px}
 .panel{display:flex;flex-direction:column;gap:14px}
@@ -164,6 +176,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <button role="tab" id="tab-photo" aria-selected="true" data-tab="photo">写真</button>
       <button role="tab" id="tab-check" aria-selected="false" data-tab="check">チェック</button>
       <button role="tab" id="tab-report" aria-selected="false" data-tab="report">報告書</button>
+      <button role="tab" id="tab-folder" aria-selected="false" data-tab="folder">フォルダ</button>
       <button role="tab" id="tab-set" aria-selected="false" data-tab="set">設定</button>
     </nav>
   </div>
@@ -234,8 +247,13 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
         <label class="tg"><input type="radio" name="outMode" id="om-photos" value="photos"> 写真台帳のみ</label>
       </div>
       <p class="hint" id="modeHint"></p>
+      <div class="grid2" style="align-items:end">
+        <label class="f">保存先フォルダ<select id="saveFolder"></select></label>
+        <button class="btn pri" id="btnFolderSave">報告書フォルダに保存</button>
+      </div>
+      <label class="f" id="newFolderWrap" hidden>新しいフォルダ名<input id="newFolderName" placeholder="例：〇〇ショッピングセンター"></label>
       <div class="btnrow">
-        <button class="btn pri" id="btnPdf">報告書PDFを保存</button>
+        <button class="btn" id="btnPdf">端末にPDFを保存</button>
         <button class="btn" id="btnShare" hidden>PDFを共有</button>
         <button class="btn" id="btnCsv">チェック結果CSV</button>
         <button class="btn" id="btnJson">点検データ書き出し</button>
@@ -245,6 +263,20 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <p class="hint">CSVはExcelでそのまま開けます。点検データ（写真・設定込み）は別の端末に渡すときに使い、読み込むと新しい報告として追加されます。</p>
     </div>
     <div class="pages" id="pages"><p class="hint">報告書を作成中…</p></div>
+  </section>
+
+  <!-- フォルダ -->
+  <section class="panel" id="p-folder" hidden>
+    <div class="card">
+      <h2>報告書フォルダ</h2>
+      <p class="hint" id="storeInfo"></p>
+      <div class="grid2" style="align-items:end">
+        <label class="f">自動で振り分けるフォルダ<select id="folderRule"><option value="site">現場名ごと</option><option value="month">月ごと</option><option value="tpl">テンプレートごと</option></select></label>
+        <div class="btnrow"><button class="btn" id="btnNewFolder">新しいフォルダを作る</button></div>
+      </div>
+      <div id="folderArea"></div>
+    </div>
+    <div class="panel" id="folderView"></div>
   </section>
 
   <!-- 設定 -->
@@ -409,6 +441,9 @@ if(!D||!Array.isArray(D.templates)||!Array.isArray(D.reports)||!D.reports.length
   r.cfg.items.slice(0,5).forEach(it=>r.checks[it.id]={v:"ok",note:""});
   D.reports.push(r);D.current=r.id;
 }
+if(!Array.isArray(D.folders))D.folders=[];
+if(!Array.isArray(D.docs))D.docs=[];
+if(!D.folderRule)D.folderRule="site";
 function R(){return D.reports.find(r=>r.id===D.current)||D.reports[0]}
 let dirty=true;
 function persist(){
@@ -503,8 +538,9 @@ function renderHeader(){
 }
 function showTab(name){
   document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===name)));
-  ["info","photo","check","report","set"].forEach(n=>$("#p-"+n).hidden=n!==name);
-  if(name==="report")buildReport();
+  ["info","photo","check","report","folder","set"].forEach(n=>$("#p-"+n).hidden=n!==name);
+  if(name==="report"){fillSaveFolder();buildReport()}
+  if(name==="folder")renderFolders();
   if(name==="set")fillSettings();
   if(name==="info")renderReports();
   try{localStorage.setItem(LS+"-tab",name)}catch(e){}
@@ -1095,7 +1131,7 @@ async function buildReport(){
   if(ngN)parts.push(["異常写真",ngN]);
   parts.forEach(([k,v])=>{const s=document.createElement("span");s.textContent=k+" ";const b=document.createElement("b");b.textContent=v;s.appendChild(b);st.appendChild(s)});
   $("#modeHint").textContent=MODE_HINT[outMode()];
-  $("#btnPdf").textContent=MODE_NAME[outMode()]+"PDFを保存";
+  $("#btnFolderSave").textContent=MODE_NAME[outMode()]+"を報告書フォルダに保存";
   if(!dirty&&lastPages&&lastMode===outMode())return;
   const pg=$("#pages");pg.innerHTML="";const msg=document.createElement("p");msg.className="hint";msg.textContent="報告書を作成中…";pg.appendChild(msg);
   try{
@@ -1123,7 +1159,155 @@ async function makePdf(btn){
   pages.forEach((u,i)=>{if(i)pdf.addPage();pdf.addImage(u,"JPEG",0,0,210,297)});
   return pdf.output("blob");
 }
-$("#btnPdf").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="作成中…";try{const blob=await makePdf(b);if(blob)await saveFile(blob,fname("pdf",MODE_NAME[outMode()]))}finally{b.disabled=false;b.textContent=MODE_NAME[outMode()]+"PDFを保存"}};
+$("#btnPdf").onclick=async e=>{const b=e.currentTarget;b.disabled=true;b.textContent="作成中…";try{const blob=await makePdf(b);if(blob)await saveFile(blob,fname("pdf",MODE_NAME[outMode()]))}finally{b.disabled=false;b.textContent="端末にPDFを保存"}};
+
+/* ---------- 報告書フォルダ ---------- */
+const docKey=id=>"doc|"+id;
+function autoFolderName(rep){
+  if(D.folderRule==="month"){const d=(rep.meta.date||today()).split("-");return d[0]+"年"+d[1]+"月"}
+  if(D.folderRule==="tpl")return rep.tplName||"テンプレートなし";
+  return (rep.meta.site||"").trim()||"現場名なし";
+}
+function ensureFolder(name){
+  let f=D.folders.find(x=>x.name===name);
+  if(!f){f={id:"f"+uid(),name,created:Date.now()};D.folders.push(f)}
+  return f;
+}
+function folderDocs(fid){return D.docs.filter(d=>d.folderId===fid).sort((a,b)=>b.created-a.created)}
+function fmtSize(n){return n>=1048576?(n/1048576).toFixed(1)+"MB":Math.max(1,Math.round(n/1024))+"KB"}
+function fmtTime(t){const d=new Date(t);return d.getFullYear()+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+String(d.getDate()).padStart(2,"0")+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")}
+function fillSaveFolder(){
+  const sel=$("#saveFolder"),prev=sel.value;sel.innerHTML="";
+  const auto=autoFolderName(R());
+  const o=document.createElement("option");o.value="__auto";o.textContent="自動：「"+auto+"」";sel.appendChild(o);
+  [...D.folders].sort((a,b)=>a.name.localeCompare(b.name,"ja")).forEach(f=>{if(f.name===auto)return;const x=document.createElement("option");x.value=f.id;x.textContent=f.name;sel.appendChild(x)});
+  const n=document.createElement("option");n.value="__new";n.textContent="新しいフォルダを作る…";sel.appendChild(n);
+  if([...sel.options].some(x=>x.value===prev))sel.value=prev;
+  $("#newFolderWrap").hidden=sel.value!=="__new";
+}
+$("#saveFolder").onchange=()=>{$("#newFolderWrap").hidden=$("#saveFolder").value!=="__new";if(!$("#newFolderWrap").hidden)$("#newFolderName").focus()};
+async function pageThumb(u){const im=await loadImg(u);const w=200,h=Math.round(w*im.naturalHeight/im.naturalWidth);const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);return toBlob(c,.7)}
+$("#btnFolderSave").onclick=async e=>{
+  const b=e.currentTarget,sv=$("#saveFolder").value;
+  let folder;
+  if(sv==="__new"){const nm=$("#newFolderName").value.trim();if(!nm){toast("新しいフォルダ名を入力してください");$("#newFolderName").focus();return}folder=ensureFolder(nm)}
+  else if(sv==="__auto")folder=ensureFolder(autoFolderName(R()));
+  else folder=D.folders.find(f=>f.id===sv)||ensureFolder(autoFolderName(R()));
+  const label=b.textContent;b.disabled=true;b.textContent="作成中…";
+  try{
+    const blob=await makePdf(b);if(!blob)return;
+    const pages=await getPages();
+    const mode=outMode(),rep=R(),id="d"+uid();
+    let name=fname("pdf",MODE_NAME[mode]);
+    const used=new Set(folderDocs(folder.id).map(d=>d.name));
+    if(used.has(name)){let i=2;const base=name.replace(/\.pdf$/,"");while(used.has(base+"("+i+").pdf"))i++;name=base+"("+i+").pdf"}
+    await pPut(docKey(id),blob);
+    try{await pPut(docKey(id)+"|t",await pageThumb(pages[0]))}catch(err){}
+    D.docs.push({id,folderId:folder.id,name,mode,site:rep.meta.site,date:rep.meta.date,reportId:rep.id,created:Date.now(),size:blob.size,pages:pages.length});
+    persist();fillSaveFolder();$("#newFolderName").value="";
+    try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(err){}
+    toast("「"+folder.name+"」フォルダに保存しました");
+  }finally{b.disabled=false;b.textContent=label}
+};
+$("#folderRule").onchange=e=>{D.folderRule=e.target.value;persist();toast("振り分け方を変更しました（次に保存する報告書から）")};
+let openFolder=null;
+function inlineBox(area,msg,okLabel,warn,onOk,input){
+  area.innerHTML="";const box=document.createElement("div");box.className="inline-confirm";
+  const s=document.createElement("strong");s.textContent=msg;box.appendChild(s);
+  let inp=null;if(input){inp=document.createElement("input");inp.value=input.value||"";inp.placeholder=input.placeholder||"";inp.id="inlineIn";
+    inp.style.cssText="border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--surface);font-size:15px";box.appendChild(inp)}
+  const row=document.createElement("div");row.className="btnrow";
+  const go=document.createElement("button");go.className="btn "+(warn?"warn":"pri");go.textContent=okLabel;
+  const no=document.createElement("button");no.className="btn";no.textContent="やめる";
+  row.append(go,no);box.appendChild(row);area.appendChild(box);
+  no.onclick=()=>area.innerHTML="";go.onclick=()=>onOk(inp?inp.value.trim():null);
+  if(inp)inp.focus();
+}
+$("#btnNewFolder").onclick=()=>inlineBox($("#folderArea"),"新しいフォルダの名前","作成",false,nm=>{
+  if(!nm){toast("フォルダ名を入力してください");return}
+  if(D.folders.some(f=>f.name===nm)){toast("同じ名前のフォルダがあります");return}
+  ensureFolder(nm);persist();$("#folderArea").innerHTML="";renderFolders();toast("フォルダを作成しました");
+},{placeholder:"例：アピタ名古屋空港店"});
+async function renderStoreInfo(){
+  let t="保存中の報告書 "+D.docs.length+"件・フォルダ "+D.folders.length+"個";
+  try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();if(e&&e.usage!=null)t+="・使用容量 約"+fmtSize(e.usage)}}catch(err){}
+  $("#storeInfo").textContent=t+"。報告書はこの端末の中に保存されます。";
+}
+const docThumbs=new Map();
+function renderFolders(){
+  $("#folderRule").value=D.folderRule;renderStoreInfo();
+  const v=$("#folderView");v.innerHTML="";
+  if(openFolder&&D.folders.some(f=>f.id===openFolder)){renderFolderOpen(v);return}
+  openFolder=null;
+  if(!D.folders.length){const e=document.createElement("div");e.className="empty";e.textContent="まだ報告書は保存されていません。報告書タブの「報告書フォルダに保存」を押すと、現場名などのフォルダが自動でできて保存されます。";v.appendChild(e);return}
+  const latest=f=>{const ds=folderDocs(f.id);return ds.length?ds[0].created:f.created};
+  [...D.folders].sort((a,b)=>latest(b)-latest(a)).forEach(f=>{
+    const ds=folderDocs(f.id);
+    const bt=document.createElement("button");bt.type="button";bt.className="fold";
+    const ic=document.createElement("span");ic.className="ic";
+    const nm=document.createElement("span");nm.className="nm";nm.textContent=f.name;
+    const mt=document.createElement("span");mt.className="meta";mt.textContent=ds.length+"件"+(ds.length?"・"+fmtTime(ds[0].created).slice(0,10):"");
+    bt.append(ic,nm,mt);bt.onclick=()=>{openFolder=f.id;renderFolders();window.scrollTo(0,0)};
+    v.appendChild(bt);
+  });
+}
+function renderFolderOpen(v){
+  const f=D.folders.find(x=>x.id===openFolder),ds=folderDocs(f.id);
+  const head=document.createElement("div");head.className="card";
+  const back=document.createElement("button");back.className="btn";back.textContent="← フォルダ一覧";back.style.alignSelf="flex-start";
+  back.onclick=()=>{openFolder=null;renderFolders()};
+  const h=document.createElement("h2");h.textContent=f.name+"（"+ds.length+"件）";
+  const row=document.createElement("div");row.className="btnrow";
+  const rn=document.createElement("button");rn.className="btn";rn.textContent="名前を変更";
+  const dl=document.createElement("button");dl.className="btn warn";dl.textContent="フォルダを削除";
+  row.append(rn,dl);const area=document.createElement("div");
+  head.append(back,h,row,area);v.appendChild(head);
+  rn.onclick=()=>inlineBox(area,"新しいフォルダ名","変更",false,nm=>{
+    if(!nm){toast("フォルダ名を入力してください");return}
+    if(D.folders.some(x=>x.name===nm&&x.id!==f.id)){toast("同じ名前のフォルダがあります");return}
+    f.name=nm;persist();renderFolders();toast("名前を変更しました");
+  },{value:f.name});
+  dl.onclick=()=>inlineBox(area,ds.length?"このフォルダと中の報告書 "+ds.length+"件を削除します。元に戻せません。":"このフォルダを削除します。",ds.length?"報告書ごと削除":"削除",true,async()=>{
+    for(const d of ds){await pDel(docKey(d.id));await pDel(docKey(d.id)+"|t")}
+    D.docs=D.docs.filter(d=>d.folderId!==f.id);D.folders=D.folders.filter(x=>x.id!==f.id);
+    openFolder=null;persist();renderFolders();toast("フォルダを削除しました");
+  });
+  if(!ds.length){const e=document.createElement("div");e.className="empty";e.textContent="このフォルダに報告書はありません。";v.appendChild(e);return}
+  ds.forEach(d=>{
+    const it=document.createElement("div");it.className="docitem";
+    const pv=document.createElement("div");pv.className="pv";const im=document.createElement("img");im.alt="";pv.appendChild(im);
+    (async()=>{let u=docThumbs.get(d.id);if(!u){const b=await pGet(docKey(d.id)+"|t");if(b){u=URL.createObjectURL(b);docThumbs.set(d.id,u)}}if(u)im.src=u})();
+    const body=document.createElement("div");body.style.cssText="display:flex;flex-direction:column;gap:6px;min-width:0";
+    const nm=document.createElement("div");nm.className="nm";nm.textContent=d.name;
+    const mt=document.createElement("div");mt.className="meta";mt.textContent=fmtTime(d.created)+" 保存・"+(MODE_NAME[d.mode]||"報告書")+"・"+d.pages+"ページ・"+fmtSize(d.size);
+    const btns=document.createElement("div");btns.className="btnrow";
+    const op=document.createElement("button");op.className="btn pri";op.textContent="開く";op.onclick=()=>openDoc(d);
+    const sv=document.createElement("button");sv.className="btn";sv.textContent="端末に保存";sv.onclick=async()=>{const b=await pGet(docKey(d.id));if(b)saveFile(b,d.name);else toast("ファイルが見つかりません")};
+    btns.append(op,sv);
+    if(!$("#btnShare").hidden){const sh=document.createElement("button");sh.className="btn";sh.textContent="共有";
+      sh.onclick=async()=>{const b=await pGet(docKey(d.id));if(!b)return;try{await navigator.share({files:[new File([b],d.name,{type:"application/pdf"})],title:d.name})}catch(e){if(e.name!=="AbortError")toast("共有できませんでした")}};btns.append(sh)}
+    const mv=document.createElement("select");mv.setAttribute("aria-label",d.name+" の移動先フォルダ");
+    const o0=document.createElement("option");o0.value="";o0.textContent="別のフォルダへ移動…";mv.appendChild(o0);
+    D.folders.filter(x=>x.id!==f.id).forEach(x=>{const o=document.createElement("option");o.value=x.id;o.textContent=x.name;mv.appendChild(o)});
+    mv.onchange=()=>{if(!mv.value)return;const to=D.folders.find(x=>x.id===mv.value);d.folderId=mv.value;persist();renderFolders();toast("「"+to.name+"」へ移動しました")};
+    if(mv.options.length>1)btns.append(mv);
+    const del=document.createElement("button");del.className="btn";del.textContent="削除";
+    del.onclick=async()=>{
+      if(!del.dataset.armed){del.dataset.armed="1";del.textContent="本当に削除";del.classList.add("warn");return}
+      await pDel(docKey(d.id));await pDel(docKey(d.id)+"|t");const u=docThumbs.get(d.id);if(u){URL.revokeObjectURL(u);docThumbs.delete(d.id)}
+      D.docs=D.docs.filter(x=>x.id!==d.id);persist();renderFolders();toast("報告書を削除しました");
+    };
+    btns.append(del);
+    body.append(nm,mt,btns);it.append(pv,body);v.appendChild(it);
+  });
+}
+async function openDoc(d){
+  const b=await pGet(docKey(d.id));if(!b){toast("ファイルが見つかりません");return}
+  const u=URL.createObjectURL(new Blob([b],{type:"application/pdf"}));
+  let w=null;try{w=window.open(u,"_blank")}catch(e){}
+  if(!w)await saveFile(b,d.name);
+  setTimeout(()=>URL.revokeObjectURL(u),120000);
+}
 try{if(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))$("#btnShare").hidden=false}catch(e){}
 $("#btnShare").onclick=async()=>{
   const blob=await makePdf();if(!blob)return;
