@@ -1,6 +1,6 @@
 {
-  "name": "現場点検レポート",
-  "short_name": "点検レポート",
+  "name": "O&K報告書",
+  "short_name": "O&K報告書",
   "description": "施工前・中・後の写真とチェックリストから点検報告書PDFを作成します",
   "lang": "ja",
   "start_url": "./",
