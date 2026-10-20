@@ -97,7 +97,7 @@ textarea{resize:vertical}
 
 /* ---- 紙面（常に白い紙・黒インク） ---- */
 .paper-wrap{overflow:hidden;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);background:#fff;align-self:center}
-#paper{width:794px;min-height:1123px;padding:42px 48px 36px;background:#fff;color:#111;font-family:var(--font);font-size:13px;line-height:1.45;
+.paper{width:794px;min-height:1123px;padding:42px 48px 36px;background:#fff;color:#111;font-family:var(--font);font-size:13px;line-height:1.45;
   transform-origin:top left;display:flex;flex-direction:column}
 .p-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
 .p-title{font-size:30px;letter-spacing:.55em;padding-top:14px;padding-left:60px}
@@ -239,7 +239,7 @@ body{margin:0}
     <button class="btn ghost" id="printBtn">印刷・PDF</button>
     <button class="btn primary" id="makeImg">画像で保存する</button>
   </div>
-  <div class="paper-wrap" id="paperWrap"><div id="paper"></div></div>
+  <div class="paper-wrap" id="paperWrap"><div id="paper" class="paper"></div></div>
 </div>
 </main>
 
@@ -402,9 +402,10 @@ $('#makeImg').onclick=async()=>{
   const ov=$('#overlay'),img=$('#ovImg');ov.hidden=false;img.hidden=true;$('#ovMsg').textContent='画像を作成しています…';
   try{
     await document.fonts.ready;
-    const clone=$('#paper').cloneNode(true);clone.id='paperClone';clone.style.transform='none';
-    Object.assign(clone.style,{position:'fixed',left:'-10000px',top:'0'});document.body.appendChild(clone);
-    const c=await html2canvas(clone,{scale:2,backgroundColor:'#ffffff',logging:false});clone.remove();
+    const clone=$('#paper').cloneNode(true);clone.removeAttribute('id');clone.style.transform='none';
+    const box=document.createElement('div');Object.assign(box.style,{position:'absolute',left:'-10000px',top:'0',width:'794px'});
+    box.appendChild(clone);document.body.appendChild(box);
+    const c=await html2canvas(clone,{scale:2,backgroundColor:'#ffffff',logging:false,width:794,height:clone.offsetHeight,windowWidth:794,scrollX:0,scrollY:0});box.remove();
     img.src=c.toDataURL('image/png');img.hidden=false;
     $('#ovMsg').textContent='画像を長押し（パソコンは右クリック）して保存・共有してください';
   }catch(err){$('#ovMsg').textContent='画像を作成できませんでした。画面を再読み込みしてもう一度お試しください。'}
