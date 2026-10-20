@@ -8,8 +8,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="O&amp;K看板写真">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png?v=4">
-<link rel="apple-touch-icon" href="../apple-touch-icon.png?v=4">
+<link rel="icon" type="image/png" sizes="192x192" href="kanban-icon-192.png?v=1">
+<link rel="apple-touch-icon" href="kanban-apple-touch-icon.png?v=1">
 <title>O&amp;K看板写真</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="theme-color" content="#1f4e5f">
@@ -137,6 +137,12 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 
 <main>
   <section class="panel" id="p-photo">
+    <div class="card" id="installCard" hidden>
+      <h2>ホーム画面に追加</h2>
+      <p class="hint">ホーム画面に追加すると、アプリのように全画面で開けます。一度開いておけば、電波のない現場でも起動・撮影・報告書の作成ができます。</p>
+      <p class="hint" id="iosHint" hidden>iPhone・iPadの場合：Safariで開き、画面下の共有ボタン（四角から矢印）→「ホーム画面に追加」を押してください。</p>
+      <div class="btnrow"><button class="btn pri" id="btnInstall" hidden>ホーム画面に追加</button><button class="btn" id="btnInstallClose">閉じる</button></div>
+    </div>
     <div class="card">
       <h2>現場</h2>
       <div class="grid3">
@@ -734,7 +740,21 @@ $("#btnPdf").onclick=async e=>{
 };
 
 /* ---------- boot ---------- */
-if("serviceWorker" in navigator&&location.protocol==="https:"){navigator.serviceWorker.register("sw.js").catch(()=>{})}
+(function pwa(){
+  let inFrame=false;try{inFrame=window.top!==window}catch(e){inFrame=true}
+  if(inFrame||location.protocol!=="https:")return;
+  if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+  const standalone=window.matchMedia("(display-mode: standalone)").matches||navigator.standalone===true;
+  let closed=false;try{closed=localStorage.getItem(LS+"-install")==="closed"}catch(e){}
+  if(standalone||closed)return;
+  const card=$("#installCard"),ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  let deferred=null;
+  if(ios){$("#iosHint").hidden=false;card.hidden=false}
+  window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferred=e;$("#btnInstall").hidden=false;card.hidden=false});
+  $("#btnInstall").onclick=async()=>{if(!deferred)return;deferred.prompt();try{await deferred.userChoice}catch(e){}deferred=null;card.hidden=true};
+  $("#btnInstallClose").onclick=()=>{card.hidden=true;try{localStorage.setItem(LS+"-install","closed")}catch(e){}};
+  window.addEventListener("appinstalled",()=>{card.hidden=true;toast("ホーム画面に追加しました")});
+})();
 updateModeNote();
 ready.then(()=>{renderSlots()});
 renderSlots();
