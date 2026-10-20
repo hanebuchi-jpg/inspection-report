@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<title>O&amp;K 作業報告書</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f4e8c">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+/* Layout: 入力タブ（現場ごとのカード縦積み・スマホ優先）と、A4紙面プレビュータブの2画面 */
+:root{
+  --bg:#edf0f4; --surface:#ffffff; --ink:#1b2430; --muted:#5b6676; --line:#d3d9e1;
+  --accent:#1f4e8c; --accent-ink:#ffffff; --accent-soft:#e3ebf6; --danger:#b3261e;
+  --font:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#10151c; --surface:#19202a; --ink:#e6ebf2; --muted:#9aa6b6; --line:#2c3644;
+  --accent:#8db2e8; --accent-ink:#0d1a2c; --accent-soft:#1f2c3f; --danger:#f2867d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10151c; --surface:#19202a; --ink:#e6ebf2; --muted:#9aa6b6; --line:#2c3644;
+  --accent:#8db2e8; --accent-ink:#0d1a2c; --accent-soft:#1f2c3f; --danger:#f2867d; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top-in{max-width:760px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:17px;letter-spacing:.08em}
+.brand small{display:block;font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.04em}
+.tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:3px}
+.tabs button{border:0;background:transparent;padding:7px 14px;border-radius:8px;font-size:14px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+
+main{padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+
+.notice{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--accent-soft);
+  border-radius:10px;padding:10px 14px;font-size:13px}
+.sec{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.sec h2{margin:0;font-size:13px;letter-spacing:.12em;color:var(--muted);font-weight:700;display:flex;justify-content:space-between;align-items:baseline}
+.sec h2 .count{letter-spacing:0;color:var(--ink);font-size:14px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+input[type=text],input[type=date],input[type=time],textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;
+  padding:9px 10px;font-size:16px;color:var(--ink);min-width:0}
+textarea{resize:vertical}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+@media (max-width:480px){.grid3{grid-template-columns:1fr 1fr}.grid3 .f:first-child{grid-column:1/-1}}
+.suffix{display:flex;align-items:center;gap:8px}
+.suffix span{color:var(--ink);font-size:14px}
+
+.row{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;grid-template-columns:28px 1fr;gap:8px 10px;align-items:start}
+.row .no{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;padding-top:30px;text-align:center}
+.row-body{display:flex;flex-direction:column;gap:8px;min-width:0}
+.row-foot{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:6px 14px;font-size:13px;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+.x{border:0;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px}
+.x:hover{color:var(--danger)}
+.add{border:1px dashed var(--line);background:transparent;border-radius:10px;padding:10px;color:var(--accent);font-weight:700;font-size:14px}
+
+.worker{display:flex;gap:8px;align-items:center}
+.worker .mk{width:24px;text-align:center;color:var(--muted);font-size:14px;flex:none}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--ink)}
+.chips button:hover{border-color:var(--accent);color:var(--accent)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+
+.sigbox{position:relative}
+#sig{width:100%;height:150px;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none}
+.sigline{position:absolute;left:16px;right:16px;bottom:34px;border-bottom:1px dashed #b9c0ca;pointer-events:none}
+.sigph{position:absolute;left:16px;bottom:10px;font-size:11px;color:#8a93a0;pointer-events:none}
+
+.btn{border:0;border-radius:10px;padding:13px 18px;font-weight:700;font-size:15px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn.warn{background:var(--danger);color:#fff}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.actions .btn{flex:1 1 160px}
+
+/* ---- 紙面（常に白い紙・黒インク） ---- */
+.paper-wrap{overflow:hidden;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);background:#fff;align-self:center}
+#paper{width:794px;min-height:1123px;padding:42px 48px 36px;background:#fff;color:#111;font-family:var(--font);font-size:13px;line-height:1.45;
+  transform-origin:top left;display:flex;flex-direction:column}
+.p-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.p-title{font-size:30px;letter-spacing:.55em;padding-top:14px;padding-left:60px}
+.p-co{text-align:right;font-size:12px;line-height:1.5}
+.p-slogan{font-size:10.5px}
+.p-coname{font-size:20px;font-weight:700;letter-spacing:.06em;margin:2px 0}
+.p-top{display:flex;justify-content:space-between;gap:28px;margin-bottom:10px}
+.p-names{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding-top:6px}
+.p-nm{display:flex;align-items:flex-end;gap:8px;border-bottom:1px solid #111;padding-bottom:4px;min-height:52px}
+.p-nm .l{font-size:15px;flex:none;width:76px}
+.p-nm .v{flex:1;font-size:16px;font-weight:700;word-break:break-all}
+.p-nm .s{font-size:15px;flex:none}
+table.p-date{border:1.5px solid #111;border-collapse:collapse;width:300px;font-size:13px}
+.p-date td{padding:4px 6px;text-align:center}
+.p-date tr+tr td{border-top:1px dashed #555}
+.p-date .hd{letter-spacing:.6em}
+.p-date .n{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;text-align:right;width:48px}
+table.p-tbl{width:100%;border-collapse:collapse;border:1.5px solid #111;table-layout:fixed}
+.p-tbl th{font-weight:400;padding:5px 4px;border-bottom:1px dashed #555;letter-spacing:.3em}
+.p-tbl td{padding:4px 8px;height:34px;border-top:1px dashed #555;word-break:break-all;vertical-align:middle}
+.p-tbl th+th,.p-tbl td+td{border-left:1px dashed #555}
+.p-tbl .k{text-align:center;padding:0;letter-spacing:0;font-size:12px}
+.p-tbl td.k{font-size:15px}
+.p-staff{margin-top:10px}
+.p-staff .lab{text-align:center;letter-spacing:.3em;border-right:1px dashed #555}
+.p-staff td{height:30px}
+.p-staff .mk{color:#333;margin-right:6px}
+.p-staff .tot{text-align:right;padding-right:14px}
+.p-rep{margin-top:10px;border:1.5px solid #111;flex:1;min-height:250px;display:flex;flex-direction:column}
+.p-rep .h{padding:6px 10px 2px;font-size:13px}
+.p-rep .h small{font-size:11px}
+.p-rep .b{padding:4px 12px 10px;white-space:pre-wrap;word-break:break-all;font-size:13.5px;line-height:1.7;flex:1}
+.p-foot{display:flex;justify-content:space-between;align-items:stretch;gap:40px;margin-top:12px}
+.p-sales{width:280px;border:1px solid #111;padding:5px 10px;min-height:66px}
+.p-sales .v{font-size:15px;font-weight:700;margin-top:6px}
+.p-conf{width:420px;border:3px solid #111;padding:6px 12px;min-height:66px;display:flex;align-items:center;gap:14px}
+.p-conf .l{font-size:16px;flex:none}
+.p-conf img{max-height:64px;max-width:250px}
+
+.overlay{position:fixed;inset:0;z-index:20;background:rgba(10,14,20,.72);display:flex;flex-direction:column;align-items:center;
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));gap:12px;overflow:auto}
+.overlay p{color:#fff;margin:0;font-size:14px;text-align:center}
+.overlay img{max-width:min(100%,794px);background:#fff;border-radius:4px}
+.overlay .btn{background:#fff;color:#111}
+@media (prefers-reduced-motion:no-preference){.tabs button{transition:background .15s}}
+
+html{color-scheme:light}
+body{margin:0}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+@page{size:A4;margin:0}
+@media print{
+  :root{padding:0}
+  body{background:#fff}
+  body::before,.top,#view-in,#view-out>.actions,.overlay{display:none!important}
+  main{padding:0}
+  #view-out{display:block!important;max-width:none}
+  .paper-wrap{box-shadow:none;border-radius:0;width:auto!important;height:auto!important;overflow:visible}
+  #paper{transform:none!important;width:210mm;min-height:296mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+
+
+<header class="top"><div class="top-in">
+  <div class="brand">作業報告書<small>株式会社オーアンドケー</small></div>
+  <div class="tabs" role="tablist">
+    <button id="tab-in" role="tab" aria-selected="true" data-tab="in">入力</button>
+    <button id="tab-out" role="tab" aria-selected="false" data-tab="out">報告書</button>
+  </div>
+</div></header>
+
+<main>
+<!-- 入力 -->
+<div class="wrap" id="view-in">
+  <div class="notice" id="sampleNote" hidden>
+    <span>入力例が表示されています。そのまま書き換えるか、白紙から始めてください。</span>
+    <button class="btn ghost" id="clearSample" style="padding:6px 12px;font-size:13px">白紙にする</button>
+  </div>
+
+  <section class="sec">
+    <h2>お客様・現場</h2>
+    <label class="f">お客様名<div class="suffix"><input type="text" id="customer" autocomplete="off"><span>様</span></div></label>
+    <label class="f">現場名<div class="suffix"><input type="text" id="site" autocomplete="off"><span>様</span></div></label>
+    <div class="grid3">
+      <label class="f">作業日<input type="date" id="date"></label>
+      <label class="f">開始<input type="time" id="start"></label>
+      <label class="f">終了<input type="time" id="end"></label>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>作業箇所・作業内容</h2>
+    <div id="rows" style="display:flex;flex-direction:column;gap:10px"></div>
+    <button class="add" id="addRow">＋ 行を追加</button>
+  </section>
+
+  <section class="sec">
+    <h2>作業者 <span class="count" id="wcount"></span></h2>
+    <label class="f">作業責任者<div class="worker"><span class="mk">①</span><input type="text" id="leader" autocomplete="off"></div></label>
+    <div class="f">作業員<div id="workers" style="display:flex;flex-direction:column;gap:8px"></div></div>
+    <button class="add" id="addWorker">＋ 作業員を追加</button>
+  </section>
+
+  <section class="sec">
+    <h2>作業報告・特記事項</h2>
+    <p class="hint">ワックス塗布数、剥離時期、駆除状況、設備状況、什器・備品・商品等の破損、緊急事態の有無など。下のボタンで項目名を追加できます。</p>
+    <div class="chips" id="chips">
+      <button data-t="ワックス塗布数：">ワックス塗布数</button>
+      <button data-t="次回剥離時期：">剥離時期</button>
+      <button data-t="駆除状況：">駆除状況</button>
+      <button data-t="設備状況：">設備状況</button>
+      <button data-t="什器・備品・商品の破損：なし">破損なし</button>
+      <button data-t="緊急事態：なし">緊急事態なし</button>
+    </div>
+    <textarea id="report" rows="7"></textarea>
+  </section>
+
+  <section class="sec">
+    <h2>営業担当者・お客様ご確認</h2>
+    <label class="f">営業担当者<input type="text" id="sales" autocomplete="off"></label>
+    <div class="f">お客様ご確認（サイン）
+      <div class="sigbox"><canvas id="sig" aria-label="サイン欄"></canvas><div class="sigline"></div><div class="sigph">ここに指でサインしてもらってください</div></div>
+      <div style="display:flex;justify-content:flex-end"><button class="x" id="sigClear">サインを消す</button></div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn ghost" id="newBtn">新しい報告書</button>
+    <button class="btn primary" id="toOut">報告書を確認する</button>
+  </div>
+</div>
+
+<!-- 報告書 -->
+<div class="wrap" id="view-out" hidden>
+  <div class="actions">
+    <button class="btn ghost" data-tab="in">入力に戻る</button>
+    <button class="btn ghost" id="printBtn">印刷・PDF</button>
+    <button class="btn primary" id="makeImg">画像で保存する</button>
+  </div>
+  <div class="paper-wrap" id="paperWrap"><div id="paper"></div></div>
+</div>
+</main>
+
+<div class="overlay" id="overlay" hidden>
+  <p id="ovMsg">画像を作成しています…</p>
+  <img id="ovImg" alt="作業報告書の画像">
+  <button class="btn" id="ovClose">閉じる</button>
+</div>
+
+<datalist id="places">
+  <option value="店内床面"><option value="バックヤード"><option value="トイレ"><option value="出入口・風除室">
+  <option value="ガラス面"><option value="空調機"><option value="厨房"><option value="事務所"><option value="階段・通路">
+</datalist>
+<datalist id="contents">
+  <option value="床面洗浄・ワックス塗布"><option value="剥離洗浄・ワックス塗布"><option value="カーペット洗浄">
+  <option value="ガラス清掃"><option value="エアコンフィルター清掃"><option value="トイレ清掃"><option value="害虫駆除"><option value="グリストラップ清掃">
+</datalist>
+
+<script>
+const KEY='ok-sagyo-houkoku-v1';
+const $=s=>document.querySelector(s);
+const MK='①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+const blank=()=>({sample:false,customer:'',site:'',date:new Date().toISOString().slice(0,10),start:'',end:'',
+  rows:[{place:'',content:'',type:'定期'}],leader:'',workers:[''],report:'',sales:'',signature:''});
+const sample=()=>({sample:true,customer:'（例）サンプル商事株式会社',site:'（例）サンプル店',date:new Date().toISOString().slice(0,10),start:'22:00',end:'02:30',
+  rows:[{place:'店内床面',content:'床面洗浄・ワックス塗布（2層）',type:'定期'},{place:'出入口・風除室',content:'マット下洗浄',type:'定期'},{place:'トイレ',content:'尿石除去',type:'スポット'}],
+  leader:'山田 一郎',workers:['佐藤 次郎','鈴木 三郎'],
+  report:'ワックス塗布数：2層\n次回剥離時期：来年3月頃\n設備状況：出入口自動ドアの開閉がやや遅い\n什器・備品・商品の破損：なし\n緊急事態：なし',sales:'営業 太郎',signature:''});
+
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!S||!Array.isArray(S.rows))S=sample();
+let tm;
+function save(){clearTimeout(tm);tm=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}},250)}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function unSample(){if(S.sample){S.sample=false;$('#sampleNote').hidden=true}}
+
+/* ---- 基本項目 ---- */
+const simple=['customer','site','date','start','end','leader','report','sales'];
+function fillSimple(){simple.forEach(k=>$('#'+k).value=S[k]||'');$('#sampleNote').hidden=!S.sample}
+simple.forEach(k=>$('#'+k).addEventListener('input',e=>{S[k]=e.target.value;unSample();save();if(k==='leader')wcount()}));
+
+/* ---- 作業行 ---- */
+function renderRows(){
+  $('#rows').innerHTML=S.rows.map((r,i)=>`
+  <div class="row"><div class="no">${i+1}</div><div class="row-body">
+    <label class="f">作業箇所<input type="text" list="places" id="pl${i}" data-i="${i}" data-k="place" value="${esc(r.place)}" autocomplete="off"></label>
+    <label class="f">作業内容<input type="text" list="contents" id="ct${i}" data-i="${i}" data-k="content" value="${esc(r.content)}" autocomplete="off"></label>
+    <div class="row-foot"><div class="seg">
+      <button data-i="${i}" data-type="定期" aria-pressed="${r.type==='定期'}">定期</button>
+      <button data-i="${i}" data-type="スポット" aria-pressed="${r.type==='スポット'}">スポット</button></div>
+      ${S.rows.length>1?`<button class="x" data-del="${i}">この行を削除</button>`:''}</div>
+  </div></div>`).join('');
+}
+$('#rows').addEventListener('input',e=>{const t=e.target;if(t.dataset.k){S.rows[+t.dataset.i][t.dataset.k]=t.value;unSample();save()}});
+$('#rows').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.type){const r=S.rows[+b.dataset.i];r.type=r.type===b.dataset.type?'':b.dataset.type;renderRows()}
+  else if(b.dataset.del){S.rows.splice(+b.dataset.del,1);renderRows()}
+  unSample();save();
+});
+$('#addRow').onclick=()=>{S.rows.push({place:'',content:'',type:'定期'});renderRows();save();$('#pl'+(S.rows.length-1)).focus()};
+
+/* ---- 作業員 ---- */
+function renderWorkers(){
+  $('#workers').innerHTML=S.workers.map((w,i)=>`<div class="worker"><span class="mk">${MK[i+1]||i+2}</span>
+    <input type="text" id="w${i}" data-w="${i}" value="${esc(w)}" autocomplete="off" aria-label="作業員${i+2}">
+    <button class="x" data-wdel="${i}" aria-label="削除">✕</button></div>`).join('');
+  wcount();
+}
+function wcount(){const n=[S.leader,...S.workers].filter(v=>v&&v.trim()).length;$('#wcount').textContent=`合計 ${n} 名`;return n}
+$('#workers').addEventListener('input',e=>{const t=e.target;if(t.dataset.w!=null){S.workers[+t.dataset.w]=t.value;unSample();save();wcount()}});
+$('#workers').addEventListener('click',e=>{const b=e.target.closest('[data-wdel]');if(!b)return;S.workers.splice(+b.dataset.wdel,1);renderWorkers();save()});
+$('#addWorker').onclick=()=>{S.workers.push('');renderWorkers();save();$('#w'+(S.workers.length-1)).focus()};
+
+/* ---- 報告チップ ---- */
+$('#chips').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  const ta=$('#report');ta.value=(ta.value&&!ta.value.endsWith('\n')?ta.value+'\n':ta.value)+b.dataset.t;
+  S.report=ta.value;unSample();save();ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)});
+
+/* ---- サイン ---- */
+const pad=$('#sig');let ctx,drawing=false,last=null,padW=0;
+function sizePad(){
+  const r=pad.getBoundingClientRect();if(!r.width||Math.abs(r.width-padW)<1)return;padW=r.width;
+  const d=window.devicePixelRatio||1;pad.width=r.width*d;pad.height=r.height*d;
+  ctx=pad.getContext('2d');ctx.setTransform(d,0,0,d,0,0);ctx.lineWidth=2.4;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#111';
+  if(S.signature){const im=new Image();im.onload=()=>ctx.drawImage(im,0,0,r.width,r.height);im.src=S.signature}
+}
+const pos=e=>{const r=pad.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+pad.addEventListener('pointerdown',e=>{sizePad();drawing=true;last=pos(e);try{pad.setPointerCapture(e.pointerId)}catch(_){}
+  ctx.beginPath();ctx.arc(last.x,last.y,1.1,0,7);ctx.fillStyle='#111';ctx.fill()});
+pad.addEventListener('pointermove',e=>{if(!drawing)return;const p=pos(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p});
+const endDraw=()=>{if(!drawing)return;drawing=false;S.signature=pad.toDataURL('image/png');unSample();save()};
+pad.addEventListener('pointerup',endDraw);pad.addEventListener('pointercancel',endDraw);
+$('#sigClear').onclick=()=>{S.signature='';padW=0;sizePad();save()};
+window.addEventListener('resize',()=>{padW=0;sizePad();fitPaper()});
+
+/* ---- 新規 ---- */
+let armed=null;
+$('#newBtn').onclick=e=>{
+  const b=e.currentTarget;
+  if(!armed){b.textContent='もう一度押すと入力を消去';b.classList.add('warn');armed=setTimeout(()=>{armed=null;b.textContent='新しい報告書';b.classList.remove('warn')},3000);return}
+  clearTimeout(armed);armed=null;b.textContent='新しい報告書';b.classList.remove('warn');resetTo(blank());
+};
+$('#clearSample').onclick=()=>resetTo(blank());
+function resetTo(s){S=s;fillSimple();renderRows();renderWorkers();padW=0;sizePad();save();window.scrollTo(0,0)}
+
+/* ---- 紙面 ---- */
+function renderPaper(){
+  const [y,m,d]=(S.date||'').split('-');const [sh,sm]=(S.start||'').split(':');const [eh,em]=(S.end||'').split(':');
+  const n=v=>v?String(+v):'';
+  const rows=S.rows.filter(r=>r.place||r.content||r.type);while(rows.length<7)rows.push({});
+  const names=[S.leader,...S.workers.filter(w=>w&&w.trim())];
+  const ws=S.workers.filter(w=>w&&w.trim());const wslots=Math.max(6,Math.ceil(ws.length/3)*3);
+  let wrows='';for(let i=0;i<wslots;i+=3){
+    wrows+='<tr>'+(i===0?`<td class="lab" rowspan="${wslots/3}">作 業 員</td>`:'')+
+      [0,1,2].map(j=>`<td><span class="mk">${MK[i+j+1]||''}</span>${esc(ws[i+j]||'')}</td>`).join('')+'</tr>'}
+  const total=(S.leader&&S.leader.trim()?1:0)+ws.length;
+  $('#paper').innerHTML=`
+  <div class="p-head"><div class="p-title">作業報告書</div>
+    <div class="p-co"><div class="p-slogan">“一歩先のキレイ”をお届けします。</div><div class="p-coname">株式会社 オーアンドケー</div>
+    <div>〒458-0009 名古屋市緑区平手南1-117</div><div>TEL 052-877-2887　FAX 052-877-2899</div></div></div>
+  <div class="p-top">
+    <div class="p-names">
+      <div class="p-nm"><span class="l">お客様名</span><span class="v">${esc(S.customer)}</span><span class="s">様</span></div>
+      <div class="p-nm"><span class="l">現場名</span><span class="v">${esc(S.site)}</span><span class="s">様</span></div>
+    </div>
+    <table class="p-date">
+      <tr><td colspan="6" class="hd">作業日</td></tr>
+      <tr><td class="n">${n(y)}</td><td>年</td><td class="n">${n(m)}</td><td>月</td><td class="n">${n(d)}</td><td>日</td></tr>
+      <tr><td colspan="2">（開始）</td><td class="n">${sh?n(sh):''}</td><td>時</td><td class="n">${sm!=null&&sh?sm:''}</td><td>分</td></tr>
+      <tr><td colspan="2">（終了）</td><td class="n">${eh?n(eh):''}</td><td>時</td><td class="n">${em!=null&&eh?em:''}</td><td>分</td></tr>
+    </table>
+  </div>
+  <table class="p-tbl"><colgroup><col style="width:26%"><col><col style="width:54px"><col style="width:58px"></colgroup>
+    <tr><th>作業箇所</th><th>作業内容</th><th class="k">定期</th><th class="k">スポット</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.place)}</td><td>${esc(r.content)}</td><td class="k">${r.type==='定期'?'〇':''}</td><td class="k">${r.type==='スポット'?'〇':''}</td></tr>`).join('')}
+  </table>
+  <table class="p-tbl p-staff"><colgroup><col style="width:120px"><col><col><col></colgroup>
+    <tr><td class="lab">作業責任者</td><td colspan="3"><span class="mk">①</span>${esc(S.leader)}</td></tr>
+    ${wrows}
+    <tr><td class="lab">合 計</td><td colspan="3" class="tot">${total||''}　名</td></tr>
+  </table>
+  <div class="p-rep"><div class="h">作業報告・特記事項 <small>（ワックス塗布数、剥離時期、駆除状況、設備状況、什器・備品及び商品等の破損、緊急事態の有無等）</small></div>
+    <div class="b">${esc(S.report)}</div></div>
+  <div class="p-foot">
+    <div class="p-sales">営業担当者<div class="v">${esc(S.sales)}</div></div>
+    <div class="p-conf"><span class="l">お客様ご確認</span>${S.signature?`<img src="${S.signature}" alt="サイン">`:''}</div>
+  </div>`;
+  fitPaper();
+}
+function fitPaper(){
+  const wrap=$('#paperWrap'),p=$('#paper');if($('#view-out').hidden)return;
+  const avail=wrap.parentElement.clientWidth;const s=Math.min(1,avail/794);
+  p.style.transform=`scale(${s})`;wrap.style.width=794*s+'px';wrap.style.height=p.offsetHeight*s+'px';
+}
+
+/* ---- 画像化 ---- */
+$('#makeImg').onclick=async()=>{
+  const ov=$('#overlay'),img=$('#ovImg');ov.hidden=false;img.hidden=true;$('#ovMsg').textContent='画像を作成しています…';
+  try{
+    await document.fonts.ready;
+    const clone=$('#paper').cloneNode(true);clone.id='paperClone';clone.style.transform='none';
+    Object.assign(clone.style,{position:'fixed',left:'-10000px',top:'0'});document.body.appendChild(clone);
+    const c=await html2canvas(clone,{scale:2,backgroundColor:'#ffffff',logging:false});clone.remove();
+    img.src=c.toDataURL('image/png');img.hidden=false;
+    $('#ovMsg').textContent='画像を長押し（パソコンは右クリック）して保存・共有してください';
+  }catch(err){$('#ovMsg').textContent='画像を作成できませんでした。画面を再読み込みしてもう一度お試しください。'}
+};
+$('#printBtn').onclick=()=>{renderPaper();setTimeout(()=>window.print(),50)};
+$('#ovClose').onclick=()=>{$('#overlay').hidden=true};
+
+/* ---- タブ ---- */
+function show(t){
+  $('#view-in').hidden=t!=='in';$('#view-out').hidden=t!=='out';
+  $('#tab-in').setAttribute('aria-selected',t==='in');$('#tab-out').setAttribute('aria-selected',t==='out');
+  if(t==='out')renderPaper();else{padW=0;sizePad()}
+  window.scrollTo(0,0);
+}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)show(b.dataset.tab)});
+$('#toOut').onclick=()=>show('out');
+
+fillSimple();renderRows();renderWorkers();
+requestAnimationFrame(sizePad);
+</script>
+
+</body>
+</html>
