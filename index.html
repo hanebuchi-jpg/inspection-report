@@ -127,7 +127,11 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 #boardPrev{width:100%;max-width:440px;height:auto;border-radius:6px;display:block}
 .tpl-list{display:flex;flex-direction:column;gap:6px}
 .tpl-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:6px;flex-wrap:wrap}
-.tpl-item .nm{flex:1;min-width:0;font-weight:700}
+.tpl-item .nm{flex:1;min-width:0;font-weight:700;text-align:left;background:none;border:0;padding:4px 0;color:var(--brand);text-decoration:underline;text-underline-offset:3px;font-size:15px}
+.tpl-item.active{outline:2px solid var(--accent)}
+.tpledit{border:2px solid var(--accent)}
+.tplrecv{border:2px solid var(--ok)}
+.linkbox{width:100%;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--bg);word-break:break-all}
 .tag{font-size:11px;background:var(--brand);color:var(--brand-ink);border-radius:3px;padding:1px 6px}
 .savebar{position:sticky;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 4px 14px rgba(0,0,0,.12)}
 
@@ -281,8 +285,21 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 
   <!-- 設定 -->
   <section class="panel" id="p-set" hidden>
-    <p class="mode-note">ここで変えた内容は、表示中の報告だけに保存されます。ほかの現場でも使う場合は「テンプレート」に保存してください。</p>
-    <div class="card">
+    <div class="card tplrecv" id="tplRecv" hidden></div>
+    <div class="card tpledit" id="tplEditBar" hidden>
+      <h2 id="tplEditTitle">テンプレートを編集中</h2>
+      <p class="hint">下の内容はテンプレートそのものです。変更して「テンプレートを保存」を押すと、これから作る報告に使われます（作成済みの報告は変わりません）。</p>
+      <label class="f">テンプレート名<input id="tplEditName"></label>
+      <div class="btnrow">
+        <button class="btn" id="btnTplApply">この内容を表示中の報告に使う</button>
+        <button class="btn" id="btnTplSendFile">ファイルで送る</button>
+        <button class="btn" id="btnTplSendLink">リンクで送る</button>
+        <button class="btn" id="btnTplBack">報告の設定に戻る</button>
+      </div>
+      <div id="tplSendArea"></div>
+    </div>
+    <p class="mode-note" id="setModeNote">ここで変えた内容は、表示中の報告だけに保存されます。ほかの現場でも使う場合は「テンプレート」に保存してください。</p>
+    <div class="card" id="tplCard">
       <h2>テンプレート</h2>
       <p class="hint" id="tplInfo"></p>
       <div class="btnrow"><button class="btn" id="btnTplOverwrite">今の設定でテンプレートを上書き</button></div>
@@ -290,7 +307,12 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
         <label class="f">新しいテンプレート名<input id="tplNewName" placeholder="例：ガラス清掃"></label>
         <button class="btn" id="btnTplNew">新しいテンプレートとして保存</button>
       </div>
+      <p class="hint">テンプレート名を押すと、中身を見たり編集したり、ほかの端末へ送ったりできます。</p>
       <div class="tpl-list" id="tplList"></div>
+      <div class="btnrow">
+        <label class="btn" for="tplFileIn">ファイルからテンプレートを受け取る</label>
+        <input type="file" id="tplFileIn" accept="application/json,.json" hidden>
+      </div>
     </div>
     <div class="card">
       <h2>撮影区分</h2>
@@ -825,8 +847,16 @@ $("#btnAllOk").onclick=()=>{const rep=R();rep.cfg.items.forEach(it=>{const c=rep
 
 /* ---------- settings ---------- */
 let W=null; // draft board rows
+let SM={mode:"report"}; // settings target: the current report, or a template being edited
+function cfgOfTpl(t){return {stages:[...t.stages],slots:t.slots.map(n=>({name:n})),items:t.items.map(x=>({text:x})),board:clone(t.board||{on:true,link:true,pos:"bl",size:"m",rows:[]}),company:t.company||"",title:t.title||"",hideEmpty:t.hideEmpty!==false}}
 function fillSettings(){
-  const rep=R(),cfg=rep.cfg;
+  if(SM.mode==="tpl"&&!D.templates.some(t=>t.id===SM.id))SM={mode:"report"};
+  const tplMode=SM.mode==="tpl",tp=tplMode?D.templates.find(t=>t.id===SM.id):null;
+  const cfg=tplMode?cfgOfTpl(tp):R().cfg;
+  $("#tplEditBar").hidden=!tplMode;$("#setModeNote").hidden=tplMode;
+  $("#btnTplOverwrite").parentElement.hidden=tplMode;$("#tplNewName").closest(".grid2").hidden=tplMode;
+  $("#btnSaveSet").textContent=tplMode?"テンプレートを保存":"この報告に設定を保存";
+  if(tplMode){$("#tplEditTitle").textContent="テンプレート「"+tp.name+"」を編集中";$("#tplEditName").value=tp.name;$("#tplSendArea").innerHTML=""}
   W={rows:clone(cfg.board.rows||[])};
   STAGES.forEach(([k])=>$("#st-"+k).checked=cfg.stages.includes(k));
   $("#setSlots").value=cfg.slots.map(s=>s.name).join("\n");
@@ -890,23 +920,33 @@ function readDraft(){
   if(names.length>MAX)return {err:"撮影箇所は100件までです（今 "+names.length+"件）"};
   if(texts.length>MAX)return {err:"チェック項目は100件までです（今 "+texts.length+"件）"};
   if(!names.length&&!texts.length)return {err:"撮影箇所かチェック項目を1つ以上入力してください"};
-  const pool=[...rep.cfg.slots];
-  const slots=names.map(n=>{const i=pool.findIndex(s=>s.name===n);return i>=0?pool.splice(i,1)[0]:{id:"s"+uid(),name:n}});
-  const ipool=[...rep.cfg.items];
-  const items=texts.map(t=>{const i=ipool.findIndex(x=>x.text===t);return i>=0?ipool.splice(i,1)[0]:{id:"c"+uid(),text:t}});
+  // reuse ids by name (also from slots/items kept aside earlier) so their photos come back
+  const cur=[...rep.cfg.slots],arch=[...(rep.cfg.archived||[])];
+  const take=(arr,pred)=>{const i=arr.findIndex(pred);return i>=0?arr.splice(i,1)[0]:null};
+  const slots=names.map(n=>take(cur,s=>s.name===n)||take(arch,s=>s.name===n)||{id:"s"+uid(),name:n});
+  const icur=[...rep.cfg.items],iarch=[...(rep.cfg.archivedItems||[])];
+  const items=texts.map(t=>take(icur,x=>x.text===t)||take(iarch,x=>x.text===t)||{id:"c"+uid(),text:t});
   const lose=[];
-  pool.forEach(s=>STAGES.forEach(([st])=>{const k=pk(rep.id,s.id,st);if(keys.has(k))lose.push(k)}));
+  cur.forEach(s=>STAGES.forEach(([st])=>{const k=pk(rep.id,s.id,st);if(keys.has(k))lose.push(k)}));
   slots.forEach(s=>STAGES.forEach(([st])=>{if(!stages.includes(st)){const k=pk(rep.id,s.id,st);if(keys.has(k))lose.push(k)}}));
-  ipool.forEach(it=>{for(let n=1;n<=NG_MAX;n++){const k=pk(rep.id,ngSid(it.id),"ng"+n);if(keys.has(k))lose.push(k)}});
+  icur.forEach(it=>{for(let n=1;n<=NG_MAX;n++){const k=pk(rep.id,ngSid(it.id),"ng"+n);if(keys.has(k))lose.push(k)}});
+  const ipool=icur;
   const board={on:$("#bdOn").checked,link:$("#bdLink").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim()})).filter(r=>r.l||r.v).slice(0,MAX_BOARD)};
   const cfg={stages,slots,items,board,company:$("#setCompany").value.trim(),title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked};
-  return {cfg,lose,dropItems:ipool.map(x=>x.id)};
+  return {cfg,lose,dropItems:ipool.map(x=>x.id),removedSlots:cur,removedItems:icur,arch,iarch};
 }
-async function commitDraft(d){
+async function commitDraft(d,keep){
   const rep=R();
-  for(const k of d.lose)await delPhoto(k);
-  d.dropItems.forEach(id=>delete rep.checks[id]);
+  if(keep){
+    // photos stay on the device; removed slots/items are kept aside and come back if re-added with the same name
+    d.cfg.archived=[...d.arch,...d.removedSlots];
+    d.cfg.archivedItems=[...d.iarch,...d.removedItems];
+  }else{
+    for(const k of d.lose)await delPhoto(k);
+    d.dropItems.forEach(id=>delete rep.checks[id]);
+    d.cfg.archived=d.arch;d.cfg.archivedItems=d.iarch;
+  }
   rep.cfg=d.cfg;persist();renderSlots();renderChecks();fillSettings();
 }
 // returns a promise resolving true when applied, false when cancelled / invalid
@@ -914,33 +954,75 @@ function applySettings(){
   return new Promise(resolve=>{
     const d=readDraft(),area=$("#setConfirm");area.innerHTML="";
     if(d.err){toast(d.err);resolve(false);return}
-    if(!d.lose.length){commitDraft(d).then(()=>{toast("設定を保存しました");resolve(true)});return}
+    if(!d.lose.length){commitDraft(d,true).then(()=>{toast("設定を保存しました");resolve(true)});return}
     const box=document.createElement("div");box.className="inline-confirm";
-    const s=document.createElement("strong");s.textContent="撮影済みの写真 "+d.lose.length+"枚が、消した箇所・区分・チェック項目に入っています。保存するとこの写真は削除されます。";
+    const s=document.createElement("strong");s.textContent="消した箇所・区分・チェック項目に、撮影済みの写真が "+d.lose.length+"枚あります。写真をどうしますか？";
+    const p=document.createElement("p");p.className="hint";p.textContent="「残す」を選ぶと写真は端末に残り、同じ名前の箇所・区分を設定に戻すと元どおり表示されます（報告書には載りません）。";
     const row=document.createElement("div");row.className="btnrow";
+    const kp=document.createElement("button");kp.className="btn pri";kp.textContent="写真は残して保存";
     const go=document.createElement("button");go.className="btn warn";go.textContent="写真を削除して保存";
     const no=document.createElement("button");no.className="btn";no.textContent="やめる";
-    row.append(go,no);box.append(s,row);area.appendChild(box);
+    row.append(kp,go,no);box.append(s,p,row);area.appendChild(box);
     no.onclick=()=>{area.innerHTML="";resolve(false)};
-    go.onclick=()=>{commitDraft(d).then(()=>{toast("設定を保存しました");resolve(true)})};
+    kp.onclick=()=>{commitDraft(d,true).then(()=>{toast("設定を保存しました（写真は残しています）");resolve(true)})};
+    go.onclick=()=>{commitDraft(d,false).then(()=>{toast("設定を保存し、写真を削除しました");resolve(true)})};
   });
 }
-$("#btnSaveSet").onclick=()=>applySettings();
+function readTplDraft(){
+  const stages=STAGES.map(s=>s[0]).filter(s=>$("#st-"+s).checked);
+  if(!stages.length)return {err:"撮影区分を1つ以上選んでください"};
+  const names=lines($("#setSlots").value),texts=lines($("#setItems").value);
+  if(names.length>MAX)return {err:"撮影箇所は100件までです（今 "+names.length+"件）"};
+  if(texts.length>MAX)return {err:"チェック項目は100件までです（今 "+texts.length+"件）"};
+  if(!names.length&&!texts.length)return {err:"撮影箇所かチェック項目を1つ以上入力してください"};
+  const name=$("#tplEditName").value.trim();
+  if(!name)return {err:"テンプレート名を入力してください"};
+  if(D.templates.some(t=>t.name===name&&t.id!==SM.id))return {err:"同じ名前のテンプレートがあります。別の名前にしてください"};
+  const board={on:$("#bdOn").checked,link:$("#bdLink").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
+    rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim()})).filter(r=>r.l||r.v).slice(0,MAX_BOARD)};
+  return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked}};
+}
+function saveTplDraft(){
+  const d=readTplDraft();if(d.err){toast(d.err);return null}
+  const i=D.templates.findIndex(t=>t.id===SM.id);if(i<0)return null;
+  D.templates[i]=d.tpl;
+  D.reports.forEach(r=>{if(r.tplId===d.tpl.id)r.tplName=d.tpl.name});
+  persist();fillSettings();renderReports();toast("テンプレート「"+d.tpl.name+"」を保存しました");
+  return d.tpl;
+}
+$("#btnSaveSet").onclick=()=>{if(SM.mode==="tpl")saveTplDraft();else applySettings()};
+function openTplEditor(id){SM={mode:"tpl",id};fillSettings();window.scrollTo(0,0)}
+$("#btnTplBack").onclick=()=>{SM={mode:"report"};fillSettings();window.scrollTo(0,0)};
+$("#btnTplApply").onclick=async()=>{
+  const t=saveTplDraft();if(!t)return;
+  SM={mode:"report"};fillSettings();
+  // put the template's content into the report form, then save it through the normal (photo-aware) path
+  const c=cfgOfTpl(t);
+  STAGES.forEach(([k])=>$("#st-"+k).checked=c.stages.includes(k));
+  $("#setSlots").value=t.slots.join("\n");$("#setItems").value=t.items.join("\n");
+  $("#bdOn").checked=!!c.board.on;$("#bdLink").checked=isLinked(c.board);$("#bdPos").value=c.board.pos||"bl";$("#bdSize").value=c.board.size||"m";
+  $("#setCompany").value=c.company;$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
+  W={rows:clone(c.board.rows||[])};renderBoardRows();updateCounters();drawBoardPreview();
+  const ok=await applySettings();
+  if(ok){const rep=R();rep.tplId=t.id;rep.tplName=t.name;persist();renderTplList();renderReports();toast("テンプレート「"+t.name+"」の内容を表示中の報告に使いました")}
+};
 function renderTplList(){
   const rep=R(),t=D.templates.find(x=>x.id===rep.tplId);
   $("#tplInfo").textContent=t?"この報告はテンプレート「"+t.name+"」から作成しました。":"この報告の元のテンプレートは削除されています。新しいテンプレートとして保存できます。";
   $("#btnTplOverwrite").disabled=!t;
   const list=$("#tplList");list.innerHTML="";
   D.templates.forEach(tp=>{
-    const it=document.createElement("div");it.className="tpl-item";
-    const nm=document.createElement("span");nm.className="nm";nm.textContent=tp.name;
+    const it=document.createElement("div");it.className="tpl-item"+(SM.mode==="tpl"&&SM.id===tp.id?" active":"");
+    const nm=document.createElement("button");nm.type="button";nm.className="nm";nm.textContent=tp.name;
+    nm.setAttribute("aria-label","テンプレート「"+tp.name+"」の中身を見る・編集する");
+    nm.onclick=()=>openTplEditor(tp.id);
     const info=document.createElement("span");info.className="hint";info.textContent="写真 "+tp.slots.length+"箇所・"+tp.stages.map(s=>STAGE_LABEL[s]).join("/")+"・チェック "+tp.items.length+"項目";
     it.append(nm);
     if(tp.id===rep.tplId){const tg=document.createElement("span");tg.className="tag";tg.textContent="使用中";it.append(tg)}
     const del=document.createElement("button");del.className="btn";del.textContent="削除";del.style.padding="4px 10px";del.style.fontSize="12px";
     del.disabled=D.templates.length<=1;
     del.onclick=()=>{
-      if(del.dataset.armed){D.templates=D.templates.filter(x=>x.id!==tp.id);persist();renderTplList();toast("テンプレートを削除しました");return}
+      if(del.dataset.armed){D.templates=D.templates.filter(x=>x.id!==tp.id);if(SM.id===tp.id)SM={mode:"report"};persist();fillSettings();toast("テンプレートを削除しました");return}
       del.dataset.armed="1";del.textContent="本当に削除";del.classList.add("warn");
     };
     it.append(del);
@@ -964,6 +1046,92 @@ $("#btnTplNew").onclick=async()=>{
   $("#tplNewName").value="";persist();renderTplList();renderReports();
   toast("テンプレート「"+name+"」を保存しました");
 };
+
+/* ---------- テンプレートの送受信（ファイル・リンク） ---------- */
+const TPL_FORMAT="oandk-template/v1";
+function tplPayload(t){const c=clone(t);return {format:TPL_FORMAT,exportedAt:new Date().toISOString(),template:c}}
+function b64u(bytes){let s="";for(let i=0;i<bytes.length;i+=8192)s+=String.fromCharCode.apply(null,bytes.subarray(i,i+8192));return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"")}
+function unb64u(str){str=str.replace(/-/g,"+").replace(/_/g,"/");while(str.length%4)str+="=";const b=atob(str),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+async function encodeTpl(obj){
+  const s=JSON.stringify(obj);
+  if(window.CompressionStream){try{const st=new Blob([s]).stream().pipeThrough(new CompressionStream("gzip"));return "z."+b64u(new Uint8Array(await new Response(st).arrayBuffer()))}catch(e){}}
+  return "j."+b64u(new TextEncoder().encode(s));
+}
+async function decodeTpl(code){
+  const kind=code.slice(0,2),bytes=unb64u(code.slice(2));
+  if(kind==="z."){if(!window.DecompressionStream)throw new Error("nogzip");const st=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));return JSON.parse(await new Response(st).text())}
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function cleanTpl(t){
+  if(!t||typeof t!=="object")return null;
+  const str=v=>String(v==null?"":v).slice(0,200);
+  const stages=(Array.isArray(t.stages)?t.stages:[]).filter(s=>STAGE_LABEL[s]&&!/^ng/.test(s));
+  const slots=(Array.isArray(t.slots)?t.slots:[]).map(str).map(s=>s.trim()).filter(Boolean).slice(0,MAX);
+  const items=(Array.isArray(t.items)?t.items:[]).map(str).map(s=>s.trim()).filter(Boolean).slice(0,MAX);
+  if(!stages.length||(!slots.length&&!items.length))return null;
+  const b=t.board&&typeof t.board==="object"?t.board:{};
+  return {name:str(t.name).trim()||"受け取ったテンプレート",stages,slots,items,
+    board:{on:b.on!==false,link:b.link!==false,pos:["bl","br","tl","tr"].includes(b.pos)?b.pos:"bl",size:["s","m","l"].includes(b.size)?b.size:"m",
+      rows:(Array.isArray(b.rows)?b.rows:[]).slice(0,MAX_BOARD).map(r=>({l:str(r&&r.l),v:str(r&&r.v)}))},
+    company:str(t.company),title:str(t.title)||"点検報告書",hideEmpty:t.hideEmpty!==false};
+}
+function tplFileName(t){return "O&K報告書テンプレート_"+t.name.replace(/[\\/:*?"<>|]/g,"").slice(0,40)+".json"}
+$("#btnTplSendFile").onclick=async()=>{
+  const t=saveTplDraft();if(!t)return;
+  const blob=new Blob([JSON.stringify(tplPayload(t),null,1)],{type:"application/json"});
+  try{
+    const f=new File([blob],tplFileName(t),{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:"テンプレート「"+t.name+"」"});return}
+  }catch(e){if(e&&e.name==="AbortError")return}
+  await saveFile(blob,tplFileName(t));
+};
+$("#btnTplSendLink").onclick=async()=>{
+  const t=saveTplDraft();if(!t)return;
+  const area=$("#tplSendArea");area.innerHTML="";
+  const code=await encodeTpl(tplPayload(t));
+  const url=location.href.split("#")[0].split("?")[0]+"#tpl="+code;
+  const box=document.createElement("div");box.className="inline-confirm";
+  const s=document.createElement("strong");s.textContent="受け取る人にこのリンクを送ってください";
+  const ta=document.createElement("textarea");ta.className="linkbox";ta.rows=3;ta.readOnly=true;ta.value=url;ta.id="tplLinkText";ta.setAttribute("aria-label","テンプレートのリンク");
+  const row=document.createElement("div");row.className="btnrow";
+  const cp=document.createElement("button");cp.className="btn pri";cp.textContent="リンクをコピー";
+  cp.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(url).then(()=>toast("リンクをコピーしました"),()=>{ta.focus();ta.select();toast("選択した文字をコピーしてください")})||(ta.focus(),ta.select())};
+  row.appendChild(cp);
+  if(navigator.share){const sh=document.createElement("button");sh.className="btn";sh.textContent="LINE・メールで送る";
+    sh.onclick=async()=>{try{await navigator.share({title:"O&K報告書テンプレート「"+t.name+"」",text:"O&K報告書のテンプレート「"+t.name+"」です。開くと受け取れます。",url})}catch(e){}};row.appendChild(sh)}
+  const p=document.createElement("p");p.className="hint";
+  p.textContent="iPhoneでホーム画面のアプリを使っている人は、リンクだとSafari側に入ってしまいます。その場合は「ファイルで送る」を使い、アプリの設定タブ「ファイルからテンプレートを受け取る」で読み込んでください。";
+  box.append(s,ta,row,p);area.appendChild(box);
+};
+function showTplReceive(raw){
+  const t=cleanTpl(raw);const card=$("#tplRecv");card.innerHTML="";
+  if(!t){card.hidden=false;const p=document.createElement("p");p.textContent="テンプレートを読み込めませんでした。送ってもらったファイルかリンクをもう一度確認してください。";const b=document.createElement("button");b.className="btn";b.textContent="閉じる";b.onclick=()=>{card.hidden=true};card.append(p,b);return}
+  const same=D.templates.find(x=>x.name===t.name);
+  const h=document.createElement("h2");h.textContent="テンプレート「"+t.name+"」を受け取りますか？";
+  const p=document.createElement("p");p.className="hint";p.textContent="写真 "+t.slots.length+"箇所（"+t.stages.map(s=>STAGE_LABEL[s]).join("・")+"）・チェック "+t.items.length+"項目"+(same?"。同じ名前のテンプレートがこの端末にあります。":"");
+  const row=document.createElement("div");row.className="btnrow";
+  const add=nm=>{const id="t"+uid();t.name=nm;D.templates.push(Object.assign({id},t));persist();card.hidden=true;openTplEditor(id);toast("テンプレート「"+nm+"」を受け取りました")};
+  if(same){
+    const ow=document.createElement("button");ow.className="btn pri";ow.textContent="上書きする";
+    ow.onclick=()=>{const i=D.templates.indexOf(same);D.templates[i]=Object.assign({id:same.id},t);persist();card.hidden=true;openTplEditor(same.id);toast("テンプレート「"+t.name+"」を上書きしました")};
+    const nw=document.createElement("button");nw.className="btn";nw.textContent="別の名前で追加";
+    nw.onclick=()=>{let n=2;while(D.templates.some(x=>x.name===t.name+"("+n+")"))n++;add(t.name+"("+n+")")};
+    row.append(ow,nw);
+  }else{const ok=document.createElement("button");ok.className="btn pri";ok.textContent="受け取る";ok.onclick=()=>add(t.name);row.append(ok)}
+  const no=document.createElement("button");no.className="btn";no.textContent="やめる";no.onclick=()=>{card.hidden=true};row.append(no);
+  card.append(h,p,row);card.hidden=false;
+}
+$("#tplFileIn").onchange=async e=>{
+  const f=e.target.files[0];e.target.value="";if(!f)return;
+  try{const d=JSON.parse(await f.text());showTplReceive(d&&d.format===TPL_FORMAT?d.template:(d&&d.template)||d);window.scrollTo(0,0)}
+  catch(err){showTplReceive(null)}
+};
+async function checkTplLink(){
+  const h=location.hash||"";if(!h.startsWith("#tpl="))return;
+  try{history.replaceState(null,"",location.href.split("#")[0])}catch(e){}
+  showTab("set");
+  try{const d=await decodeTpl(h.slice(5));showTplReceive(d&&d.template)}catch(e){showTplReceive(null)}
+}
 
 /* ---------- report rendering (A4 @150dpi, one canvas reused) ---------- */
 const PW=1240,PH=1754,M=90,BOT=PH-110,RH=46,CRH=46;
@@ -1362,6 +1530,7 @@ $("#jsonIn").onchange=async e=>{
   await ready;renderSlots();
   let t="photo";try{t=localStorage.getItem(LS+"-tab")||"photo"}catch(e){}
   showTab(t);
+  checkTplLink();
 })();
 window.addEventListener("pagehide",stopStream);
 
