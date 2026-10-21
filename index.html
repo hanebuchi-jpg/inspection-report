@@ -203,6 +203,20 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .cam-btn{border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700}
 .cam-btn.acc{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .cam-msg{position:absolute;left:12px;right:12px;bottom:12px;background:rgba(0,0,0,.65);font-size:12px;padding:8px 10px;border-radius:6px}
+/* camera: landscape phones put the controls in a column on the right so the picture keeps the height */
+@media (orientation:landscape) and (max-height:600px){
+  .cam{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr)}
+  .cam-top{grid-column:1/-1;padding-top:calc(env(safe-area-inset-top,0px) + 4px);padding-bottom:4px}
+  .cam-top .t small{display:inline;margin-left:8px}
+  .cam-top .cam-btn{padding:4px 12px}
+  .cam-stage{grid-column:1;grid-row:2;padding-left:env(safe-area-inset-left,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .cam-ctrl{grid-column:2;grid-row:2;width:min(230px,36vw);overflow-y:auto;justify-content:center;
+    padding:8px max(12px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 8px) 12px}
+  .cam-ctrl .row{flex-direction:column;align-items:stretch;gap:8px}
+  .cam-ctrl .row>span{text-align:center}
+  .cam-ctrl input[type=range]{min-width:0;width:100%}
+  .shutter{width:64px;height:64px}
+}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:80;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -935,7 +949,8 @@ function drawOverlay(){
   if(!cur||!boardActive()||!$("#reviewImg").hidden)return;
   drawBoard(g,cv.width,cv.height,boardRows(R().cfg,R().meta,cur.slot.name,cur.stage),R().cfg.board.pos,R().cfg.board.size);
 }
-window.addEventListener("resize",()=>{if(!$("#cam").hidden)fitBox()});
+window.addEventListener("resize",()=>{if(!$("#cam").hidden)requestAnimationFrame(fitBox)});
+window.addEventListener("orientationchange",()=>{if(!$("#cam").hidden)setTimeout(fitBox,300)});
 function updateBoardBtns(){
   $("#togBoard").setAttribute("aria-pressed",String(camBoard));
   $("#boardPos").textContent="看板の位置："+(POS_LABEL[R().cfg.board.pos]||"左下");
@@ -977,6 +992,7 @@ async function openCamera(slot,stage){
   await prepSheet(slot,stage);
   video.srcObject=stream;try{await video.play()}catch(e){}
   const setAR=()=>{if(video.videoWidth&&ghost.hidden){boxAR=video.videoWidth/video.videoHeight;fitBox()}};
+  video.onresize=setAR; // the stream turns when the phone is rotated
   if(video.readyState>=1)setAR();else video.onloadedmetadata=setAR;
 }
 function closeCamera(){stopStream();$("#cam").hidden=true;document.body.style.overflow="";reviewBlob=null;raw=null;cur=null;
