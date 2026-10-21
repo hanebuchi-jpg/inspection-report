@@ -349,6 +349,18 @@ function boardRows(cfg,meta,slotName,stage,shotDate){
     return {l,v:String(r.v||"").replace(/\{([^}]+)\}/g,(m,k)=>k in map?(map[k]||""):m).trim()};
   }).filter(r=>r.l&&r.v);
 }
+function boardText(g,str,x,cy,maxW,rowH,fs,center){
+  str=String(str||"");const F=sz=>{g.font="700 "+sz+"px "+FONT};
+  F(fs);const w1=g.measureText(str).width;
+  if(w1<=maxW){g.fillText(str,x,cy);return}
+  const one=fs*maxW/w1;
+  if(one>=fs*.6||str.length<6){F(one);g.fillText(str,x,cy);return}
+  // 2行：幅がなるべく揃う位置で分ける
+  let best=1,bw=Infinity;for(let i=1;i<str.length;i++){F(fs);const a=g.measureText(str.slice(0,i)).width,b=g.measureText(str.slice(i)).width,m=Math.max(a,b);if(m<bw){bw=m;best=i}}
+  const two=Math.min(fs*maxW/bw,rowH*.44);
+  if(two<=one){F(one);g.fillText(str,x,cy);return}
+  F(two);const lh=two*1.08;g.fillText(str.slice(0,best),x,cy-lh/2);g.fillText(str.slice(best),x,cy+lh/2);
+}
 function drawBoard(g,W,H,rows,pos,size){
   if(!rows.length)return;
   const frac={s:.3,m:.4,l:.52,xl:.66}[size]||.4;
@@ -366,10 +378,9 @@ function drawBoard(g,W,H,rows,pos,size){
   g.fillStyle="#ffffff";g.textBaseline="middle";
   const fs=rowH*.56;
   rows.forEach((r,i)=>{const cy=y+fr+i*rowH+rowH/2;
-    g.font="700 "+fs+"px "+FONT;g.textAlign="center";g.fillText(fit(g,r.l,lw-fs*.6),ix+lw/2,cy);
-    // 長い内容は文字を少し小さくして収め、それでも入らないときだけ「…」で切る
-    const av=iw-lw-fs*.7;g.font="700 "+fs+"px "+FONT;const tw=g.measureText(String(r.v)).width;
-    const vf=tw>av?Math.max(fs*.68,fs*av/tw):fs;g.font="700 "+vf+"px "+FONT;g.textAlign="left";g.fillText(fit(g,r.v,av),ix+lw+fs*.35,cy);
+    // 文字は枠に収まるように縮小する（長い内容は2行に折り返してから縮小）
+    g.textAlign="center";boardText(g,r.l,ix+lw/2,cy,lw-fs*.5,rowH,fs,true);
+    g.textAlign="left";boardText(g,r.v,ix+lw+fs*.35,cy,iw-lw-fs*.7,rowH,fs,false);
   });
   g.restore();
 }
