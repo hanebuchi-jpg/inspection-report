@@ -1878,11 +1878,27 @@ async function openDoc(d){
   if(!w)await saveFile(b,d.name);
   setTimeout(()=>URL.revokeObjectURL(u),120000);
 }
-try{if(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))$("#btnShare").hidden=false}catch(e){}
-$("#btnShare").onclick=async()=>{
-  const blob=await makePdf();if(!blob)return;
-  const f=new File([blob],fname("pdf",outName()),{type:"application/pdf"});
-  try{await navigator.share({files:[f],title:R().cfg.title})}catch(e){if(e.name!=="AbortError")toast("共有できませんでした。PDFを保存して送ってください")}
+$("#btnShare").hidden=false;
+let canFileShare=false;try{canFileShare=!!(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))}catch(e){}
+let sharePrep=null; // 作ったPDFを少しの間とっておき、2回目のタップですぐ共有する
+const SHARE_LBL="PDFを共有";
+$("#btnShare").onclick=async e=>{
+  const b=e.currentTarget,rid=R().id;
+  if(sharePrep&&(sharePrep.rid!==rid||Date.now()-sharePrep.t>120000))sharePrep=null;
+  let f=sharePrep&&sharePrep.file;
+  if(!f){
+    b.disabled=true;b.textContent="作成中…";
+    try{const blob=await makePdf(b);if(!blob)return;f=new File([blob],fname("pdf",outName()),{type:"application/pdf"});sharePrep={rid,t:Date.now(),file:f}}
+    finally{b.disabled=false;b.textContent=SHARE_LBL}
+  }
+  if(!canFileShare){await saveFile(f,f.name);toast("この端末では共有画面を開けないため、PDFを保存しました。保存したPDFを送ってください");sharePrep=null;return}
+  b.textContent=SHARE_LBL;
+  try{await navigator.share({files:[f],title:R().cfg.title});sharePrep=null}
+  catch(err){
+    if(err.name==="AbortError"){sharePrep=null;return}
+    if(err.name==="NotAllowedError"){b.textContent="準備できました。もう一度押して共有";setTimeout(()=>{if(b.textContent!==SHARE_LBL&&!b.disabled)b.textContent=SHARE_LBL},120000);return}
+    toast("共有できませんでした。PDFを保存して送ってください");sharePrep=null;
+  }
 };
 function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
 $("#btnCsv").onclick=()=>{
