@@ -441,20 +441,13 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <canvas id="boardPrev" width="800" height="600" aria-label="施工看板のプレビュー"></canvas>
     </div>
     <div class="card">
-      <h2>住所・連絡先（すべての報告に共通）</h2>
-      <p class="hint">作業報告書（1ページ目）の右上、会社名のまわりに入ります。入力するとすぐ保存され、この端末のすべての報告・テンプレートに使われます。空欄の項目は載りません。</p>
+      <h2>報告書</h2>
+      <p class="hint">会社名・キャッチコピー・住所・電話は作業報告書（1ページ目）の右上に入ります。テンプレートごと（報告ごと）に変えられます。空欄の項目は載りません。変更したら下の保存ボタンを押してください。</p>
       <div class="grid2">
+        <label class="f">会社名（差出人）<input id="setCompany"></label>
         <label class="f">キャッチコピー<input id="setSlogan" placeholder="例：“一歩先のキレイ”をお届けします。"></label>
         <label class="f">住所<input id="setAddress" placeholder="例：〒000-0000 〇〇市〇〇区…"></label>
         <label class="f">電話・FAX<input id="setTel" placeholder="例：TEL 000-000-0000　FAX 000-000-0000"></label>
-      </div>
-      <p class="hint" id="orgSaved" aria-live="polite"></p>
-    </div>
-    <div class="card">
-      <h2>報告書</h2>
-      <p class="hint">会社名はテンプレートごと（報告ごと）に設定できます。変更したら下の保存ボタンを押してください。</p>
-      <div class="grid2">
-        <label class="f">会社名（差出人）<input id="setCompany"></label>
         <label class="f">チェック表・写真ページの見出し<input id="setTitle"></label>
       </div>
       <label class="tg"><input type="checkbox" id="setHideEmpty"> 写真が1枚もない箇所は報告書に載せない</label>
@@ -589,6 +582,8 @@ if(!D||!Array.isArray(D.templates)||!Array.isArray(D.reports)||!D.reports.length
 D.reports.forEach(r=>fixMeta(r.meta));
 if(!D.org||typeof D.org!=="object"){const c=(D.reports.find(r=>r.id===D.current)||D.reports[0]).cfg;D.org={company:c.company||"",slogan:c.slogan||"",address:c.address||"",tel:c.tel||""}}
 const ORG=()=>D.org;
+// 住所・連絡先は報告・テンプレートごとに持つ（古いデータは共通の値で埋める）
+[...D.reports.map(r=>r.cfg),...D.templates].forEach(c=>{if(!c)return;["slogan","address","tel"].forEach(k=>{if(c[k]==null)c[k]=D.org[k]||""})});
 if(!Array.isArray(D.folders))D.folders=[];
 if(!Array.isArray(D.docs))D.docs=[];
 if(!D.folderRule)D.folderRule="site";
@@ -1122,7 +1117,7 @@ function fillSettings(){
   $("#bdOn").checked=!!cfg.board.on;$("#bdPos").value=cfg.board.pos||"bl";$("#bdSize").value=cfg.board.size||"m";
   W.rows.forEach(r=>{r.src=rowSrc(r,cfg.board)});
   $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
-  fillOrg();
+  fillOrg(cfg);
   $("#tplDefaults").hidden=!tplMode;
   if(tplMode){$("#tplRows").value=(tp.rows||[]).map(r=>[r.place||"",r.content||"",r.type||""].join("｜")).join("\n");$("#tplSales").value=tp.sales||""}
   $("#setConfirm").innerHTML="";setDirty=false;
@@ -1162,7 +1157,7 @@ $("#bdAdd").onclick=()=>{if(W.rows.length>=MAX_BOARD)return;W.rows.push({l:"",v:
 const ORG_FIELDS={slogan:"setSlogan",address:"setAddress",tel:"setTel"};
 ["input","change"].forEach(ev=>$("#p-set").addEventListener(ev,e=>{
   const id=e.target&&e.target.id||"";
-  if(Object.values(ORG_FIELDS).includes(id)||id==="tplFileIn"||id==="tplNewName"||id==="tplLinkText")return;
+  if(id==="tplFileIn"||id==="tplNewName"||id==="tplLinkText")return;
   setDirty=true;
 }));
 $("#p-set").addEventListener("click",e=>{if(e.target.closest&&e.target.closest("#bdAdd,#bdRows button"))setDirty=true});
@@ -1180,14 +1175,8 @@ function askUnsaved(next){
   go.onclick=()=>{setDirty=false;showTab(next,true)};
   no.onclick=()=>{area.innerHTML=""};
 }
-function fillOrg(){const o=ORG();Object.entries(ORG_FIELDS).forEach(([k,id])=>{$("#"+id).value=o[k]||""});$("#orgSaved").textContent=""}
-let orgT;
-Object.entries(ORG_FIELDS).forEach(([k,id])=>$("#"+id).addEventListener("input",e=>{
-  D.org[k]=e.target.value.trim();
-  D.reports.forEach(r=>{r.cfg[k]=D.org[k]});D.templates.forEach(t=>{t[k]=D.org[k]});
-  persist();drawBoardPreview();
-  clearTimeout(orgT);$("#orgSaved").textContent="保存しました";orgT=setTimeout(()=>{$("#orgSaved").textContent=""},1500);
-}));
+function fillOrg(c){Object.entries(ORG_FIELDS).forEach(([k,id])=>{$("#"+id).value=(c&&c[k])||""})}
+const orgVals=()=>{const o={};Object.entries(ORG_FIELDS).forEach(([k,id])=>{o[k]=$("#"+id).value.trim()});return o};
 function drawBoardPreview(){
   const cv=$("#boardPrev"),g=cv.getContext("2d"),Wd=cv.width,H=cv.height;
   const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,"#9aa7ad");gr.addColorStop(1,"#5c6a70");g.fillStyle=gr;g.fillRect(0,0,Wd,H);
@@ -1219,7 +1208,7 @@ function readDraft(){
   const ipool=icur;
   const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
-  const cfg={stages,slots,items,board,company:$("#setCompany").value.trim(),slogan:ORG().slogan,address:ORG().address,tel:ORG().tel,
+  const cfg={stages,slots,items,board,company:$("#setCompany").value.trim(),...orgVals(),
     title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked};
   return {cfg,lose,dropItems:ipool.map(x=>x.id),removedSlots:cur,removedItems:icur,arch,iarch};
 }
@@ -1268,7 +1257,7 @@ function readTplDraft(){
   const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
   const rows=lines($("#tplRows").value).slice(0,MAX).map(l=>{const p=l.split(/[｜|]/).map(x=>x.trim());const tp=p[2]==="スポット"?"スポット":(p[2]==="定期"?"定期":"");return {place:p[0]||"",content:p[1]||"",type:tp||(p.length>2?"":"定期")}});
-  return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),slogan:ORG().slogan,address:ORG().address,tel:ORG().tel,
+  return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),...orgVals(),
     title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:$("#tplSales").value.trim()}};
 }
 function saveTplDraft(){
@@ -1290,7 +1279,7 @@ $("#btnTplApply").onclick=async()=>{
   STAGES.forEach(([k])=>$("#st-"+k).checked=c.stages.includes(k));
   $("#setSlots").value=t.slots.join("\n");$("#setItems").value=t.items.join("\n");
   $("#bdOn").checked=!!c.board.on;$("#bdPos").value=c.board.pos||"bl";$("#bdSize").value=c.board.size||"m";
-  $("#setCompany").value=c.company;$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
+  $("#setCompany").value=c.company;fillOrg(c);$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
   W={rows:clone(c.board.rows||[])};W.rows.forEach(r=>{r.src=rowSrc(r,c.board)});renderBoardRows();updateCounters();drawBoardPreview();
   const ok=await applySettings();
   if(ok){const rep=R();rep.tplId=t.id;rep.tplName=t.name;persist();renderTplList();renderReports();toast("テンプレート「"+t.name+"」の内容を表示中の報告に使いました")}
@@ -1484,7 +1473,7 @@ async function drawWorkPage(g,rep){
   // head
   spaced("作業報告書",X0+60,78,30,.55);
   let cy=50;
-  const org=ORG();
+  const org=cfg;
   if(org.slogan){T(F(org.slogan,330,10.5),X1,cy,10.5,{align:"right"});cy+=16}
   if(cfg.company){const nmY=cy+6;T(F(cfg.company,330,20,true),X1,nmY,20,{bold:true,align:"right"});
     if(isOK(cfg.company)){try{const lg=await loadImg(OK_LOGO);g.font="700 20px "+FONT;const nw=Math.min(330,g.measureText(F(cfg.company,330,20,true)).width);
