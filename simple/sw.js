@@ -1,4 +1,4 @@
-const VERSION = "v3";
+const VERSION = "v4";
 const CACHE = "okboard-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest",
   "./kanban-icon-192.png", "./kanban-icon-512.png", "./kanban-apple-touch-icon.png",

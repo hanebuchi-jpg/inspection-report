@@ -207,7 +207,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <p class="hint">連動をオンにすると、項目名に「箇所」「区分」「日付・撮影日」を含む行には、撮影中の箇所名、施工前・中・後、撮った日が自動で入ります。アルバムから選んだ写真は、その写真の日付が入ります。</p>
       <div class="grid2">
         <label class="f">看板の位置<select id="bdPos"><option value="bl">左下</option><option value="br">右下</option><option value="tl">左上</option><option value="tr">右上</option></select></label>
-        <label class="f">看板の大きさ<select id="bdSize"><option value="s">小</option><option value="m">中</option><option value="l">大</option></select></label>
+        <label class="f">看板の大きさ<select id="bdSize"><option value="s">小</option><option value="m">中</option><option value="l">大</option><option value="xl">特大</option></select></label>
         <label class="f">会社名<input id="setCompany"></label>
       </div>
       <p class="hint">内容が空の行は看板に出ません。次の文字は自動で置き換わります：{現場名} {箇所} {区分} {日付} {作業内容} {会社名}</p>
@@ -351,8 +351,8 @@ function boardRows(cfg,meta,slotName,stage,shotDate){
 }
 function drawBoard(g,W,H,rows,pos,size){
   if(!rows.length)return;
-  const frac={s:.3,m:.4,l:.52}[size]||.4;
-  const bw=Math.round(W*frac),fr=Math.max(3,bw*.035),rowH=bw*.11,lw=bw*.27;
+  const frac={s:.3,m:.4,l:.52,xl:.66}[size]||.4;
+  const bw=Math.round(W*frac),fr=Math.max(3,bw*.035),rowH=bw*.11,lw=bw*.25;
   const bh=rows.length*rowH+fr*2,mg=W*.025;
   const x=pos&&pos[1]==="r"?W-mg-bw:mg, y=pos&&pos[0]==="t"?mg:H-mg-bh;
   g.save();
@@ -364,10 +364,12 @@ function drawBoard(g,W,H,rows,pos,size){
   for(let i=1;i<rows.length;i++){const yy=y+fr+i*rowH;g.moveTo(ix,yy);g.lineTo(ix+iw,yy)}
   g.stroke();
   g.fillStyle="#ffffff";g.textBaseline="middle";
-  const fs=rowH*.46;
+  const fs=rowH*.56;
   rows.forEach((r,i)=>{const cy=y+fr+i*rowH+rowH/2;
     g.font="700 "+fs+"px "+FONT;g.textAlign="center";g.fillText(fit(g,r.l,lw-fs*.6),ix+lw/2,cy);
-    g.font="400 "+fs+"px "+FONT;g.textAlign="left";g.fillText(fit(g,r.v,iw-lw-fs*.8),ix+lw+fs*.4,cy);
+    // 長い内容は文字を少し小さくして収め、それでも入らないときだけ「…」で切る
+    const av=iw-lw-fs*.7;g.font="700 "+fs+"px "+FONT;const tw=g.measureText(String(r.v)).width;
+    const vf=tw>av?Math.max(fs*.68,fs*av/tw):fs;g.font="700 "+vf+"px "+FONT;g.textAlign="left";g.fillText(fit(g,r.v,av),ix+lw+fs*.35,cy);
   });
   g.restore();
 }
@@ -527,7 +529,7 @@ async function prepSheet(slot,stage){
 function setLive(on){video.hidden=!on;$("#reviewImg").hidden=true;$("#liveRow").hidden=!on;$("#reviewRow").hidden=true;$("#camMsg").hidden=true}
 async function startStream(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error("no media");
-  return navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1440}},audio:false});
+  return navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:2560},height:{ideal:1920}},audio:false});
 }
 function stopStream(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null}
 async function openCamera(slot,stage){
@@ -547,14 +549,14 @@ $("#shutter").onclick=async()=>{
   if(!video.videoWidth)return;
   const ar=boxAR;let sw=video.videoWidth,sh=video.videoHeight,sx=0,sy=0;
   if(sw/sh>ar){const nw=sh*ar;sx=(sw-nw)/2;sw=nw}else{const nh=sw/ar;sy=(sh-nh)/2;sh=nh}
-  const k=Math.min(1,1920/Math.max(sw,sh));const c=document.createElement("canvas");c.width=Math.round(sw*k);c.height=Math.round(sh*k);
+  const k=Math.min(1,2400/Math.max(sw,sh));const c=document.createElement("canvas");c.width=Math.round(sw*k);c.height=Math.round(sh*k);
   c.getContext("2d").drawImage(video,sx,sy,sw,sh,0,0,c.width,c.height);
   cur.date=new Date();raw=c;await compose();showReview();
 };
 async function compose(){
   const c=document.createElement("canvas");c.width=raw.width;c.height=raw.height;
   const g=c.getContext("2d");g.drawImage(raw,0,0);stampBoard(g,c.width,c.height);
-  reviewBlob=await toBlob(c,.88);
+  reviewBlob=await toBlob(c,.92);
   const ri=$("#reviewImg");if(ri.src&&ri.src.startsWith("blob:"))URL.revokeObjectURL(ri.src);ri.src=URL.createObjectURL(reviewBlob);
 }
 function showReview(){
@@ -581,7 +583,7 @@ async function handleFile(file){
     await prepSheet(cur.slot,cur.stage);
     cur.date=file.lastModified?new Date(file.lastModified):new Date();
     boxAR=im.naturalWidth/im.naturalHeight;
-    const k=Math.min(1,1920/Math.max(im.naturalWidth,im.naturalHeight));
+    const k=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));
     const c=document.createElement("canvas");c.width=Math.round(im.naturalWidth*k);c.height=Math.round(im.naturalHeight*k);
     c.getContext("2d").drawImage(im,0,0,c.width,c.height);
     raw=c;setLive(false);await compose();showReview();fitBox();
@@ -657,6 +659,7 @@ $("#btnSaveSet").onclick=()=>{
 };
 
 /* ---------- 報告書 ---------- */
+const SC=2; // 1240x1754 の座標で描き、2倍（約300dpi）で書き出す
 const PW=1240,PH=1754,M=90,BOT=PH-110,RH=44,NOTE_W=300,GAP=16;
 const FONTD='"Zen Kaku Gothic New","BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif';
 function txt(g,s,x,y,size,o){o=o||{};g.font=(o.bold?"700 ":"400 ")+size+"px "+(o.display?FONTD:FONT);g.fillStyle=o.color||"#18242e";g.textAlign=o.align||"left";g.fillText(s,x,y)}
@@ -682,7 +685,7 @@ async function loadPhoto(s,stage){const b=await pGet(pk(s.id,stage));if(!b)retur
 async function renderPages(onProgress){
   try{await document.fonts.ready}catch(e){}
   const cfg=D.cfg,meta=D.meta,st=cfg.stages,N=st.length;
-  const cv=document.createElement("canvas");cv.width=PW;cv.height=PH;const g=cv.getContext("2d");g.textBaseline="middle";
+  const cv=document.createElement("canvas");cv.width=PW*SC;cv.height=PH*SC;const g=cv.getContext("2d");g.textBaseline="middle";g.imageSmoothingQuality="high";
   let slots=cfg.slots.map((s,i)=>({s,i}));
   if(cfg.hideEmpty!==false)slots=slots.filter(o=>st.some(x=>keys.has(pk(o.s.id,x))));
   const metaRows=[["現場名",meta.site],["撮影日",fmtDate(meta.date)],["作業内容",meta.work]].filter(r=>String(r[1]||"").trim());
@@ -694,6 +697,7 @@ async function renderPages(onProgress){
   const total=plan.length,out=[];
   for(let p=0;p<total;p++){
     const pg=plan[p];
+    g.setTransform(SC,0,0,SC,0,0);
     g.fillStyle="#fff";g.fillRect(0,0,PW,PH);
     g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
     let y;
@@ -720,7 +724,7 @@ async function renderPages(onProgress){
     g.strokeStyle="#c9d1d6";g.lineWidth=1;g.beginPath();g.moveTo(M,PH-70);g.lineTo(PW-M,PH-70);g.stroke();
     txt(g,[cfg.company,meta.site].filter(Boolean).join("　"),M,PH-48,18,{color:"#5b6872"});
     txt(g,(p+1)+" / "+total,PW-M,PH-48,18,{color:"#5b6872",align:"right"});
-    out.push(cv.toDataURL("image/jpeg",.82));
+    out.push(cv.toDataURL("image/jpeg",.9));
     if(onProgress)onProgress(p+1,total);
   }
   return out;
