@@ -131,6 +131,23 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 #sig{width:100%;height:160px;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none}
 .sigline{position:absolute;left:16px;right:16px;bottom:34px;border-bottom:1px dashed #b9c0ca;pointer-events:none}
 .sigph{position:absolute;left:16px;bottom:10px;font-size:11px;color:#8a93a0;pointer-events:none}
+#sig{cursor:pointer}
+.sf{position:fixed;inset:0;z-index:1000;background:#eef1f5;color:#111;display:flex;flex-direction:column;gap:10px;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));
+  touch-action:none;overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.sf-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 12px}
+.sf-top b{font-size:17px}
+.sf-top span{font-size:13px;color:#4b5563}
+.sf-area{position:relative;flex:1;min-height:120px;background:#fff;border:2px solid #1f4e8c;border-radius:12px;overflow:hidden}
+.sf-cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.sf-line{position:absolute;left:6%;right:6%;bottom:28%;border-bottom:2px dashed #b9c0ca;pointer-events:none}
+.sf-ph{position:absolute;left:6%;right:6%;top:30%;text-align:center;font-size:20px;color:#a3abb6;pointer-events:none}
+.sf-btns{display:grid;grid-template-columns:1fr 1fr 1.5fr;gap:10px}
+.sf-btns button{border:1px solid #c3cad4;background:#fff;color:#111;border-radius:10px;padding:14px 6px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
+.sf-btns .ok{background:#1f4e8c;border-color:#1f4e8c;color:#fff}
+.sf-btns button:disabled{opacity:.45}
+@media (orientation:landscape) and (max-height:500px){.sf{gap:6px}.sf-btns button{padding:9px 6px}.sf-top span.rot{display:none}}
+
 .signwarn{background:var(--ng);color:#fff;font-weight:700}
 .ngstrip{grid-column:2;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;background:var(--chip);border-radius:8px;padding:8px}
 .ngshot{display:flex;flex-direction:column;gap:4px;width:96px}
@@ -266,7 +283,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <h2>営業担当者・お客様ご確認</h2>
       <label class="f">営業担当者<input id="m-sales" autocomplete="off"></label>
       <div class="f">お客様ご確認（サイン）
-        <div class="sigbox"><canvas id="sig" aria-label="サイン欄"></canvas><div class="sigline"></div><div class="sigph" id="sigph">ここに指でサインしてもらってください</div></div>
+        <div class="sigbox"><canvas id="sig" role="button" tabindex="0" aria-label="サイン欄（押すと大きな画面でサインできます）"></canvas><div class="sigline"></div><div class="sigph" id="sigph">ここを押すと大きな画面でサインできます</div></div>
         <div class="toolbar" style="justify-content:space-between"><span class="hint" id="sigInfo"></span><button class="btn" id="sigClear" style="padding:6px 12px;font-size:13px">サインを消す</button></div>
       </div>
       <p class="hint">空欄の項目は報告書に空欄のまま載ります。</p>
@@ -745,14 +762,59 @@ function sizePad(){
   const r=pad.getBoundingClientRect();if(!r.width||Math.abs(r.width-padW)<1)return;padW=r.width;
   const d=window.devicePixelRatio||1;pad.width=r.width*d;pad.height=r.height*d;
   pctx=pad.getContext("2d");pctx.setTransform(d,0,0,d,0,0);pctx.lineWidth=2.4;pctx.lineCap="round";pctx.lineJoin="round";pctx.strokeStyle="#111";
-  const sig=R().meta.signature;if(sig){const im=new Image();im.onload=()=>pctx.drawImage(im,0,0,r.width,r.height);im.src=sig}
+  const sig=R().meta.signature;if(sig)drawSigPreview(pctx,sig,r.width,r.height)
 }
-const ppos=e=>{const r=pad.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top}};
-pad.addEventListener("pointerdown",e=>{sizePad();if(!pctx)return;drawing=true;last=ppos(e);try{pad.setPointerCapture(e.pointerId)}catch(_){}
-  pctx.beginPath();pctx.arc(last.x,last.y,1.1,0,7);pctx.fillStyle="#111";pctx.fill();$("#sigph").hidden=true});
-pad.addEventListener("pointermove",e=>{if(!drawing)return;const p=ppos(e);pctx.beginPath();pctx.moveTo(last.x,last.y);pctx.lineTo(p.x,p.y);pctx.stroke();last=p});
-const endDraw=()=>{if(!drawing)return;drawing=false;const m=R().meta;m.signature=pad.toDataURL("image/png");m.signedAt=Date.now();m.signHash=contentHash();persist();renderSignState()};
-pad.addEventListener("pointerup",endDraw);pad.addEventListener("pointercancel",endDraw);
+/* ---- 全画面サイン ---- */
+const SF=(()=>{
+  let ov,cv,g,strokes=[],cur=null,baseW=0,baseH=0,onSave=null,scrollY=0;
+  const q=s=>ov.querySelector(s);
+  function build(){
+    ov=document.createElement("div");ov.className="sf";ov.hidden=true;ov.setAttribute("role","dialog");ov.setAttribute("aria-label","サイン");
+    ov.innerHTML='<div class="sf-top"><b>お客様ご確認のサイン</b><span>枠の中に指で大きくサインしてください</span><span class="rot">横向きにするとさらに広く書けます</span></div>'+
+      '<div class="sf-area"><canvas class="sf-cv"></canvas><div class="sf-line"></div><div class="sf-ph">ここにサイン</div></div>'+
+      '<div class="sf-btns"><button type="button" data-a="cancel">キャンセル</button><button type="button" data-a="clear">書き直す</button><button type="button" data-a="ok" class="ok">決定</button></div>';
+    document.body.appendChild(ov);
+    cv=q(".sf-cv");
+    const pt=e=>{const r=cv.getBoundingClientRect(),s=scale();return {x:(e.clientX-r.left)/s,y:(e.clientY-r.top)/s}};
+    cv.addEventListener("pointerdown",e=>{e.preventDefault();if(!strokes.length){const r=cv.getBoundingClientRect();baseW=r.width;baseH=r.height}
+      cur=[pt(e)];strokes.push(cur);try{cv.setPointerCapture(e.pointerId)}catch(_){}state();redraw()});
+    cv.addEventListener("pointermove",e=>{if(!cur)return;e.preventDefault();(e.getCoalescedEvents?e.getCoalescedEvents():[e]).forEach(x=>cur.push(pt(x)));redraw()});
+    const end=()=>{cur=null};cv.addEventListener("pointerup",end);cv.addEventListener("pointercancel",end);cv.addEventListener("lostpointercapture",end);
+    ["touchstart","touchmove"].forEach(t=>ov.addEventListener(t,e=>{if(!e.target.closest("button"))e.preventDefault()},{passive:false}));
+    ov.addEventListener("click",e=>{const b=e.target.closest("[data-a]");if(!b)return;const a=b.dataset.a;
+      if(a==="clear"){strokes=[];state();redraw()}
+      else if(a==="cancel")close();
+      else if(a==="ok"){if(strokes.length){const url=exportImg();close();onSave&&onSave(url)}}});
+    document.addEventListener("keydown",e=>{if(!ov.hidden&&e.key==="Escape")close()});
+    window.addEventListener("resize",()=>{if(!ov.hidden)requestAnimationFrame(size)});
+  }
+  function scale(){if(!strokes.length||!baseW)return 1;const r=cv.getBoundingClientRect();return Math.min(r.width/baseW,r.height/baseH)}
+  function lw(){const r=cv.getBoundingClientRect();return Math.max(3,Math.min(r.width,r.height)/80)}
+  function size(){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);
+    g=cv.getContext("2d");g.setTransform(d,0,0,d,0,0);redraw()}
+  function paint(ctx,list,s,ox,oy,w){ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle="#111";ctx.fillStyle="#111";ctx.lineWidth=w;
+    list.forEach(st=>{if(st.length===1){ctx.beginPath();ctx.arc(st[0].x*s+ox,st[0].y*s+oy,w/2,0,7);ctx.fill();return}
+      ctx.beginPath();ctx.moveTo(st[0].x*s+ox,st[0].y*s+oy);
+      for(let i=1;i<st.length-1;i++){const a=st[i],b=st[i+1];ctx.quadraticCurveTo(a.x*s+ox,a.y*s+oy,(a.x+b.x)/2*s+ox,(a.y+b.y)/2*s+oy)}
+      const z=st[st.length-1];ctx.lineTo(z.x*s+ox,z.y*s+oy);ctx.stroke()})}
+  function redraw(){if(!g)return;const r=cv.getBoundingClientRect();g.clearRect(0,0,r.width,r.height);paint(g,strokes,scale(),0,0,lw())}
+  function state(){q(".sf-ph").hidden=strokes.length>0;q('[data-a="ok"]').disabled=!strokes.length;q('[data-a="clear"]').disabled=!strokes.length}
+  function exportImg(){
+    let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;strokes.forEach(st=>st.forEach(p=>{x0=Math.min(x0,p.x);y0=Math.min(y0,p.y);x1=Math.max(x1,p.x);y1=Math.max(y1,p.y)}));
+    const s0=scale(),w0=lw()/s0,pad=w0*2+6;x0-=pad;y0-=pad;x1+=pad;y1+=pad;
+    const bw=Math.max(1,x1-x0),bh=Math.max(1,y1-y0),k=Math.min(1000/bw,300/bh,3);
+    const c=document.createElement("canvas");c.width=Math.ceil(bw*k);c.height=Math.ceil(bh*k);
+    paint(c.getContext("2d"),strokes,k,-x0*k,-y0*k,Math.max(2,w0*k));return c.toDataURL("image/png")}
+  function lock(on){const de=document.documentElement,b=document.body;
+    if(on){scrollY=window.scrollY;de.style.overflow="hidden";b.style.overflow="hidden"}else{de.style.overflow="";b.style.overflow="";window.scrollTo(0,scrollY)}}
+  function open(cb){if(!ov)build();onSave=cb;strokes=[];cur=null;baseW=baseH=0;ov.hidden=false;lock(true);state();requestAnimationFrame(size)}
+  function close(){ov.hidden=true;cur=null;lock(false)}
+  return {open};
+})();
+function drawSigPreview(ctx,url,w,h){const im=new Image();im.onload=()=>{const k=Math.min(w/im.naturalWidth,(h-16)/im.naturalHeight);
+  const dw=im.naturalWidth*k,dh=im.naturalHeight*k;ctx.drawImage(im,(w-dw)/2,(h-dh)/2,dw,dh)};im.src=url}
+const openSig=()=>SF.open(sig=>{const m=R().meta;m.signature=sig;m.signedAt=Date.now();m.signHash=contentHash();persist();padW=0;sizePad();renderSignState()});
+pad.addEventListener("click",openSig);pad.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openSig()}});
 $("#sigClear").onclick=()=>{const m=R().meta;m.signature="";m.signedAt=0;m.signHash="";persist();padW=0;sizePad();if(pctx)pctx.clearRect(0,0,pad.width,pad.height);renderSignState()};
 window.addEventListener("resize",()=>{if(!$("#p-info").hidden){padW=0;sizePad()}});
 function repLabel(r){return fmtDate(r.meta.date)+"　"+(r.meta.site||"現場名未入力")+"（"+r.tplName+"）"}
