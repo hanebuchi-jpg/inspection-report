@@ -396,10 +396,9 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <canvas id="boardPrev" width="800" height="600" aria-label="施工看板のプレビュー"></canvas>
     </div>
     <div class="card">
-      <h2>会社情報（すべての報告に共通）</h2>
-      <p class="hint">作業報告書（1ページ目）の右上に入ります。入力するとすぐ保存され、この端末のすべての報告・テンプレートに使われます。空欄の項目は載りません。</p>
+      <h2>住所・連絡先（すべての報告に共通）</h2>
+      <p class="hint">作業報告書（1ページ目）の右上、会社名のまわりに入ります。入力するとすぐ保存され、この端末のすべての報告・テンプレートに使われます。空欄の項目は載りません。</p>
       <div class="grid2">
-        <label class="f">会社名（差出人）<input id="setCompany"></label>
         <label class="f">キャッチコピー<input id="setSlogan" placeholder="例：“一歩先のキレイ”をお届けします。"></label>
         <label class="f">住所<input id="setAddress" placeholder="例：〒000-0000 〇〇市〇〇区…"></label>
         <label class="f">電話・FAX<input id="setTel" placeholder="例：TEL 000-000-0000　FAX 000-000-0000"></label>
@@ -408,7 +407,9 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     </div>
     <div class="card">
       <h2>報告書</h2>
+      <p class="hint">会社名はテンプレートごと（報告ごと）に設定できます。変更したら下の保存ボタンを押してください。</p>
       <div class="grid2">
+        <label class="f">会社名（差出人）<input id="setCompany"></label>
         <label class="f">チェック表・写真ページの見出し<input id="setTitle"></label>
       </div>
       <label class="tg"><input type="checkbox" id="setHideEmpty"> 写真が1枚もない箇所は報告書に載せない</label>
@@ -599,8 +600,8 @@ function rowSrc(r,board){
 }
 function workSummary(meta){const c=(meta.rows||[]).map(r=>String(r.content||"").trim()).filter(Boolean);return c.length?c.join("・"):(meta.work||"")}
 function boardRows(cfg,meta,slotName,stage){
-  const map={"現場名":meta.site,"箇所":slotName,"区分":STAGE_LABEL[stage]||"","日付":fmtDate(meta.date),"作業内容":workSummary(meta),"点検者":meta.inspector,"作業責任者":meta.inspector,"お客様名":meta.customer,"会社名":ORG().company};
-  const srcVal={slot:slotName,stage:map["区分"],date:map["日付"],site:meta.site,customer:meta.customer,work:map["作業内容"],leader:meta.inspector,company:ORG().company};
+  const map={"現場名":meta.site,"箇所":slotName,"区分":STAGE_LABEL[stage]||"","日付":fmtDate(meta.date),"作業内容":workSummary(meta),"点検者":meta.inspector,"作業責任者":meta.inspector,"お客様名":meta.customer,"会社名":cfg.company};
+  const srcVal={slot:slotName,stage:map["区分"],date:map["日付"],site:meta.site,customer:meta.customer,work:map["作業内容"],leader:meta.inspector,company:cfg.company};
   return (cfg.board.rows||[]).map(r=>{
     const l=String(r.l||"").trim(),src=rowSrc(r,cfg.board);
     if(src)return {l,v:String(srcVal[src]||"").trim()};
@@ -1026,7 +1027,7 @@ function fillSettings(){
   $("#setItems").value=cfg.items.map(i=>i.text).join("\n");
   $("#bdOn").checked=!!cfg.board.on;$("#bdPos").value=cfg.board.pos||"bl";$("#bdSize").value=cfg.board.size||"m";
   W.rows.forEach(r=>{r.src=rowSrc(r,cfg.board)});
-  $("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
+  $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
   fillOrg();
   $("#tplDefaults").hidden=!tplMode;
   if(tplMode){$("#tplRows").value=(tp.rows||[]).map(r=>[r.place||"",r.content||"",r.type||""].join("｜")).join("\n");$("#tplSales").value=tp.sales||""}
@@ -1063,8 +1064,8 @@ function renderBoardRows(){
   $("#bdAdd").disabled=W.rows.length>=MAX_BOARD;
 }
 $("#bdAdd").onclick=()=>{if(W.rows.length>=MAX_BOARD)return;W.rows.push({l:"",v:"",src:""});renderBoardRows();const i=W.rows.length-1;const el=$("#bdl-"+i);if(el)el.focus()};
-["bdOn","bdPos","bdSize"].forEach(id=>$("#"+id).addEventListener("input",drawBoardPreview));
-const ORG_FIELDS={company:"setCompany",slogan:"setSlogan",address:"setAddress",tel:"setTel"};
+["bdOn","bdPos","bdSize","setCompany"].forEach(id=>$("#"+id).addEventListener("input",drawBoardPreview));
+const ORG_FIELDS={slogan:"setSlogan",address:"setAddress",tel:"setTel"};
 ["input","change"].forEach(ev=>$("#p-set").addEventListener(ev,e=>{
   const id=e.target&&e.target.id||"";
   if(Object.values(ORG_FIELDS).includes(id)||id==="tplFileIn"||id==="tplNewName"||id==="tplLinkText")return;
@@ -1100,7 +1101,7 @@ function drawBoardPreview(){
   if(!$("#bdOn").checked){g.font="400 22px "+FONT;g.fillText("施工看板は入りません",Wd/2,H*.42);return}
   const rep=R(),firstSlot=lines($("#setSlots").value)[0]||"（箇所名）";
   const stage=STAGES.map(s=>s[0]).find(s=>$("#st-"+s).checked)||"before";
-  const tmp={company:ORG().company,board:{rows:W.rows}};
+  const tmp={company:$("#setCompany").value,board:{rows:W.rows}};
   drawBoard(g,Wd,H,boardRows(tmp,rep.meta,firstSlot,stage),$("#bdPos").value,$("#bdSize").value);
 }
 function readDraft(){
@@ -1124,7 +1125,7 @@ function readDraft(){
   const ipool=icur;
   const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
-  const cfg={stages,slots,items,board,company:ORG().company,slogan:ORG().slogan,address:ORG().address,tel:ORG().tel,
+  const cfg={stages,slots,items,board,company:$("#setCompany").value.trim(),slogan:ORG().slogan,address:ORG().address,tel:ORG().tel,
     title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked};
   return {cfg,lose,dropItems:ipool.map(x=>x.id),removedSlots:cur,removedItems:icur,arch,iarch};
 }
@@ -1173,7 +1174,7 @@ function readTplDraft(){
   const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
   const rows=lines($("#tplRows").value).slice(0,MAX).map(l=>{const p=l.split(/[｜|]/).map(x=>x.trim());const tp=p[2]==="スポット"?"スポット":(p[2]==="定期"?"定期":"");return {place:p[0]||"",content:p[1]||"",type:tp||(p.length>2?"":"定期")}});
-  return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:ORG().company,slogan:ORG().slogan,address:ORG().address,tel:ORG().tel,
+  return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),slogan:ORG().slogan,address:ORG().address,tel:ORG().tel,
     title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:$("#tplSales").value.trim()}};
 }
 function saveTplDraft(){
@@ -1195,7 +1196,7 @@ $("#btnTplApply").onclick=async()=>{
   STAGES.forEach(([k])=>$("#st-"+k).checked=c.stages.includes(k));
   $("#setSlots").value=t.slots.join("\n");$("#setItems").value=t.items.join("\n");
   $("#bdOn").checked=!!c.board.on;$("#bdPos").value=c.board.pos||"bl";$("#bdSize").value=c.board.size||"m";
-  $("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
+  $("#setCompany").value=c.company;$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
   W={rows:clone(c.board.rows||[])};W.rows.forEach(r=>{r.src=rowSrc(r,c.board)});renderBoardRows();updateCounters();drawBoardPreview();
   const ok=await applySettings();
   if(ok){const rep=R();rep.tplId=t.id;rep.tplName=t.name;persist();renderTplList();renderReports();toast("テンプレート「"+t.name+"」の内容を表示中の報告に使いました")}
@@ -1334,7 +1335,7 @@ function txt(g,s,x,y,size,o){o=o||{};g.font=(o.bold?"700 ":"400 ")+size+"px "+(o
 function footer(g,rep,n,total){
   g.fillStyle="#fff";g.fillRect(0,PH-90,PW,90);
   g.strokeStyle="#c9d1d6";g.lineWidth=1;g.beginPath();g.moveTo(M,PH-70);g.lineTo(PW-M,PH-70);g.stroke();
-  txt(g,[ORG().company,rep.meta.site].filter(Boolean).join("　"),M,PH-48,18,{color:"#5b6872"});
+  txt(g,[rep.cfg.company,rep.meta.site].filter(Boolean).join("　"),M,PH-48,18,{color:"#5b6872"});
   txt(g,n+" / "+total,PW-M,PH-48,18,{color:"#5b6872",align:"right"});
 }
 function drawContain(g,img,x,y,w,h){
@@ -1389,7 +1390,7 @@ async function drawWorkPage(g,rep){
   let cy=50;
   const org=ORG();
   if(org.slogan){T(F(org.slogan,330,10.5),X1,cy,10.5,{align:"right"});cy+=16}
-  if(org.company){T(F(org.company,330,20,true),X1,cy+6,20,{bold:true,align:"right"});cy+=30}
+  if(cfg.company){T(F(cfg.company,330,20,true),X1,cy+6,20,{bold:true,align:"right"});cy+=30}
   if(org.address){T(F(org.address,330,12),X1,cy,12,{align:"right"});cy+=17}
   if(org.tel){T(F(org.tel,330,12),X1,cy,12,{align:"right"});cy+=17}
   // names + date
@@ -1499,7 +1500,7 @@ async function renderPages(onProgress,sel){
       g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
       txt(g,cfg.title||"点検報告書",M,110,52,{bold:true,display:true});
       txt(g,"提出日 "+fmtDate(today()),PW-M,96,20,{align:"right",color:"#5b6872"});
-      if(ORG().company)txt(g,ORG().company,PW-M,128,22,{align:"right",bold:true});
+      if(cfg.company)txt(g,cfg.company,PW-M,128,22,{align:"right",bold:true});
       let y=180;const lw=170;
       g.strokeStyle="#9aa8b1";g.lineWidth=1.5;
       metaRows.forEach(([k,v])=>{g.fillStyle="#e3e9ec";g.fillRect(M,y,lw,RH);g.strokeRect(M,y,PW-2*M,RH);g.beginPath();g.moveTo(M+lw,y);g.lineTo(M+lw,y+RH);g.stroke();
