@@ -15,6 +15,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 /* Layout: 入力タブ（現場ごとのカード縦積み・スマホ優先）と、A4紙面プレビュータブの2画面 */
 :root{
@@ -111,6 +112,7 @@ textarea{resize:vertical}
 .btn.warn{background:var(--danger);color:#fff}
 .actions{display:flex;gap:10px;flex-wrap:wrap}
 .actions .btn{flex:1 1 160px}
+.pdf-msg{margin:8px 0 0;font-size:13px;color:#5b6872}
 
 /* ---- 紙面（常に白い紙・黒インク） ---- */
 .paper-wrap{overflow:hidden;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);background:#fff;align-self:center}
@@ -255,9 +257,12 @@ body{margin:0}
 <div class="wrap" id="view-out" hidden>
   <div class="actions">
     <button class="btn ghost" data-tab="in">入力に戻る</button>
-    <button class="btn ghost" id="printBtn">印刷・PDF</button>
-    <button class="btn primary" id="makeImg">画像で保存する</button>
+    <button class="btn ghost" id="printBtn">印刷</button>
+    <button class="btn ghost" id="makeImg">画像で保存する</button>
+    <button class="btn ghost" id="pdfSave">PDFを保存</button>
+    <button class="btn primary" id="pdfShare">PDFを共有</button>
   </div>
+  <p class="pdf-msg" id="pdfMsg" aria-live="polite" hidden></p>
   <div class="paper-wrap" id="paperWrap"><div id="paper" class="paper"></div></div>
 </div>
 </main>
@@ -464,25 +469,72 @@ function fitPaper(){
 }
 
 /* ---- 画像化 ---- */
+async function paperCanvas(){
+  await document.fonts.ready;
+  const clone=$('#paper').cloneNode(true);clone.removeAttribute('id');clone.style.transform='none';
+  const box=document.createElement('div');Object.assign(box.style,{position:'absolute',left:'-10000px',top:'0',width:'794px'});
+  box.appendChild(clone);document.body.appendChild(box);
+  try{return await html2canvas(clone,{scale:2,backgroundColor:'#ffffff',logging:false,width:794,height:clone.offsetHeight,windowWidth:794,scrollX:0,scrollY:0})}
+  finally{box.remove()}
+}
 $('#makeImg').onclick=async()=>{
   const ov=$('#overlay'),img=$('#ovImg');ov.hidden=false;img.hidden=true;$('#ovMsg').textContent='画像を作成しています…';
   try{
-    await document.fonts.ready;
-    const clone=$('#paper').cloneNode(true);clone.removeAttribute('id');clone.style.transform='none';
-    const box=document.createElement('div');Object.assign(box.style,{position:'absolute',left:'-10000px',top:'0',width:'794px'});
-    box.appendChild(clone);document.body.appendChild(box);
-    const c=await html2canvas(clone,{scale:2,backgroundColor:'#ffffff',logging:false,width:794,height:clone.offsetHeight,windowWidth:794,scrollX:0,scrollY:0});box.remove();
+    const c=await paperCanvas();
     img.src=c.toDataURL('image/png');img.hidden=false;
     $('#ovMsg').textContent='画像を長押し（パソコンは右クリック）して保存・共有してください';
   }catch(err){$('#ovMsg').textContent='画像を作成できませんでした。画面を再読み込みしてもう一度お試しください。'}
 };
 $('#printBtn').onclick=()=>{renderPaper();setTimeout(()=>window.print(),50)};
+
+/* ---- PDF（保存・共有） ---- */
+function pdfMsg(t){const m=$('#pdfMsg');m.textContent=t||'';m.hidden=!t}
+function pdfName(){
+  const safe=v=>String(v||'').replace(/[\\/:*?"<>|\s]+/g,'_').replace(/^_+|_+$/g,'');
+  return [(S.date||'').replace(/-/g,''),safe(S.site)||safe(S.customer)||'現場','作業報告書'].filter(Boolean).join('_')+'.pdf';
+}
+async function makePdf(){
+  if(!window.jspdf){pdfMsg('PDFの部品を読み込めませんでした。電波のある場所で開き直してください');return null}
+  renderPaper();
+  const c=await paperCanvas();
+  const pdf=new window.jspdf.jsPDF({unit:'mm',format:'a4',compress:true});
+  let w=210,h=210*c.height/c.width;if(h>297){h=297;w=297*c.width/c.height}
+  pdf.addImage(c.toDataURL('image/jpeg',.92),'JPEG',(210-w)/2,0,w,h);
+  return new File([pdf.output('blob')],pdfName(),{type:'application/pdf'});
+}
+async function saveBlob(f){
+  try{if(window.claude&&window.claude.use){const d=await window.claude.use('downloads');if(d){await d.save({filename:f.name,data:f});pdfMsg('保存しました：'+f.name);return}}}
+  catch(e){if(e&&e.code==='declined'){pdfMsg('');return}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);pdfMsg('保存しました：'+f.name);
+}
+async function withBusy(btn,label,fn){btn.disabled=true;btn.textContent='作成中…';try{return await fn()}catch(e){pdfMsg('PDFを作成できませんでした。もう一度お試しください');return null}finally{btn.disabled=false;btn.textContent=label}}
+$('#pdfSave').onclick=async e=>{const b=e.currentTarget;const f=await withBusy(b,'PDFを保存',makePdf);if(f)await saveBlob(f)};
+let canFileShare=false;try{canFileShare=!!(navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.pdf',{type:'application/pdf'})]}))}catch(e){}
+let sharePrep=null; // 作ったPDFを少しの間とっておき、2回目のタップですぐ共有する
+$('#pdfShare').onclick=async e=>{
+  const b=e.currentTarget,L='PDFを共有';
+  if(sharePrep&&Date.now()-sharePrep.t>120000)sharePrep=null;
+  let f=sharePrep&&sharePrep.file;
+  if(!f){f=await withBusy(b,L,makePdf);if(!f)return;sharePrep={t:Date.now(),file:f}}
+  b.textContent=L;pdfMsg('');
+  if(!canFileShare){await saveBlob(f);pdfMsg('この端末では共有画面を開けないため、PDFを保存しました。保存したPDFを送ってください');sharePrep=null;return}
+  try{await navigator.share({files:[f],title:'作業報告書'});sharePrep=null}
+  catch(err){
+    if(err.name==='AbortError'){sharePrep=null;return}
+    if(err.name==='NotAllowedError'){b.textContent='準備できました。もう一度押して共有';return}
+    pdfMsg('共有できませんでした。PDFを保存して送ってください');sharePrep=null;
+  }
+};
+// 入力を変えたら、とっておいたPDFは使わない
+document.addEventListener('input',()=>{sharePrep=null;const b=$('#pdfShare');if(b&&!b.disabled)b.textContent='PDFを共有'});
 $('#ovClose').onclick=()=>{$('#overlay').hidden=true};
 
 /* ---- タブ ---- */
 function show(t){
   $('#view-in').hidden=t!=='in';$('#view-out').hidden=t!=='out';
   $('#tab-in').setAttribute('aria-selected',t==='in');$('#tab-out').setAttribute('aria-selected',t==='out');
+  sharePrep=null;$('#pdfShare').textContent='PDFを共有';pdfMsg('');
   if(t==='out')renderPaper();else{padW=0;sizePad()}
   window.scrollTo(0,0);
 }
