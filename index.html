@@ -1403,11 +1403,15 @@ async function drawWorkPage(g,rep){
   dash();for(let i=1;i<4;i++)hl(DX,X1,TOP+RHd*i);
   spacedC("作業日",DX+DW/2,TOP+RHd/2,13,.6);
   const [yy,mo,dd]=(m.date||"").split("-"),[sh,sm]=(m.start||"").split(":"),[eh,em]=(m.end||"").split(":");
-  const nv=v=>v?String(+v):"";const nw=48,lw=(DW-3*nw)/3;
-  const cell=(row,cells)=>{let x=DX;const y=TOP+RHd*row+RHd/2;cells.forEach(([w,txt_,num])=>{if(num)T(txt_,x+w-6,y,15,{bold:true,align:"right"});else T(txt_,x+w/2,y,13,{align:"center"});x+=w})};
-  cell(1,[[nw,nv(yy),1],[lw,"年"],[nw,nv(mo),1],[lw,"月"],[nw,nv(dd),1],[lw,"日"]]);
-  cell(2,[[nw+lw,"（開始）"],[nw,sh?nv(sh):"",1],[lw,"時"],[nw,sh&&sm!=null?sm:"",1],[0,""]]);T("分",X1-lw/2+0,TOP+RHd*2.5,13,{align:"center"});
-  cell(3,[[nw+lw,"（終了）"],[nw,eh?nv(eh):"",1],[lw,"時"],[nw,eh&&em!=null?em:"",1],[0,""]]);T("分",X1-lw/2,TOP+RHd*3.5,13,{align:"center"});
+  const nv=v=>v?String(+v):"";
+  // three equal groups per row; in each, the number sits right next to its unit so the columns line up
+  const GW=DW/3,NUMR=GW*0.62,UNITL=GW*0.68;
+  const grp=(row,gi,num,unit)=>{const x=DX+GW*gi,y=TOP+RHd*row+RHd/2;
+    if(num!=null&&num!=="")T(num,x+NUMR,y,15,{bold:true,align:"right"});
+    T(unit,x+UNITL,y,13)};
+  grp(1,0,nv(yy),"年");grp(1,1,nv(mo),"月");grp(1,2,nv(dd),"日");
+  T("（開始）",DX+GW/2,TOP+RHd*2.5,13,{align:"center"});grp(2,1,sh?nv(sh):"","時");grp(2,2,sh&&sm!=null?sm:"","分");
+  T("（終了）",DX+GW/2,TOP+RHd*3.5,13,{align:"center"});grp(3,1,eh?nv(eh):"","時");grp(3,2,eh&&em!=null?em:"","分");
   // staff sizing first (from the bottom up)
   const ws=(m.workers||[]).filter(w=>w&&String(w).trim());const wslots=Math.max(6,Math.ceil(ws.length/3)*3),wrowsN=wslots/3;
   const SR=30,staffH=SR*(2+wrowsN);
