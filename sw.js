@@ -1,4 +1,4 @@
-const VERSION = "v28";
+const VERSION = "v29";
 const CACHE = "inspect-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./apple-touch-icon.png",
   "./sagyo.html", "./manifest-sagyo.webmanifest", "./sagyo-icon-192.png", "./sagyo-icon-512.png", "./sagyo-icon-maskable-512.png", "./sagyo-apple-touch-icon.png",

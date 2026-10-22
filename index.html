@@ -128,10 +128,9 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .xbtn{border:0;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;border-radius:6px}
 .xbtn:hover{color:var(--ng)}
 .sigbox{position:relative}
-#sig{width:100%;height:160px;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none}
+#sig{width:100%;height:160px;display:block;background:#fff;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 .sigline{position:absolute;left:16px;right:16px;bottom:34px;border-bottom:1px dashed #b9c0ca;pointer-events:none}
 .sigph{position:absolute;left:16px;bottom:10px;font-size:11px;color:#8a93a0;pointer-events:none}
-#sig{cursor:pointer}
 .sf{position:fixed;inset:0;z-index:1000;background:#eef1f5;color:#111;display:flex;flex-direction:column;gap:10px;
   padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));
   touch-action:none;overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -776,11 +775,11 @@ function renderSignState(){
   $("#sigInfo").textContent=m.signature&&m.signedAt?"サイン日時："+fmtTime(m.signedAt):"";
   $("#signWarn").hidden=!signChanged();
 }
-const pad=$("#sig");let pctx=null,drawing=false,last=null,padW=0;
+const pad=$("#sig");let pctx=null,padW=0;
 function sizePad(){
   const r=pad.getBoundingClientRect();if(!r.width||Math.abs(r.width-padW)<1)return;padW=r.width;
   const d=window.devicePixelRatio||1;pad.width=r.width*d;pad.height=r.height*d;
-  pctx=pad.getContext("2d");pctx.setTransform(d,0,0,d,0,0);pctx.lineWidth=2.4;pctx.lineCap="round";pctx.lineJoin="round";pctx.strokeStyle="#111";
+  pctx=pad.getContext("2d");pctx.setTransform(d,0,0,d,0,0);
   const sig=R().meta.signature;if(sig)drawSigPreview(pctx,sig,r.width,r.height)
 }
 /* ---- 全画面サイン ---- */
