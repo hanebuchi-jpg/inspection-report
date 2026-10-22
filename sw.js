@@ -1,7 +1,8 @@
-const VERSION = "v30";
+const VERSION = "v31";
 const CACHE = "inspect-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./apple-touch-icon.png",
   "./sagyo.html", "./manifest-sagyo.webmanifest", "./sagyo-icon-192.png", "./sagyo-icon-512.png", "./sagyo-icon-maskable-512.png", "./sagyo-apple-touch-icon.png",
+  "./kanryo.html", "./manifest-kanryo.webmanifest", "./kanryo-icon-192.png?v=1", "./kanryo-icon-512.png?v=1", "./kanryo-icon-maskable-512.png?v=1", "./kanryo-apple-touch-icon.png?v=1",
   "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
 self.addEventListener("install", e => {

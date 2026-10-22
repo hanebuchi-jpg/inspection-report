@@ -1,0 +1,18 @@
+{
+  "name": "O&K完了報告書",
+  "short_name": "O&K完了報告書",
+  "description": "施工前・後の写真とチェックリストから、作業完了報告書（お客様ご署名付き）のPDFを作成します",
+  "lang": "ja",
+  "id": "./kanryo.html",
+  "start_url": "./kanryo.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eef1f3",
+  "theme_color": "#0b3f7a",
+  "icons": [
+    {"src": "kanryo-icon-192.png?v=1", "sizes": "192x192", "type": "image/png"},
+    {"src": "kanryo-icon-512.png?v=1", "sizes": "512x512", "type": "image/png"},
+    {"src": "kanryo-icon-maskable-512.png?v=1", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
