@@ -121,6 +121,10 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .suffix input,.worker input{flex:1;min-width:0;font-size:15px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:9px 10px}
 .suffix>span,.worker .mk{color:var(--ink);font-size:14px;flex:none}
 .worker .mk{width:22px;text-align:center;color:var(--muted)}
+.witems{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-bottom:10px}
+.witems label{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;cursor:pointer}
+.witems label:has(input:checked){border-color:var(--accent,currentColor);font-weight:700}
+.witems input{width:20px;height:20px;flex:none}
 .wrow{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px}
 .wrow .no{color:var(--muted);font-size:13px;text-align:center;padding-top:28px;font-variant-numeric:tabular-nums}
 .wrow .bd{display:flex;flex-direction:column;gap:8px;min-width:0}
@@ -254,52 +258,45 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     </div>
     <div class="mode-note signwarn" id="signWarn" hidden>お客様のサインをもらった後に内容が変更されています。必要ならサインをもらい直してください。</div>
     <div class="card">
-      <h2>お客様・現場</h2>
-      <label class="f">お客様名<span class="suffix"><input id="m-customer" autocomplete="off"><span>様</span></span></label>
-      <label class="f">現場名<span class="suffix"><input id="m-site" autocomplete="off"><span>様</span></span></label>
+      <h2>店名・実施日</h2>
+      <label class="f">店名<span class="suffix"><input id="m-site" autocomplete="off"><span>店　御中</span></span></label>
+      <label class="f">店番<input id="m-storeNo" autocomplete="off" inputmode="numeric"></label>
       <div class="grid3">
-        <label class="f">作業日<input id="m-date" type="date"></label>
+        <label class="f">実施日<input id="m-date" type="date"></label>
         <label class="f">開始<input id="m-start" type="time"></label>
         <label class="f">終了<input id="m-end" type="time"></label>
       </div>
     </div>
     <div class="card">
-      <h2>作業箇所・作業内容</h2>
-      <div id="wrows" style="display:flex;flex-direction:column;gap:10px"></div>
-      <datalist id="dl-places"><option value="店内床面"><option value="バックヤード"><option value="トイレ"><option value="出入口・風除室"><option value="ガラス面"><option value="空調機"><option value="厨房"><option value="事務所"><option value="階段・通路"></datalist>
-      <datalist id="dl-contents"><option value="床面洗浄・ワックス塗布"><option value="剥離洗浄・ワックス塗布"><option value="カーペット洗浄"><option value="ガラス清掃"><option value="エアコンフィルター清掃"><option value="エアコン分解洗浄"><option value="トイレ清掃"><option value="害虫駆除"><option value="グリストラップ清掃"></datalist>
-      <div class="btnrow">
-        <button class="btn" id="addWRow">＋ 行を追加</button>
-        <button class="btn" id="copySlots">撮影箇所から作業箇所に写す</button>
-      </div>
+      <h2>社名・報告者名</h2>
+      <p class="hint" id="companyInfo"></p>
+      <label class="f">報告者名<input id="m-inspector" autocomplete="off"></label>
     </div>
     <div class="card">
-      <h2>作業者 <span class="slot-cnt" id="wcount"></span></h2>
-      <label class="f">作業責任者<span class="worker"><span class="mk">①</span><input id="m-inspector" autocomplete="off"></span></label>
-      <div class="f">作業員<div id="workers" style="display:flex;flex-direction:column;gap:8px"></div></div>
-      <div class="btnrow"><button class="btn" id="addWorker">＋ 作業員を追加</button></div>
+      <h2>作業項目</h2>
+      <p class="hint">行った作業にチェックを入れてください。</p>
+      <div class="witems" id="witems" role="group" aria-label="作業項目"></div>
+      <label class="f">その他<input id="m-otherWork" autocomplete="off" placeholder="例：階段剥離洗浄WAX"></label>
     </div>
     <div class="card">
-      <h2>作業報告・特記事項</h2>
-      <p class="hint">ワックス塗布数、剥離時期、駆除状況、設備状況、什器・備品・商品等の破損、緊急事態の有無など。下のボタンで項目名を追加できます。</p>
+      <h2>特記事項</h2>
+      <p class="hint">報告書には6行まで載ります。下のボタンで項目名を追加できます。</p>
       <div class="chips" id="noteChips">
+        <button type="button" data-t="スポット">スポット</button>
         <button type="button" data-t="ワックス塗布数：">ワックス塗布数</button>
         <button type="button" data-t="次回剥離時期：">剥離時期</button>
-        <button type="button" data-t="駆除状況：">駆除状況</button>
         <button type="button" data-t="設備状況：">設備状況</button>
         <button type="button" data-t="什器・備品・商品の破損：なし">破損なし</button>
-        <button type="button" data-t="緊急事態：なし">緊急事態なし</button>
       </div>
-      <textarea id="m-note" rows="6" class="list" aria-label="作業報告・特記事項"></textarea>
+      <textarea id="m-note" rows="6" class="list" aria-label="特記事項"></textarea>
     </div>
     <div class="card">
-      <h2>営業担当者・お客様ご確認</h2>
-      <label class="f">営業担当者<input id="m-sales" autocomplete="off"></label>
-      <div class="f">お客様ご確認（サイン）
-        <div class="sigbox"><canvas id="sig" role="button" tabindex="0" aria-label="サイン欄（押すと大きな画面でサインできます）"></canvas><div class="sigline"></div><div class="sigph" id="sigph">ここを押すと大きな画面でサインできます</div></div>
+      <h2>お客様ご署名</h2>
+      <div class="f">ご署名
+        <div class="sigbox"><canvas id="sig" role="button" tabindex="0" aria-label="ご署名欄（押すと大きな画面でサインできます）"></canvas><div class="sigline"></div><div class="sigph" id="sigph">ここを押すと大きな画面でサインできます</div></div>
         <div class="toolbar" style="justify-content:space-between"><span class="hint" id="sigInfo"></span><button class="btn" id="sigClear" style="padding:6px 12px;font-size:13px">サインを消す</button></div>
       </div>
-      <p class="hint">空欄の項目は報告書に空欄のまま載ります。</p>
+      <p class="hint">報告書の「日付」には、サインをもらった日が入ります。</p>
     </div>
   </section>
 
@@ -336,7 +333,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <div class="stat" id="repStat"></div>
       <div class="f">報告書に入れるもの（チェックしたものだけ出力します）</div>
       <div class="chkrow" role="group" aria-label="報告書に入れるもの">
-        <label class="tg"><input type="checkbox" class="outSel" id="out-cover" value="cover" checked> 作業報告書（1ページ目）</label>
+        <label class="tg"><input type="checkbox" class="outSel" id="out-cover" value="cover" checked> 作業完了報告書（1ページ目）</label>
         <label class="tg"><input type="checkbox" class="outSel" id="out-checks" value="checks" checked> チェック表</label>
         <label class="tg"><input type="checkbox" class="outSel" id="out-photos" value="photos" checked> 撮影箇所の写真</label>
         <label class="tg"><input type="checkbox" class="outSel" id="out-ng" value="ng" checked> 異常箇所の写真</label>
@@ -441,7 +438,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     </div>
     <div class="card">
       <h2>報告書</h2>
-      <p class="hint">会社名・キャッチコピー・住所・電話は作業報告書（1ページ目）の右上に入ります。テンプレートごと（報告ごと）に変えられます。空欄の項目は載りません。変更したら下の保存ボタンを押してください。</p>
+      <p class="hint">会社名は作業完了報告書（1ページ目）の「社名」に入ります。キャッチコピー・住所・電話は作業完了報告書には載りません。テンプレートごと（報告ごと）に変えられます。空欄の項目は載りません。変更したら下の保存ボタンを押してください。</p>
       <div class="grid2">
         <label class="f">会社名（差出人）<input id="setCompany"></label>
         <label class="f">キャッチコピー<input id="setSlogan" placeholder="例：“一歩先のキレイ”をお届けします。"></label>
@@ -452,10 +449,10 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <label class="tg"><input type="checkbox" id="setHideEmpty"> 写真が1枚もない箇所は報告書に載せない</label>
     </div>
     <div class="card" id="tplDefaults" hidden>
-      <h2>作業報告書の初期値</h2>
-      <p class="hint">このテンプレートで新しい報告を作ったときに、最初から入っている内容です。作業箇所は1行に「作業箇所｜作業内容｜定期」の形で書きます（「定期」は「スポット」も可）。</p>
-      <textarea id="tplRows" class="list" rows="5" placeholder="店内床面｜床面洗浄・ワックス塗布｜定期"></textarea>
-      <label class="f">営業担当者<input id="tplSales"></label>
+      <h2>作業完了報告書の初期値</h2>
+      <p class="hint">このテンプレートで新しい報告を作ったときに、最初からチェックが入っている作業項目です。</p>
+      <div class="witems" id="tplWItems" role="group" aria-label="初期値の作業項目"></div>
+      <label class="f">その他<input id="tplOther" autocomplete="off"></label>
     </div>
     <div class="savebar">
       <button class="btn pri" id="btnSaveSet">この報告に設定を保存</button>
@@ -548,19 +545,25 @@ function cfgFromTpl(t){
 function tplFromCfg(cfg,id,name,meta){
   const rows=meta&&Array.isArray(meta.rows)?meta.rows.filter(r=>r.place||r.content).map(r=>({place:r.place||"",content:r.content||"",type:r.type||""})):[];
   return {id,name,stages:[...cfg.stages],slots:cfg.slots.map(s=>s.name),items:cfg.items.map(i=>i.text),board:clone(cfg.board),
-    company:cfg.company,slogan:cfg.slogan||"",address:cfg.address||"",tel:cfg.tel||"",title:cfg.title,hideEmpty:cfg.hideEmpty,rows,sales:meta?meta.sales||"":""};
+    company:cfg.company,slogan:cfg.slogan||"",address:cfg.address||"",tel:cfg.tel||"",title:cfg.title,hideEmpty:cfg.hideEmpty,rows,sales:meta?meta.sales||"":"",workItems:meta?cleanWI(meta.workItems):[],otherWork:meta?meta.otherWork||"":""};
 }
-function blankMeta(){return {customer:"",site:"",date:today(),start:"",end:"",inspector:"",workers:[],rows:[{place:"",content:"",type:"定期"}],note:"",sales:"",signature:"",signedAt:0,signHash:""}}
+/* 作業完了報告書の作業項目（Excel書式と同じ並び。null は空き枠） */
+const WORK_GRID=[["日常清掃増員対応","巡回清掃増員対応",null],["フードコート清掃","フードコートテーブル管理",null],["床面洗浄ワックス清掃","床面剥離清掃","剥離廃液処理"],["ガラス清掃","犬走り清掃","ゴミ庫清掃"],["冷ケース清掃",null,null],["空調フィルター清掃","ファンコイル洗浄","空調機洗浄"],["グリスフィルター清掃",null,null]];
+const WORK_ITEMS=[];WORK_GRID.forEach(r=>r.forEach(x=>{if(x)WORK_ITEMS.push(x)}));
+const cleanWI=a=>(Array.isArray(a)?a:[]).filter(x=>WORK_ITEMS.includes(x));
+function blankMeta(){return {customer:"",site:"",storeNo:"",date:today(),start:"",end:"",inspector:"",workers:[],rows:[{place:"",content:"",type:"定期"}],workItems:[],otherWork:"",note:"",sales:"",signature:"",signedAt:0,signHash:""}}
 function fixMeta(m){
   const b=blankMeta();
   if(!Array.isArray(m.rows)||!m.rows.length)m.rows=m.work?[{place:"",content:m.work,type:"定期"}]:clone(b.rows);
   for(const k in b)if(m[k]==null)m[k]=k==="date"?b.date:clone(b[k]);
   if(!Array.isArray(m.workers))m.workers=[];
+  m.workItems=cleanWI(m.workItems);
   return m;
 }
 function newReport(tpl,prev){
   return {id:"r"+uid(),tplId:tpl.id,tplName:tpl.name,created:Date.now(),
-    meta:Object.assign(blankMeta(),{customer:prev?prev.meta.customer||"":"",site:prev?prev.meta.site:"",inspector:prev?prev.meta.inspector:"",
+    meta:Object.assign(blankMeta(),{customer:prev?prev.meta.customer||"":"",site:prev?prev.meta.site:"",storeNo:prev?prev.meta.storeNo||"":"",inspector:prev?prev.meta.inspector:"",
+      workItems:cleanWI(tpl.workItems),otherWork:tpl.otherWork||"",
       workers:prev&&Array.isArray(prev.meta.workers)?[...prev.meta.workers]:[],
       rows:Array.isArray(tpl.rows)&&tpl.rows.length?clone(tpl.rows):[{place:"",content:"",type:"定期"}],
       sales:tpl.sales||(prev?prev.meta.sales||"":"")}),
@@ -573,7 +576,7 @@ try{D=JSON.parse(localStorage.getItem(LS))}catch(e){D=null}
 if(!D||!Array.isArray(D.templates)||!Array.isArray(D.reports)||!D.reports.length){
   D={templates:defaultTemplates(),reports:[],current:null};
   const r=newReport(D.templates[0]);
-  r.meta.site="（例）〇〇ショッピングセンター";r.meta.customer="（例）〇〇商事株式会社";
+  r.meta.site="（例）アピタ名古屋港";
   r.cfg.items.slice(0,5).forEach(it=>r.checks[it.id]={v:"ok",note:""});
   D.reports.push(r);D.current=r.id;
 }
@@ -634,7 +637,7 @@ function rowSrc(r,board){
   const l=String(r&&r.l||"").trim();
   return l==="箇所"?"slot":l==="区分"?"stage":DATE_LABELS.includes(l)?"date":"";
 }
-function workSummary(meta){const c=(meta.rows||[]).map(r=>String(r.content||"").trim()).filter(Boolean);return c.length?c.join("・"):(meta.work||"")}
+function workSummary(meta){const w=[...cleanWI(meta.workItems)];if(String(meta.otherWork||"").trim())w.push(meta.otherWork.trim());if(w.length)return w.join("・");const c=(meta.rows||[]).map(r=>String(r.content||"").trim()).filter(Boolean);return c.length?c.join("・"):(meta.work||"")}
 function boardRows(cfg,meta,slotName,stage){
   const map={"現場名":meta.site,"箇所":slotName,"区分":STAGE_LABEL[stage]||"","日付":fmtDate(meta.date),"作業内容":workSummary(meta),"点検者":meta.inspector,"作業責任者":meta.inspector,"お客様名":meta.customer,"会社名":cfg.company};
   const srcVal={slot:slotName,stage:map["区分"],date:map["日付"],site:meta.site,customer:meta.customer,work:map["作業内容"],leader:meta.inspector,company:cfg.company};
@@ -715,55 +718,20 @@ document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>showTab(b.dat
 function renderAll(){fillMeta();renderReports();renderSlots();renderChecks();renderHeader()}
 
 /* ---------- 現場 / reports ---------- */
-const metaFields=["customer","site","date","start","end","inspector","note","sales"];
-const MK="①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳";
-function fillMeta(){const m=R().meta;metaFields.forEach(f=>{$("#m-"+f).value=m[f]||""});renderWRows();renderWorkers();padW=0;sizePad();renderSignState()}
-metaFields.forEach(f=>$("#m-"+f).addEventListener("input",e=>{R().meta[f]=e.target.value;persist();if(f==="site"||f==="date")renderRepSel();if(f==="inspector")wcount()}));
-/* 作業箇所・作業内容 */
+const metaFields=["site","storeNo","date","start","end","inspector","otherWork","note"];
+function fillMeta(){const m=R().meta;metaFields.forEach(f=>{$("#m-"+f).value=m[f]||""});renderWItems();
+  $("#companyInfo").textContent="社名："+(R().cfg.company||"（未設定）")+"　※設定タブの「会社名」が入ります";padW=0;sizePad();renderSignState()}
+metaFields.forEach(f=>$("#m-"+f).addEventListener("input",e=>{R().meta[f]=e.target.value;persist();if(f==="site"||f==="date")renderRepSel()}));
 $("#noteChips").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;const ta=$("#m-note");
   ta.value=(ta.value&&!ta.value.endsWith("\n")?ta.value+"\n":ta.value)+b.dataset.t;R().meta.note=ta.value;persist();ta.focus();ta.setSelectionRange(ta.value.length,ta.value.length)});
-function renderWRows(){
-  const m=R().meta,w=$("#wrows");w.innerHTML="";
-  m.rows.forEach((r,i)=>{
-    const el=document.createElement("div");el.className="wrow";
-    const no=document.createElement("div");no.className="no";no.textContent=i+1;
-    const bd=document.createElement("div");bd.className="bd";
-    const mk=(lab,key,id)=>{const l=document.createElement("label");l.className="f";l.textContent=lab;const inp=document.createElement("input");inp.id=id;inp.value=r[key]||"";inp.autocomplete="off";inp.setAttribute("list",key==="place"?"dl-places":"dl-contents");
-      inp.oninput=()=>{r[key]=inp.value;persist()};l.appendChild(inp);return l};
-    bd.append(mk("作業箇所","place","wp"+i),mk("作業内容","content","wc"+i));
-    const ft=document.createElement("div");ft.className="ft";
-    const seg=document.createElement("div");seg.className="seg";
-    ["定期","スポット"].forEach(t=>{const b=document.createElement("button");b.type="button";b.textContent=t;b.setAttribute("aria-pressed",String(r.type===t));
-      b.onclick=()=>{r.type=r.type===t?"":t;persist();renderWRows()};seg.appendChild(b)});
-    ft.appendChild(seg);
-    if(m.rows.length>1){const x=document.createElement("button");x.className="xbtn";x.textContent="この行を削除";x.onclick=()=>{m.rows.splice(i,1);persist();renderWRows()};ft.appendChild(x)}
-    bd.appendChild(ft);el.append(no,bd);w.appendChild(el);
-  });
+/* 作業項目のチェック欄（現場タブ・テンプレート設定で共用） */
+function witemBoxes(box,sel,onChange){
+  box.innerHTML="";
+  WORK_ITEMS.forEach((t,i)=>{const l=document.createElement("label");const c=document.createElement("input");c.type="checkbox";c.value=t;c.checked=sel.includes(t);
+    c.onchange=()=>onChange([...box.querySelectorAll("input:checked")].map(x=>x.value));
+    l.append(c,document.createTextNode(t));box.appendChild(l)});
 }
-$("#addWRow").onclick=()=>{const m=R().meta;m.rows.push({place:"",content:"",type:"定期"});persist();renderWRows();const el=$("#wp"+(m.rows.length-1));if(el)el.focus()};
-$("#copySlots").onclick=()=>{
-  const m=R().meta,have=new Set(m.rows.map(r=>String(r.place||"").trim()));
-  m.rows=m.rows.filter(r=>r.place||r.content);
-  let n=0;R().cfg.slots.forEach(s=>{if(!have.has(s.name)){m.rows.push({place:s.name,content:"",type:"定期"});n++}});
-  if(!m.rows.length)m.rows.push({place:"",content:"",type:"定期"});
-  persist();renderWRows();toast(n?"撮影箇所を "+n+" 件、作業箇所に写しました":"作業箇所にない撮影箇所はありません");
-};
-/* 作業員 */
-function renderWorkers(){
-  const m=R().meta,w=$("#workers");w.innerHTML="";
-  m.workers.forEach((v,i)=>{
-    const row=document.createElement("div");row.className="worker";
-    const mk=document.createElement("span");mk.className="mk";mk.textContent=MK[i+1]||String(i+2);
-    const inp=document.createElement("input");inp.id="wk"+i;inp.value=v||"";inp.autocomplete="off";inp.setAttribute("aria-label","作業員"+(i+2));
-    inp.oninput=()=>{m.workers[i]=inp.value;persist();wcount()};
-    const x=document.createElement("button");x.className="xbtn";x.textContent="削除";x.setAttribute("aria-label","作業員"+(i+2)+"を削除");
-    x.onclick=()=>{m.workers.splice(i,1);persist();renderWorkers()};
-    row.append(mk,inp,x);w.appendChild(row);
-  });
-  wcount();
-}
-function wcount(){const m=R().meta,n=[m.inspector,...m.workers].filter(v=>v&&String(v).trim()).length;$("#wcount").textContent="合計 "+n+" 名";return n}
-$("#addWorker").onclick=()=>{const m=R().meta;m.workers.push("");persist();renderWorkers();const el=$("#wk"+(m.workers.length-1));if(el)el.focus()};
+function renderWItems(){const m=R().meta;witemBoxes($("#witems"),m.workItems,v=>{m.workItems=v;persist()})}
 /* サイン */
 function contentHash(rep){
   rep=rep||R();const m=Object.assign({},rep.meta);delete m.signature;delete m.signedAt;delete m.signHash;
@@ -1109,7 +1077,7 @@ $("#btnAllOk").onclick=()=>{const rep=R();rep.cfg.items.forEach(it=>{const c=rep
 
 /* ---------- settings ---------- */
 let W=null; // draft board rows
-let SM={mode:"report"}; // settings target: the current report, or a template being edited
+let SM={mode:"report"},TW=[]; // settings target: the current report, or a template being edited
 function cfgOfTpl(t){return {stages:[...t.stages],slots:t.slots.map(n=>({name:n})),items:t.items.map(x=>({text:x})),board:clone(t.board||{on:true,link:true,pos:"bl",size:"m",rows:[]}),company:t.company||"",slogan:t.slogan||"",address:t.address||"",tel:t.tel||"",title:t.title||"",hideEmpty:t.hideEmpty!==false}}
 function fillSettings(){
   if(SM.mode==="tpl"&&!D.templates.some(t=>t.id===SM.id))SM={mode:"report"};
@@ -1128,7 +1096,7 @@ function fillSettings(){
   $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
   fillOrg(cfg);
   $("#tplDefaults").hidden=!tplMode;
-  if(tplMode){$("#tplRows").value=(tp.rows||[]).map(r=>[r.place||"",r.content||"",r.type||""].join("｜")).join("\n");$("#tplSales").value=tp.sales||""}
+  if(tplMode){TW=cleanWI(tp.workItems);witemBoxes($("#tplWItems"),TW,v=>{TW=v;setDirty=true});$("#tplOther").value=tp.otherWork||""}
   $("#setConfirm").innerHTML="";setDirty=false;
   renderBoardRows();updateCounters();renderTplList();drawBoardPreview();
 }
@@ -1265,9 +1233,9 @@ function readTplDraft(){
   if(D.templates.some(t=>t.name===name&&t.id!==SM.id))return {err:"同じ名前のテンプレートがあります。別の名前にしてください"};
   const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
-  const rows=lines($("#tplRows").value).slice(0,MAX).map(l=>{const p=l.split(/[｜|]/).map(x=>x.trim());const tp=p[2]==="スポット"?"スポット":(p[2]==="定期"?"定期":"");return {place:p[0]||"",content:p[1]||"",type:tp||(p.length>2?"":"定期")}});
+  const old=D.templates.find(t=>t.id===SM.id)||{};const rows=Array.isArray(old.rows)?old.rows:[];
   return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),...orgVals(),
-    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:$("#tplSales").value.trim()}};
+    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:old.sales||"",workItems:[...TW],otherWork:$("#tplOther").value.trim()}};
 }
 function saveTplDraft(){
   const d=readTplDraft();if(d.err){toast(d.err);return null}
@@ -1361,7 +1329,7 @@ function cleanTpl(t){
     board:{on:b.on!==false,link:b.link!==false,pos:["bl","br","tl","tr"].includes(b.pos)?b.pos:"bl",size:["s","m","l","xl"].includes(b.size)?b.size:"m",
       rows:(Array.isArray(b.rows)?b.rows:[]).slice(0,MAX_BOARD).map(r=>({l:str(r&&r.l),v:str(r&&r.v),src:rowSrc(r,b)}))},
     company:str(t.company),slogan:str(t.slogan),address:str(t.address),tel:str(t.tel),title:str(t.title)||"点検報告書",hideEmpty:t.hideEmpty!==false,
-    rows:(Array.isArray(t.rows)?t.rows:[]).slice(0,MAX).map(r=>({place:str(r&&r.place),content:str(r&&r.content),type:["定期","スポット"].includes(r&&r.type)?r.type:""})),sales:str(t.sales)};
+    rows:(Array.isArray(t.rows)?t.rows:[]).slice(0,MAX).map(r=>({place:str(r&&r.place),content:str(r&&r.content),type:["定期","スポット"].includes(r&&r.type)?r.type:""})),sales:str(t.sales),workItems:cleanWI(t.workItems),otherWork:str(t.otherWork)};
 }
 function tplFileName(t){return "O&K報告書テンプレート_"+t.name.replace(/[\\/:*?"<>|]/g,"").slice(0,40)+".json"}
 $("#btnTplSendFile").onclick=async()=>{
@@ -1468,94 +1436,83 @@ function drawNote(g,lines_,y){
 }
 function ngKeysOf(rep,it){const out=[];for(let m=1;m<=NG_MAX;m++){const k=pk(rep.id,ngSid(it.id),"ng"+m);if(keys.has(k))out.push(k)}return out}
 function timeLabel(m){return [m.start,m.end].some(Boolean)?"（"+(m.start||"")+"〜"+(m.end||"")+"）":""}
+/* 作業完了報告書（Excel「作業完了報告書」と同じ書式）。A4を 794x1123 の座標で描く */
 async function drawWorkPage(g,rep){
   const cfg=rep.cfg,m=rep.meta,K=PW/794;
   g.save();g.scale(K,K);g.textBaseline="middle";g.setLineDash([]);
-  const X0=48,X1=746,W=X1-X0,INK="#111111";
-  const T=(str,x,y,size,o)=>{o=o||{};g.font=(o.bold?"700 ":"400 ")+size+"px "+FONT;g.fillStyle=o.color||INK;g.textAlign=o.align||"left";g.fillText(str,x,y)};
-  const F=(str,maxW,size,bold)=>{g.font=(bold?"700 ":"400 ")+size+"px "+FONT;return fit(g,String(str||""),maxW)};
-  const spaced=(str,x,y,size,sp,o)=>{o=o||{};g.font=(o.bold?"700 ":"400 ")+size+"px "+FONT;g.fillStyle=INK;g.textAlign="left";let cx=x;for(const ch of str){g.fillText(ch,cx,y);cx+=g.measureText(ch).width+size*sp}};
-  const spacedC=(str,cx,y,size,sp)=>{g.font="400 "+size+"px "+FONT;let w=0;for(const ch of str)w+=g.measureText(ch).width+size*sp;w-=size*sp;spaced(str,cx-w/2,y,size,sp)};
-  const solid=w=>{g.setLineDash([]);g.lineWidth=w;g.strokeStyle=INK};
-  const dash=()=>{g.setLineDash([3,2.5]);g.lineWidth=.8;g.strokeStyle="#555555"};
+  const INK="#111111";
+  const X0=78,X1=716,W=X1-X0,CW=W/37,cx=n=>X0+n*CW; // B〜AL列の37マス
+  const T=(str,x,y,size,o)=>{o=o||{};g.font=(o.bold?"700 ":"400 ")+size+"px "+FONT;g.fillStyle=o.color||INK;g.textAlign=o.align||"left";g.fillText(String(str==null?"":str),x,y)};
+  const F=(str,maxW,size,bold)=>{g.font=(bold?"700 ":"400 ")+size+"px "+FONT;return fit(g,String(str==null?"":str),maxW)};
+  const ln=(w,dash)=>{g.setLineDash(dash||[]);g.lineWidth=w;g.strokeStyle=INK};
   const hl=(x1,x2,y)=>{g.beginPath();g.moveTo(x1,y);g.lineTo(x2,y);g.stroke()};
   const vl=(x,y1,y2)=>{g.beginPath();g.moveTo(x,y1);g.lineTo(x,y2);g.stroke()};
-  // head
-  spaced("作業報告書",X0+60,78,30,.55);
-  let cy=50;
-  const org=cfg;
-  if(org.slogan){T(F(org.slogan,330,10.5),X1,cy,10.5,{align:"right"});cy+=16}
-  if(cfg.company){const nmY=cy+6;T(F(cfg.company,330,20,true),X1,nmY,20,{bold:true,align:"right"});
-    if(isOK(cfg.company)){try{const lg=await loadImg(OK_LOGO);g.font="700 20px "+FONT;const nw=Math.min(330,g.measureText(F(cfg.company,330,20,true)).width);
-      const LS=58;g.drawImage(lg,X1-nw-10-LS,Math.max(8,nmY-LS/2),LS,LS)}catch(e){}}
-    cy+=30}
-  if(org.address){T(F(org.address,330,12),X1,cy,12,{align:"right"});cy+=17}
-  if(org.tel){T(F(org.tel,330,12),X1,cy,12,{align:"right"});cy+=17}
-  // names + date
-  const TOP=Math.max(136,cy+12),DW=300,DX=X1-DW,RHd=28;
-  [["お客様名",m.customer],["現場名",m.site]].forEach(([l,v],i)=>{
-    const by=TOP+(i+1)*56-4;solid(1);hl(X0,DX-28,by);
-    T(l,X0,by-14,15);T(F(v,DX-28-X0-76-30,16,true),X0+76,by-14,16,{bold:true});T("様",DX-28,by-14,15,{align:"right"});
-  });
-  solid(1.5);g.strokeRect(DX,TOP,DW,RHd*4);
-  dash();for(let i=1;i<4;i++)hl(DX,X1,TOP+RHd*i);
-  spacedC("作業日",DX+DW/2,TOP+RHd/2,13,.6);
+  const box=(a,b,y,h)=>{ln(1);g.strokeRect(cx(a),y,cx(b)-cx(a),h)};
+  const mid=(a,b)=>(cx(a)+cx(b))/2;
+  // タイトル帯
+  g.fillStyle="#333333";g.fillRect(X0-24,44,W+48,66);
+  T("作業完了報告書",X0+W/2,77,28,{bold:true,color:"#ffffff",align:"center"});
+  // 店名・店番
+  let y=150;
+  T("店名",mid(0,3),y,17,{align:"center"});
+  T(F(m.site,cx(20)-cx(3)-8,17),mid(3,20),y,17,{align:"center"});
+  T("店　御中",mid(20,25),y,17,{align:"center"});
+  T("店番",mid(27,30),y,17,{align:"center"});
+  T(F(m.storeNo,cx(37)-cx(30)-8,17),mid(30,37),y,17,{align:"center"});
+  ln(1);hl(cx(0),cx(25),y+16);hl(cx(27),cx(37),y+16);
+  // あいさつ文
+  y=200;
+  T("下記内容における作業等が完了しましたのでご報告申し上げます。",X0,y,13.5);
+  T("内容をご確認いただけましたら、お手数ですが",X0,y+27,13.5);
+  T("ご署名をいただきますよう、宜しくお願い申し上げます。",X0,y+54,13.5,{bold:true});
+  // 実施日・作業時間・社名・報告者名
+  y=290;const RH=30;
   const [yy,mo,dd]=(m.date||"").split("-"),[sh,sm]=(m.start||"").split(":"),[eh,em]=(m.end||"").split(":");
   const nv=v=>v?String(+v):"";
-  // three equal groups per row; in each, the number sits right next to its unit so the columns line up
-  const GW=DW/3,NUMR=GW*0.62,UNITL=GW*0.68;
-  const grp=(row,gi,num,unit)=>{const x=DX+GW*gi,y=TOP+RHd*row+RHd/2;
-    if(num!=null&&num!=="")T(num,x+NUMR,y,15,{bold:true,align:"right"});
-    T(unit,x+UNITL,y,13)};
-  grp(1,0,nv(yy),"年");grp(1,1,nv(mo),"月");grp(1,2,nv(dd),"日");
-  T("（開始）",DX+GW/2,TOP+RHd*2.5,13,{align:"center"});grp(2,1,sh?nv(sh):"","時");grp(2,2,sh&&sm!=null?sm:"","分");
-  T("（終了）",DX+GW/2,TOP+RHd*3.5,13,{align:"center"});grp(3,1,eh?nv(eh):"","時");grp(3,2,eh&&em!=null?em:"","分");
-  // staff sizing first (from the bottom up)
-  const ws=(m.workers||[]).filter(w=>w&&String(w).trim());const wslots=Math.max(6,Math.ceil(ws.length/3)*3),wrowsN=wslots/3;
-  const SR=30,staffH=SR*(2+wrowsN);
-  const FOOT_T=1050-66,REP_B=FOOT_T-12,REP_MIN=150;
-  let ty=TOP+RHd*4+10;
-  const HR=26,WR=34;
-  const rowsAll=(m.rows||[]).filter(r=>r.place||r.content||r.type);
-  const maxRows=Math.max(3,Math.floor((REP_B-REP_MIN-10-staffH-10-ty-HR)/WR));
-  let shown=rowsAll.slice(0,maxRows);
-  if(rowsAll.length>maxRows){shown=rowsAll.slice(0,maxRows-1);shown.push({place:"",content:"ほか "+(rowsAll.length-maxRows+1)+" 件（別紙）",type:""})}
-  const nRows=Math.min(maxRows,Math.max(7,shown.length));
-  const c1=W*.26,c3=54,c4=58,c2=W-c1-c3-c4;
-  const tblH=HR+WR*nRows;
-  solid(1.5);g.strokeRect(X0,ty,W,tblH);
-  dash();hl(X0,X1,ty+HR);for(let i=1;i<nRows;i++)hl(X0,X1,ty+HR+WR*i);
-  [c1,c1+c2,c1+c2+c3].forEach(x=>vl(X0+x,ty,ty+tblH));
-  spacedC("作業箇所",X0+c1/2,ty+HR/2,13,.3);spacedC("作業内容",X0+c1+c2/2,ty+HR/2,13,.3);
-  T("定期",X0+c1+c2+c3/2,ty+HR/2,12,{align:"center"});T("スポット",X0+c1+c2+c3+c4/2,ty+HR/2,12,{align:"center"});
-  shown.forEach((r,i)=>{const y=ty+HR+WR*i+WR/2;
-    T(F(r.place,c1-14,13),X0+8,y,13);T(F(r.content,c2-14,13),X0+c1+8,y,13);
-    if(r.type==="定期")T("〇",X0+c1+c2+c3/2,y,15,{align:"center"});
-    if(r.type==="スポット")T("〇",X0+c1+c2+c3+c4/2,y,15,{align:"center"});});
-  ty+=tblH+10;
-  // staff table
-  const LW=120,CW=(W-LW)/3;
-  solid(1.5);g.strokeRect(X0,ty,W,staffH);dash();
-  hl(X0,X1,ty+SR);hl(X0,X1,ty+SR*(1+wrowsN));for(let i=1;i<wrowsN;i++)hl(X0+LW,X1,ty+SR*(1+i));
-  vl(X0+LW,ty,ty+staffH);for(let i=1;i<3;i++)vl(X0+LW+CW*i,ty+SR,ty+SR*(1+wrowsN));
-  spacedC("作業責任者",X0+LW/2,ty+SR/2,13,.3);T("①",X0+LW+8,ty+SR/2,13,{color:"#333333"});T(F(m.inspector,W-LW-40,13),X0+LW+28,ty+SR/2,13);
-  spacedC("作業員",X0+LW/2,ty+SR*(1+wrowsN/2),13,.6);
-  for(let i=0;i<wslots;i++){const rr=Math.floor(i/3),cc=i%3,x=X0+LW+CW*cc,y=ty+SR*(1+rr)+SR/2;
-    T(MK[i+1]||"",x+8,y,13,{color:"#333333"});T(F(ws[i]||"",CW-40,13),x+28,y,13)}
-  const total=(m.inspector&&String(m.inspector).trim()?1:0)+ws.length;
-  spacedC("合計",X0+LW/2,ty+staffH-SR/2,13,.6);T((total||"")+"　名",X1-14,ty+staffH-SR/2,13,{align:"right"});
-  ty+=staffH+10;
-  // report box
-  solid(1.5);g.strokeRect(X0,ty,W,REP_B-ty);
-  T("作業報告・特記事項",X0+10,ty+14,13);g.font="400 13px "+FONT;
-  T("（ワックス塗布数、剥離時期、駆除状況、設備状況、什器・備品及び商品等の破損、緊急事態の有無等）",X0+10+g.measureText("作業報告・特記事項").width+6,ty+14,10.5);
-  g.font="400 13.5px "+FONT;const lines_=wrapLines(g,String(m.note||""),W-24);const LH=13.5*1.7,maxL=Math.floor((REP_B-ty-34)/LH);
-  lines_.slice(0,maxL).forEach((l,i)=>T(l,X0+12,ty+38+i*LH,13.5));
-  // foot
-  solid(1);g.strokeRect(X0,FOOT_T,250,66);T("営業担当者",X0+10,FOOT_T+14,13);T(F(m.sales,226,15,true),X0+10,FOOT_T+44,15,{bold:true});
-  solid(3);g.strokeRect(X1-410,FOOT_T,410,66);T("お客様ご確認",X1-410+12,FOOT_T+33,16);
-  if(m.signature){try{const im=await loadImg(m.signature);const bw=250,bh=60,k2=Math.min(bw/im.naturalWidth,bh/im.naturalHeight);
-    g.drawImage(im,X1-410+130,FOOT_T+3+(bh-im.naturalHeight*k2)/2,im.naturalWidth*k2,im.naturalHeight*k2)}catch(e){}}
+  for(let i=0;i<4;i++)box(0,8,y+i*RH,RH);
+  ["実施日","作業時間","社名","報告者名"].forEach((l,i)=>T(l,mid(0,8),y+i*RH+RH/2,11.5,{align:"center"}));
+  // 実施日の行
+  [[8,15],[15,18],[18,23],[23,25],[25,30],[30,32],[32,37]].forEach(([a,b])=>box(a,b,y,RH));
+  let wd="";if(yy&&mo&&dd){const d=new Date(+yy,+mo-1,+dd);if(!isNaN(d))wd=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]}
+  [[nv(yy),8,15],["年",15,18],[nv(mo),18,23],["月",23,25],[nv(dd),25,30],["日",30,32],[wd,32,37]].forEach(([v,a,b])=>T(v,mid(a,b),y+RH/2,13.5,{align:"center"}));
+  // 作業時間の行
+  let ty=y+RH;box(8,37,ty,RH);
+  [[sh?nv(sh):"",8,14],[":",14,15],[sh?(sm||"00"):"",15,21],["～",21,24],[eh?nv(eh):"",24,30],[":",30,31],[eh?(em||"00"):"",31,37]].forEach(([v,a,b])=>T(v,mid(a,b),ty+RH/2,13.5,{align:"center"}));
+  // 社名・報告者名
+  box(8,37,y+RH*2,RH);box(8,37,y+RH*3,RH);
+  T(F(cfg.company,cx(37)-cx(8)-16,13.5),mid(8,37),y+RH*2.5,13.5,{align:"center"});
+  T(F(m.inspector,cx(37)-cx(8)-16,13.5),mid(8,37),y+RH*3.5,13.5,{align:"center"});
+  // 作業項目
+  y=y+RH*4+26;const IH=27,NR=WORK_GRID.length+1,BH=IH*NR;
+  const sel=new Set(cleanWI(m.workItems)),other=String(m.otherWork||"").trim();
+  ln(1);g.strokeRect(cx(0),y,W,BH);vl(cx(4),y,y+BH);
+  ln(.6,[2,2]);for(let i=1;i<NR;i++)hl(cx(4),cx(37),y+IH*i);vl(cx(15),y,y+IH*(NR-1));vl(cx(26),y,y+IH*(NR-1));
+  g.setLineDash([]);
+  ["作","業","項","目"].forEach((ch,i)=>T(ch,mid(0,4),y+BH/2+(i-1.5)*19,13,{align:"center"}));
+  const cbox=(x,yc,on)=>{ln(1);g.strokeRect(x,yc-6,12,12);
+    if(on){g.lineWidth=2;g.beginPath();g.moveTo(x+2,yc);g.lineTo(x+5,yc+4);g.lineTo(x+11,yc-6);g.stroke()}};
+  WORK_GRID.forEach((row,ri)=>row.forEach((t,ci)=>{if(!t)return;const a=[4,15,26][ci],yc=y+IH*ri+IH/2,on=sel.has(t);
+    cbox(cx(a)+8,yc,on);T(F(t,cx(a+11)-cx(a)-30,11.5,on),cx(a)+26,yc,11.5,{bold:on})}));
+  const yo=y+IH*(NR-1)+IH/2;cbox(cx(4)+8,yo,!!other);T("その他：",cx(4)+26,yo,13);
+  T(F(other,cx(37)-cx(9)-12,13,true),cx(9)+4,yo,13,{bold:true});
+  // 特記事項
+  y+=BH+26;
+  ln(.8);g.strokeRect(cx(0),y,cx(8)-cx(0),28);g.strokeRect(cx(0)+3,y+3,cx(8)-cx(0)-6,22);
+  T("特記事項",mid(0,8),y+14,13,{align:"center"});
+  y+=28;const LH=34,NL=6;
+  ln(1);for(let i=1;i<=NL;i++)hl(cx(0),cx(37),y+LH*i);
+  g.font="400 14px "+FONT;const nl=wrapLines(g,String(m.note||"").trim(),W-16).filter((l,i,a)=>!(l===""&&i===a.length-1));
+  nl.slice(0,NL).forEach((l,i)=>T(l,cx(0)+8,y+LH*i+LH/2+3,14));
+  // 日付・ご署名
+  y+=LH*NL+30;const SX=cx(13),DRH=36,SRH=44;
+  ln(1);g.strokeRect(SX,y,cx(37)-SX,DRH+SRH);
+  ln(.6,[2,2]);hl(cx(17),cx(37),y+DRH);g.setLineDash([]);
+  T("日付",mid(13,17),y+DRH/2,13,{align:"center"});T("ご署名",mid(13,17),y+DRH+SRH/2,13,{align:"center"});
+  let sy="",smn="",sd="";if(m.signature&&m.signedAt){const d=new Date(m.signedAt);sy=d.getFullYear();smn=d.getMonth()+1;sd=d.getDate()}
+  [[sy,17,21],["年",21,23],[smn,23,25],["月",25,27],[sd,27,29],["日",29,31]].forEach(([v,a,b])=>T(v,mid(a,b),y+DRH/2,13.5,{align:"center",bold:v!==""&&typeof v==="number"}));
+  if(m.signature){try{const im=await loadImg(m.signature);const bx=cx(17)+6,bw=cx(37)-bx-8,bh=SRH-6,k2=Math.min(bw/im.naturalWidth,bh/im.naturalHeight);
+    g.drawImage(im,bx+(bw-im.naturalWidth*k2)/2,y+DRH+3+(bh-im.naturalHeight*k2)/2,im.naturalWidth*k2,im.naturalHeight*k2)}catch(e){}}
+  T("上記内容の報告を確認しました。",cx(37),y+DRH+SRH+16,12.5,{align:"right"});
   g.restore();g.setLineDash([]);
 }
 async function renderPages(onProgress,sel){
@@ -1565,7 +1522,7 @@ async function renderPages(onProgress,sel){
   const cv=document.createElement("canvas");cv.width=PW*SC;cv.height=PH*SC;const g=cv.getContext("2d");g.textBaseline="middle";g.imageSmoothingQuality="high";
   const items=withChecks?cfg.items:[];
   const ngItems=sel.ng?cfg.items.map((it,i)=>({it,i,ks:ngKeysOf(rep,it)})).filter(x=>x.ks.length):[];
-  const metaRows=[["お客様名",meta.customer?meta.customer+" 様":""],["現場名",meta.site],["作業日",fmtDate(meta.date)+timeLabel(meta)],["作業責任者",meta.inspector]].filter(r=>String(r[1]||"").trim());
+  const metaRows=[["店名",meta.site?meta.site+" 店":""],["店番",meta.storeNo],["実施日",fmtDate(meta.date)+timeLabel(meta)],["報告者名",meta.inspector]].filter(r=>String(r[1]||"").trim());
   const metaEnd=180+metaRows.length*RH;
   const tableTop0=metaEnd+70;
   const cap0=Math.max(0,Math.floor((BOT-tableTop0-CRH)/CRH)),capN=Math.floor((BOT-M-CRH)/CRH);
@@ -1577,7 +1534,7 @@ async function renderPages(onProgress,sel){
     while(idx<items.length){const to=Math.min(items.length,idx+capN);plan.push({t:"checks",from:idx,to});idx=to}
   }
   let noteL=[];
-  // 特記事項 is on the 作業報告書 page; print it after the checks only when that page is left out
+  // 特記事項 is on the 作業完了報告書 page; print it after the checks only when that page is left out
   if(!sel.cover&&items.length&&(meta.note||"").trim()){g.font="400 21px "+FONT;noteL=wrapLines(g,meta.note.trim(),PW-2*M-32)}
   if(noteL.length){
     const last=plan[plan.length-1];
@@ -1674,14 +1631,14 @@ function outSel(){const o={};document.querySelectorAll(".outSel").forEach(c=>o[c
 function selKey(){return JSON.stringify(outSel())}
 function outName(sel){
   sel=sel||outSel();const ph=sel.photos||sel.ng;
-  if(sel.cover&&!sel.checks&&!ph)return "作業報告書";
+  if(sel.cover&&!sel.checks&&!ph)return "作業完了報告書";
   if(!sel.cover&&sel.checks&&!ph)return "チェック表";
   if(!sel.cover&&!sel.checks&&ph)return "写真台帳";
-  if(sel.cover&&ph)return "作業報告書（写真付き）";
-  return "作業報告書";
+  if(sel.cover&&ph)return "作業完了報告書（写真付き）";
+  return "作業完了報告書";
 }
 function selHint(sel){
-  const n={cover:"作業報告書",checks:"チェック表",photos:"撮影箇所の写真",ng:"異常箇所の写真"};
+  const n={cover:"作業完了報告書",checks:"チェック表",photos:"撮影箇所の写真",ng:"異常箇所の写真"};
   const on=Object.keys(n).filter(k=>sel[k]).map(k=>n[k]);
   return on.length?on.join("・")+"を、この順番で1つのPDFにします。":"出力するものを1つ以上選んでください。";
 }
@@ -1915,8 +1872,8 @@ function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace
 $("#btnCsv").onclick=()=>{
   const r=R(),L={ok:"良",ng:"否",na:"該当なし"};
   if(!r.cfg.items.length){toast("チェック項目がありません");return}
-  const head=["お客様名","現場名","作業日","作業内容","作業責任者","No","点検項目","結果","備考"];
-  const rows=r.cfg.items.map((it,i)=>{const c=r.checks[it.id]||{};return [r.meta.customer,r.meta.site,r.meta.date,workSummary(r.meta),r.meta.inspector,i+1,it.text,L[c.v]||"",c.note||""]});
+  const head=["店名","店番","実施日","作業項目","報告者名","No","点検項目","結果","備考"];
+  const rows=r.cfg.items.map((it,i)=>{const c=r.checks[it.id]||{};return [r.meta.site,r.meta.storeNo||"",r.meta.date,workSummary(r.meta),r.meta.inspector,i+1,it.text,L[c.v]||"",c.note||""]});
   saveFile(new Blob(["﻿"+[head,...rows].map(x=>x.map(csvCell).join(",")).join("\r\n")],{type:"text/csv"}),fname("csv"));
 };
 function blobToDataURL(b){return new Promise(ok=>{const r=new FileReader();r.onload=()=>ok(r.result);r.readAsDataURL(b)})}
