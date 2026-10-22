@@ -1,7 +1,7 @@
-const VERSION = "v5";
+const VERSION = "v6";
 const CACHE = "okboard-" + VERSION;
 const CORE = ["./", "./index.html", "./manifest.webmanifest",
-  "./kanban-icon-192.png", "./kanban-icon-512.png", "./kanban-apple-touch-icon.png",
+  "./kanban-icon-192.png", "./kanban-icon-512.png", "./kanban-icon-maskable-512.png", "./kanban-apple-touch-icon.png",
   "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
   "https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+New:wght@700;900&display=swap"];

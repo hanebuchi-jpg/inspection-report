@@ -1,7 +1,7 @@
-const VERSION = "v27";
+const VERSION = "v28";
 const CACHE = "inspect-" + VERSION;
-const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png",
-  "./sagyo.html", "./manifest-sagyo.webmanifest", "./sagyo-icon-192.png", "./sagyo-icon-512.png", "./sagyo-apple-touch-icon.png",
+const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png", "./apple-touch-icon.png",
+  "./sagyo.html", "./manifest-sagyo.webmanifest", "./sagyo-icon-192.png", "./sagyo-icon-512.png", "./sagyo-icon-maskable-512.png", "./sagyo-apple-touch-icon.png",
   "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js",
   "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"];
 self.addEventListener("install", e => {
