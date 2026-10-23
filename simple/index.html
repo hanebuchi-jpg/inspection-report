@@ -138,6 +138,17 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 }
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:80;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.pv{position:fixed;inset:0;z-index:60;background:#000;color:#fff;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.pv[hidden]{display:none}
+.pv-top{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.pv-top span{flex:1;font-size:15px;font-weight:700;line-height:1.4;word-break:break-all}
+.pv-x{flex:none;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer}
+.pv-stage{flex:1;position:relative;overflow:hidden;touch-action:none;min-height:0}
+.pv-stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transform-origin:50% 50%;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
+.pv-bar{display:flex;gap:8px;padding:10px 12px;justify-content:center;flex-wrap:wrap}
+.pv-bar .btn{min-width:96px;background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35)}
+.pv-bar .btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.pv-hint{margin:0 0 8px;text-align:center;font-size:12px;color:#bbb}
 </style>
 
 </head>
@@ -177,9 +188,10 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <div class="panel" id="slots"></div>
     <div class="card">
       <h2>写真を保存</h2>
-      <p class="hint" id="saveHint">撮った写真は看板入りでこの端末に残ります。まとめて保存すると「現場名_日付.zip」になります。</p>
+      <p class="hint" id="saveHint">撮った写真は看板入りでこの端末に残ります。まとめて保存すると「現場名_日付.zip」になります。撮った写真を押すと拡大して確認できます。</p>
       <div class="btnrow">
         <button class="btn pri" id="btnZip">写真をまとめて保存</button>
+        <button class="btn" id="btnPhotoShare" hidden>写真アプリへまとめて保存</button>
         <button class="btn warn" id="btnClear">写真をすべて消す</button>
       </div>
       <div id="clearArea"></div>
@@ -273,6 +285,16 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 
 <input type="file" id="fileCam" accept="image/*" capture="environment" hidden>
 <input type="file" id="fileLib" accept="image/*" hidden>
+<div class="pv" id="pv" hidden role="dialog" aria-modal="true" aria-labelledby="pvTitle">
+  <div class="pv-top"><span id="pvTitle"></span><button type="button" class="pv-x" id="pvX" aria-label="閉じる">✕</button></div>
+  <div class="pv-stage" id="pvStage"><img id="pvImg" alt="" draggable="false"></div>
+  <p class="pv-hint">2本指で広げると拡大、ダブルタップで拡大／元に戻す</p>
+  <div class="pv-bar">
+    <button type="button" class="btn pri" id="pvRetake">撮り直す</button>
+    <button type="button" class="btn" id="pvSave">この写真を保存</button>
+    <button type="button" class="btn" id="pvClose">閉じる</button>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -430,10 +452,10 @@ function renderSlots(){
       const sh=document.createElement("div");sh.className="shot";
       const lb=document.createElement("div");lb.className="shot-label";lb.textContent=STAGE_LABEL[stage];
       const th=document.createElement("button");th.type="button";th.className="thumb"+(has?" has":"");
-      th.setAttribute("aria-label",lbl+(has?"を撮り直す":"を撮影"));
+      th.setAttribute("aria-label",lbl+(has?"の写真を確認":"を撮影"));
       if(has){const im=document.createElement("img");im.alt="";im.loading="lazy";th.appendChild(im);thumbURL(k).then(u=>{if(u)im.src=u})}
       else th.textContent=ghostKeyFor(s,stage)?"ガイドあり\nタップで撮影":"タップで撮影";
-      th.onclick=()=>openCamera(s,stage);
+      th.onclick=()=>keys.has(k)?openViewer(s,stage,i):openCamera(s,stage);
       const mini=document.createElement("div");mini.className="mini";
       const lib=document.createElement("button");lib.className="btn";lib.textContent="選ぶ";lib.setAttribute("aria-label",lbl+"の写真を選ぶ");
       lib.onclick=()=>{cur={slot:s,stage};$("#fileLib").value="";$("#fileLib").click()};
@@ -495,6 +517,64 @@ $("#btnClear").onclick=()=>{
   row.append(go,no);box.append(s,p,row);a.appendChild(box);
   no.onclick=()=>a.innerHTML="";
   go.onclick=async()=>{for(const k of [...keys])await delPhoto(k.replace(/\|t$/,""));a.innerHTML="";renderSlots();toast("写真をすべて消しました")};
+};
+
+/* ---------- 写真の確認（拡大表示） ---------- */
+let PV=null;
+const pvImg=$("#pvImg"),pvStage=$("#pvStage");
+const pvZ={s:1,x:0,y:0};
+function pvApply(){const W=pvStage.clientWidth,H=pvStage.clientHeight,mx=(pvZ.s-1)*W/2,my=(pvZ.s-1)*H/2;
+  pvZ.x=Math.max(-mx,Math.min(mx,pvZ.x));pvZ.y=Math.max(-my,Math.min(my,pvZ.y));
+  pvImg.style.transform="translate("+pvZ.x+"px,"+pvZ.y+"px) scale("+pvZ.s+")"}
+function pvZoomAt(ns,px,py){ns=Math.max(1,Math.min(6,ns));const r=pvStage.getBoundingClientRect(),cx=px-r.left-r.width/2,cy=py-r.top-r.height/2;
+  pvZ.x=cx-(cx-pvZ.x)*ns/pvZ.s;pvZ.y=cy-(cy-pvZ.y)*ns/pvZ.s;pvZ.s=ns;if(ns===1){pvZ.x=0;pvZ.y=0}pvApply()}
+{const pts=new Map();let pinch=null,lastTap=0,moved=false;
+  pvStage.addEventListener("pointerdown",e=>{pvStage.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=false;
+    if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y),s:pvZ.s}}});
+  pvStage.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;const dx=e.clientX-p.x,dy=e.clientY-p.y;
+    if(Math.abs(dx)+Math.abs(dy)>3)moved=true;p.x=e.clientX;p.y=e.clientY;
+    if(pts.size>=2&&pinch){const [a,b]=[...pts.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(pinch.d>0)pvZoomAt(pinch.s*d/pinch.d,(a.x+b.x)/2,(a.y+b.y)/2)}
+    else if(pts.size===1&&pvZ.s>1){pvZ.x+=dx;pvZ.y+=dy;pvApply()}});
+  const up=e=>{if(!pts.has(e.pointerId))return;pts.delete(e.pointerId);if(pts.size<2)pinch=null;
+    if(!pts.size&&!moved){const now=Date.now();if(now-lastTap<320){pvZoomAt(pvZ.s>1?1:2.5,e.clientX,e.clientY);lastTap=0}else lastTap=now}};
+  pvStage.addEventListener("pointerup",up);pvStage.addEventListener("pointercancel",up);
+  pvStage.addEventListener("wheel",e=>{e.preventDefault();pvZoomAt(pvZ.s*(e.deltaY<0?1.2:1/1.2),e.clientX,e.clientY)},{passive:false});
+}
+async function openViewer(slot,stage,i){
+  const k=pk(slot.id,stage);
+  if(!keys.has(k)){openCamera(slot,stage);return}
+  const blob=await pGet(k);if(!blob){openCamera(slot,stage);return}
+  if(PV&&PV.url)URL.revokeObjectURL(PV.url);
+  PV={slot,stage,blob,url:URL.createObjectURL(blob),name:photoName(slot,stage,i),back:document.activeElement};
+  $("#pvTitle").textContent=slot.name+"　"+STAGE_LABEL[stage];
+  pvZ.s=1;pvZ.x=0;pvZ.y=0;pvImg.style.transform="";pvImg.src=PV.url;
+  $("#pv").hidden=false;document.body.style.overflow="hidden";$("#pvClose").focus();
+}
+function closeViewer(){if(!PV)return;$("#pv").hidden=true;document.body.style.overflow="";pvImg.removeAttribute("src");
+  URL.revokeObjectURL(PV.url);const b=PV.back;PV=null;if(b&&b.focus)try{b.focus()}catch(e){}}
+$("#pvClose").onclick=closeViewer;$("#pvX").onclick=closeViewer;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&PV)closeViewer()});
+$("#pvRetake").onclick=()=>{if(!PV)return;const {slot,stage}=PV;closeViewer();openCamera(slot,stage)};
+$("#pvSave").onclick=async()=>{if(!PV)return;await saveFile(PV.name,PV.blob)};
+
+/* ---------- 写真アプリへまとめて保存（共有） ---------- */
+let canImgShare=false;try{canImgShare=!!(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.jpg",{type:"image/jpeg"})]}))}catch(e){}
+$("#btnPhotoShare").hidden=!canImgShare;
+$("#btnPhotoShare").onclick=async e=>{
+  const b=e.currentTarget,L="写真アプリへまとめて保存";
+  if(b.dataset.ready&&b._files){const files=b._files;b._files=null;delete b.dataset.ready;b.textContent=L;
+    try{await navigator.share({files})}catch(err){if(err&&err.name!=="AbortError")toast("共有画面を開けませんでした")}return}
+  if(!shotCount()){toast("まだ写真がありません");return}
+  b.disabled=true;b.textContent="準備中…";
+  try{const files=[];
+    for(let i=0;i<D.cfg.slots.length;i++){const s=D.cfg.slots[i];
+      for(const st of D.cfg.stages){const k=pk(s.id,st);if(!keys.has(k))continue;const bl=await pGet(k);
+        if(bl)files.push(new File([bl],photoName(s,st,i),{type:bl.type||"image/jpeg"}))}}
+    if(!files.length){toast("まだ写真がありません");b.textContent=L;return}
+    if(navigator.canShare&&!navigator.canShare({files})){toast("この端末では写真をまとめて共有できません。「写真をまとめて保存」をお使いください");b.textContent=L;return}
+    try{await navigator.share({files});b.textContent=L}
+    catch(err){if(err&&err.name==="NotAllowedError"){b._files=files;b.dataset.ready="1";b.textContent="準備できました。もう一度押して保存"}else b.textContent=L}
+  }finally{b.disabled=false}
 };
 
 /* ---------- camera ---------- */
