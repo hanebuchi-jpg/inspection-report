@@ -169,6 +169,38 @@ table.p-tbl{width:100%;border-collapse:collapse;border:1.5px solid #111;table-la
 .overlay p{color:#fff;margin:0;font-size:14px;text-align:center}
 .overlay img{max-width:min(100%,794px);background:#fff;border-radius:4px}
 .overlay .btn{background:#fff;color:#111}
+/* ---- メールで送る ---- */
+.mailbar{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.mailbar-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.08em}
+.linkbtn{border:0;background:transparent;color:var(--accent);font-size:13px;font-weight:700;padding:6px 2px;letter-spacing:0}
+.md{position:fixed;inset:0;z-index:30;background:rgba(10,14,20,.55);display:flex;justify-content:center;align-items:flex-start;overflow:auto;overscroll-behavior:contain;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+#mset{z-index:31}
+.md-box{background:var(--surface);color:var(--ink);border-radius:14px;width:100%;max-width:560px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.md-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.md-head h3{margin:0;font-size:18px}
+.md-head .btn{padding:8px 14px;font-size:14px}
+.md .f{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.md input[type=email]{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 10px;font-size:16px;color:var(--ink);min-width:0}
+.lbl-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.steps{margin:0;padding:10px 12px 10px 2em;font-size:13px;line-height:1.7;background:var(--bg);border-radius:10px}
+.ms-list{display:flex;flex-direction:column;gap:6px}
+.ms-addr{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;color:var(--ink)}
+.ms-addr input{width:22px;height:22px;flex:none;margin:0;accent-color:var(--accent)}
+.ms-addr.on{border-color:var(--accent);background:var(--accent-soft)}
+.ms-addr span,.set-row span{display:flex;flex-direction:column;min-width:0;flex:1}
+.ms-addr b,.set-row b{font-size:14px}
+.ms-addr small,.set-row small{font-size:13px;color:var(--muted);word-break:break-all}
+.set-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--ink)}
+.ms-empty{font-size:13px;color:var(--muted);background:var(--bg);border-radius:10px;padding:10px 12px;margin:0}
+.ms-add{display:grid;grid-template-columns:1fr 1.6fr auto;gap:6px}
+@media (max-width:480px){.ms-add{grid-template-columns:1fr auto}.ms-add input:first-child{grid-column:1/-1}}
+.ms-add button{border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:8px;padding:0 16px;font-weight:700;min-height:42px}
+.btn.big{width:100%;padding:16px;font-size:16px}
+.btn.done{background:#2e7d32;color:#fff;border-color:#2e7d32}
+.md-msg{margin:0;font-size:13px;color:var(--ink);background:var(--accent-soft);border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-all}
+.seg-wide{display:flex}
+.seg-wide button{flex:1;padding:10px;font-size:14px}
 @media (prefers-reduced-motion:no-preference){.tabs button{transition:background .15s}}
 
 html{color-scheme:light}
@@ -179,7 +211,7 @@ body{margin:0}
 @media print{
   :root{padding:0}
   body{background:#fff}
-  body::before,.top,#view-in,#view-out>.actions,.overlay{display:none!important}
+  body::before,.top,#view-in,#view-out>.actions,.overlay,.mailbar,.md{display:none!important}
   main{padding:0}
   #view-out{display:block!important;max-width:none}
   .paper-wrap{box-shadow:none;border-radius:0;width:auto!important;height:auto!important;overflow:visible}
@@ -269,6 +301,13 @@ body{margin:0}
     <button class="btn primary" id="pdfShare">PDFを共有</button>
   </div>
   <p class="pdf-msg" id="pdfMsg" aria-live="polite" hidden></p>
+  <div class="mailbar">
+    <div class="mailbar-h">メールで送る（PDF付き）<button type="button" class="linkbtn" data-mset>⚙ 宛先・文面の設定</button></div>
+    <div class="actions">
+      <button class="btn primary" data-mail="cust">お客様へメール</button>
+      <button class="btn primary" data-mail="office">社内へメール</button>
+    </div>
+  </div>
   <div class="paper-wrap" id="paperWrap"><div id="paper" class="paper"></div></div>
 </div>
 </main>
@@ -278,6 +317,38 @@ body{margin:0}
   <img id="ovImg" alt="作業報告書の画像">
   <button class="btn" id="ovClose">閉じる</button>
 </div>
+
+<!-- メールで送る -->
+<div class="md" id="ms" hidden role="dialog" aria-modal="true" aria-labelledby="msTitle"><div class="md-box">
+  <div class="md-head"><h3 id="msTitle">メールで送る</h3><button class="btn ghost" id="msClose">閉じる</button></div>
+  <ol class="steps" id="msSteps"></ol>
+  <div class="f"><div class="lbl-row"><span>送り先</span><button type="button" class="linkbtn" data-mset>⚙ 宛先・文面の設定</button></div>
+    <div class="ms-list" id="msList"></div>
+    <div class="ms-add"><input type="text" id="msNewName" placeholder="名前（例：本部）" autocomplete="off"><input type="email" id="msNewAddr" placeholder="新しいメールアドレス" autocomplete="off" inputmode="email"><button type="button" id="msAddBtn">追加</button></div>
+  </div>
+  <div class="f"><div class="lbl-row"><span>件名</span><button type="button" class="linkbtn" id="msCopySub">件名をコピー</button></div><input type="text" id="msSubject" autocomplete="off"></div>
+  <div class="f">本文<textarea id="msBody" rows="12"></textarea></div>
+  <p class="md-msg" id="msMsg" hidden aria-live="polite"></p>
+  <button class="btn ghost big" id="msCopy">① 宛先をコピー</button>
+  <button class="btn primary big" id="msSend">② メールアプリを開く（PDF付き）</button>
+</div></div>
+
+<!-- メールの設定 -->
+<div class="md" id="mset" hidden role="dialog" aria-modal="true" aria-labelledby="msetTitle"><div class="md-box">
+  <div class="md-head"><h3 id="msetTitle">メールの設定</h3><button class="btn ghost" id="msetClose">閉じる</button></div>
+  <div class="seg seg-wide" id="msetTabs"><button type="button" data-g="cust" aria-pressed="true">お客様へ</button><button type="button" data-g="office" aria-pressed="false">社内へ</button></div>
+  <p class="hint" id="msetHint"></p>
+  <div class="f">送り先アドレス
+    <div class="ms-list" id="msetList"></div>
+    <div class="ms-add"><input type="text" id="msetNewName" placeholder="名前（例：事務所）" autocomplete="off"><input type="email" id="msetNewAddr" placeholder="メールアドレス" autocomplete="off" inputmode="email"><button type="button" id="msetAddBtn">追加</button></div>
+  </div>
+  <p class="md-msg" id="msetMsg" hidden aria-live="polite"></p>
+  <div class="f">件名<input type="text" id="msetSubject" autocomplete="off"></div>
+  <div class="f">本文<textarea id="msetBody" rows="14"></textarea></div>
+  <div class="f">差し込み項目（押すと、件名か本文のカーソルの位置に入ります）<div class="chips" id="msetChips"></div></div>
+  <p class="hint">{ } の部分は、報告書の内容に自動で置き換わります。中身が空の項目しかない行は、自動で消えます。設定はこの端末に保存されます。</p>
+  <button class="btn ghost" id="msetReset">この送り先の件名・本文を最初に戻す</button>
+</div></div>
 
 <datalist id="places">
   <option value="店内床面"><option value="バックヤード"><option value="トイレ"><option value="出入口・風除室">
@@ -535,6 +606,163 @@ $('#pdfShare').onclick=async e=>{
 // 入力を変えたら、とっておいたPDFは使わない
 document.addEventListener('input',()=>{sharePrep=null;const b=$('#pdfShare');if(b&&!b.disabled)b.textContent='PDFを共有'});
 $('#ovClose').onclick=()=>{$('#overlay').hidden=true};
+
+/* ---- メールで送る（PDFは共有画面で添付、宛先はコピーして貼り付け） ---- */
+const MAILKEY='ok-sagyo-mail-v1';
+const MAILDEF={
+  cust:{name:'お客様へ',subject:'【作業報告書】{作業日} {お客様・現場}様',
+    body:'{お客様名}\n{現場名}\nご担当者様\n\nいつもお世話になっております。\n株式会社オーアンドケーの{営業担当者}です。\n\n{作業日}に実施いたしました作業の作業報告書をお送りいたします。\n添付のPDFをご確認くださいますよう、お願い申し上げます。\n\n今後ともよろしくお願いいたします。\n\n株式会社オーアンドケー\n{営業担当者}\nTEL 052-877-2887',
+    hint:'お客様のアドレスを登録します。送るときは、お客様ごとに前回チェックした相手を覚えていて、次回から自動でチェックします（別のお客様への送り間違いを防ぐため、初めてのお客様では何もチェックされていません）。'},
+  office:{name:'社内へ',subject:'【作業報告書】{作業日} {お客様・現場}様',
+    body:'お疲れさまです。\n{お客様・現場}様の作業報告書を送ります。\n\n作業日：{作業日}\n作業時間：{開始}〜{終了}\n作業責任者：{作業責任者}\n営業担当者：{営業担当者}\n\n添付のPDFをご確認ください。',
+    hint:'社内の送り先を登録します。送るときは、ここに登録したアドレスが最初からすべてチェックされています。'}
+};
+const MAILTAGS=['お客様名','現場名','お客様・現場','作業日','開始','終了','作業責任者','営業担当者'];
+let M;try{M=JSON.parse(localStorage.getItem(MAILKEY))}catch(e){}
+if(!M||typeof M!=='object')M={};
+['cust','office'].forEach(g=>{const o=M[g]&&typeof M[g]==='object'?M[g]:{};
+  M[g]={list:Array.isArray(o.list)?o.list.filter(a=>a&&a.addr):[],subject:typeof o.subject==='string'?o.subject:MAILDEF[g].subject,body:typeof o.body==='string'?o.body:MAILDEF[g].body}});
+if(!M.last||typeof M.last!=='object')M.last={};
+function mailSave(){try{localStorage.setItem(MAILKEY,JSON.stringify(M))}catch(e){}}
+const isMail=v=>/^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()".]+$/.test(v);
+function jpDate(v){const [y,m,d]=(v||'').split('-');return y&&m&&d?`${+y}年${+m}月${+d}日`:''}
+function mailVals(){const c=(S.customer||'').trim(),s=(S.site||'').trim();
+  return {'お客様名':c,'現場名':s,'お客様・現場':[c,s].filter(Boolean).join(' '),'作業日':jpDate(S.date),'開始':S.start||'','終了':S.end||'',
+    '作業責任者':(S.leader||'').trim(),'営業担当者':(S.sales||'').trim()}}
+function fillTpl(t){
+  const v=mailVals();const g=k=>Object.prototype.hasOwnProperty.call(v,k)?v[k]:'{'+k+'}';
+  return String(t||'').split('\n').map(line=>line.replace(/の\{([^{}\n]+)\}です/g,(m,k)=>g(k)?'の'+g(k)+'です':'です')).filter(line=>{const ks=[...line.matchAll(/\{([^{}\n]+)\}/g)].map(m=>m[1]);return !ks.length||ks.some(k=>g(k))})
+    .map(line=>line.replace(/\{([^{}\n]+)\}様/g,(m,k)=>g(k)?g(k)+'様':'')
+      .replace(/\{([^{}\n]+)\}/g,(m,k)=>g(k)).replace(/ {2,}/g,' ').replace(/^ +| +$/g,''))
+    .join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+async function copyText(t){
+  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(t);return true}}catch(e){}
+  try{const ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');
+    ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px';document.body.appendChild(ta);
+    ta.select();ta.setSelectionRange(0,t.length);const ok=document.execCommand('copy');ta.remove();return ok}catch(e){return false}
+}
+let mdOpen=0,mdScroll=0;
+function mdShow(el,on){if(el.hidden===!on)return;el.hidden=!on;mdOpen+=on?1:-1;
+  const de=document.documentElement;
+  if(on&&mdOpen===1){mdScroll=window.scrollY;de.style.overflow='hidden';document.body.style.overflow='hidden'}
+  if(!on&&mdOpen===0){de.style.overflow='';document.body.style.overflow='';window.scrollTo(0,mdScroll)}
+  if(on)el.scrollTop=0}
+function msg(id,t){const m=$(id);m.textContent=t||'';m.hidden=!t}
+function addAddr(g,nameEl,addrEl,msgId){
+  const addr=addrEl.value.trim(),name=nameEl.value.trim();
+  if(!isMail(addr)){msg(msgId,'メールアドレスの形が正しくありません（例：jimu@example.co.jp）');addrEl.focus();return null}
+  const L=M[g].list;let a=L.find(x=>x.addr.toLowerCase()===addr.toLowerCase());
+  if(a){if(name)a.name=name}else{a={name,addr};L.push(a)}
+  mailSave();nameEl.value='';addrEl.value='';msg(msgId,'');return a;
+}
+const addrHtml=a=>`<span>${a.name?`<b>${esc(a.name)}</b><small>${esc(a.addr)}</small>`:`<b>${esc(a.addr)}</b>`}</span>`;
+
+/* 送る画面 */
+let mailG='cust',mailSel=new Set(),mailPrep=null;
+const siteKey=()=>mailG+'|'+[(S.customer||'').trim(),(S.site||'').trim()].join('|');
+function renderMsList(){
+  const L=M[mailG].list;
+  $('#msList').innerHTML=L.length?L.map((a,i)=>`<label class="ms-addr${mailSel.has(a.addr)?' on':''}"><input type="checkbox" data-i="${i}"${mailSel.has(a.addr)?' checked':''}>${addrHtml(a)}</label>`).join('')
+    :`<p class="ms-empty">送り先がまだ登録されていません。下の欄にアドレスを入れて「追加」を押してください（次回から自動で出てきます）。</p>`;
+  if(L.length&&!mailSel.size&&mailG==='cust')$('#msList').insertAdjacentHTML('afterbegin','<p class="ms-empty">このお客様に送る相手にチェックを入れてください。次回から同じお客様では自動でチェックされます。</p>');
+  resetCopyBtn();
+}
+function resetCopyBtn(){const b=$('#msCopy');b.classList.remove('done');b.textContent='① 宛先をコピー'}
+$('#msList').addEventListener('change',e=>{const t=e.target;if(t.dataset.i==null)return;const a=M[mailG].list[+t.dataset.i];
+  if(t.checked)mailSel.add(a.addr);else mailSel.delete(a.addr);renderMsList()});
+$('#msAddBtn').onclick=()=>{const a=addAddr(mailG,$('#msNewName'),$('#msNewAddr'),'#msMsg');if(a){mailSel.add(a.addr);renderMsList()}};
+$('#msNewAddr').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#msAddBtn').click()}});
+function openMail(g){
+  mailG=g;const last=M.last[siteKey()];
+  mailSel=new Set(M[g].list.filter(a=>Array.isArray(last)?last.includes(a.addr):g==='office').map(a=>a.addr));
+  $('#msTitle').textContent=MAILDEF[g].name+'メール';
+  $('#msSteps').innerHTML=canFileShare
+    ?'<li>送り先にチェック、件名・本文を確かめる</li><li>「① 宛先をコピー」を押す</li><li>「② メールアプリを開く」を押し、メール（Gmail・Outlookなど）を選ぶ</li><li>メールの宛先欄を長押しして「ペースト」し、送信する</li>'
+    :'<li>送り先にチェック、件名・本文を確かめる</li><li>「② メールアプリを開く」を押すと、PDFが保存され、宛先・件名・本文の入ったメールが開きます</li><li>保存したPDFをメールに添付して、送信する</li>';
+  $('#msCopy').hidden=!canFileShare;
+  $('#msSubject').value=fillTpl(M[g].subject);$('#msBody').value=fillTpl(M[g].body);
+  msg('#msMsg','');renderMsList();mdShow($('#ms'),true);
+  // PDFは先に作っておき、②を押したらすぐ共有画面を開けるようにする
+  const p={file:null};p.p=makePdf().then(f=>{p.file=f;return f}).catch(()=>null);mailPrep=p;
+}
+function closeMail(){mdShow($('#ms'),false);mailPrep=null}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-mail]');if(b)openMail(b.dataset.mail)});
+$('#msClose').onclick=closeMail;
+const toList=()=>M[mailG].list.filter(a=>mailSel.has(a.addr)).map(a=>a.addr);
+$('#msCopy').onclick=async()=>{
+  const to=toList();if(!to.length){msg('#msMsg','送り先にチェックを入れてください');return}
+  const s=to.join(', ');
+  if(await copyText(s)){const b=$('#msCopy');b.classList.add('done');b.textContent='✓ 宛先をコピーしました（'+to.length+'件）';msg('#msMsg','')}
+  else msg('#msMsg','コピーできませんでした。メールの宛先欄に次のアドレスを入力してください：\n'+s);
+};
+$('#msCopySub').onclick=async()=>{msg('#msMsg',await copyText($('#msSubject').value)?'件名をコピーしました。メールの件名欄に貼り付けてください':'件名をコピーできませんでした')};
+function openMailto(to,subject,body){
+  const u='mailto:'+to.map(encodeURIComponent).join(',')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body.replace(/\n/g,'\r\n'));
+  if(window.top!==window){const w=window.open(u,'_blank');if(w)return}
+  location.href=u;
+}
+$('#msSend').onclick=async e=>{
+  const b=e.currentTarget,L='② メールアプリを開く（PDF付き）';
+  const to=toList();if(!to.length){msg('#msMsg','送り先にチェックを入れてください（下の欄から新しいアドレスも追加できます）');return}
+  const subject=$('#msSubject').value.trim(),body=$('#msBody').value;
+  M.last[siteKey()]=to;mailSave();
+  let f=mailPrep&&mailPrep.file;
+  if(!f){b.disabled=true;b.textContent='PDFを作成中…';
+    try{f=mailPrep?await mailPrep.p:null;if(!f)f=await makePdf()}catch(err){f=null}finally{b.disabled=false;b.textContent=L}
+    if(!f){msg('#msMsg','PDFを作成できませんでした。電波のある場所で開き直すか、もう一度押してください');return}
+    if(mailPrep)mailPrep.file=f;else mailPrep={file:f};
+  }
+  if(!canFileShare){await saveBlob(f);openMailto(to,subject,body);
+    msg('#msMsg','PDF（'+f.name+'）を保存しました。開いたメールに、保存したPDFを添付して送信してください');return}
+  msg('#msMsg','');
+  try{await navigator.share({files:[f],title:subject,text:body});
+    msg('#msMsg','送信が済んだら「閉じる」を押してください。宛先が入っていなかったときは、宛先欄を長押しして「ペースト」してください')}
+  catch(err){
+    if(err.name==='AbortError')return;
+    if(err.name==='NotAllowedError'){msg('#msMsg','準備ができました。もう一度「② メールアプリを開く」を押してください');return}
+    msg('#msMsg','メールアプリを開けませんでした。報告書画面の「PDFを保存」で保存して、メールに添付してください');
+  }
+};
+
+/* 設定画面 */
+let setG='cust',lastFocus=null,tplSnap='';
+function renderSet(){
+  $('#msetTabs').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.g===setG));
+  $('#msetHint').textContent=MAILDEF[setG].hint;
+  const L=M[setG].list;
+  $('#msetList').innerHTML=L.length?L.map((a,i)=>`<div class="set-row">${addrHtml(a)}<button type="button" class="x" data-del="${i}">削除</button></div>`).join('')
+    :'<p class="ms-empty">まだ登録されていません。</p>';
+  $('#msetSubject').value=M[setG].subject;$('#msetBody').value=M[setG].body;msg('#msetMsg','');resetArm();
+}
+function openSet(){setG=$('#ms').hidden?'cust':mailG;tplSnap=JSON.stringify([M.cust.subject,M.cust.body,M.office.subject,M.office.body]);
+  lastFocus=null;renderSet();mdShow($('#mset'),true)}
+function closeSet(){mdShow($('#mset'),false);
+  if(!$('#ms').hidden){const was=JSON.stringify([M.cust.subject,M.cust.body,M.office.subject,M.office.body]);
+    if(was!==tplSnap){$('#msSubject').value=fillTpl(M[mailG].subject);$('#msBody').value=fillTpl(M[mailG].body)}renderMsList()}}
+document.addEventListener('click',e=>{if(e.target.closest('[data-mset]'))openSet()});
+$('#msetClose').onclick=closeSet;
+$('#msetTabs').addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(b){setG=b.dataset.g;lastFocus=null;renderSet()}});
+$('#msetList').addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(!b)return;
+  const a=M[setG].list.splice(+b.dataset.del,1)[0];if(a&&setG===mailG)mailSel.delete(a.addr);mailSave();renderSet()});
+$('#msetAddBtn').onclick=()=>{if(addAddr(setG,$('#msetNewName'),$('#msetNewAddr'),'#msetMsg'))renderSet()};
+$('#msetNewAddr').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#msetAddBtn').click()}});
+$('#msetSubject').addEventListener('input',e=>{M[setG].subject=e.target.value;mailSave()});
+$('#msetBody').addEventListener('input',e=>{M[setG].body=e.target.value;mailSave()});
+['#msetSubject','#msetBody'].forEach(s=>$(s).addEventListener('focus',e=>{lastFocus=e.target}));
+$('#msetChips').innerHTML=MAILTAGS.map(t=>`<button type="button" data-tag="${t}">${t}</button>`).join('');
+$('#msetChips').addEventListener('mousedown',e=>{if(e.target.closest('[data-tag]'))e.preventDefault()});
+$('#msetChips').addEventListener('click',e=>{const b=e.target.closest('[data-tag]');if(!b)return;
+  const el=lastFocus||$('#msetBody'),ins='{'+b.dataset.tag+'}';
+  const s=el.selectionStart??el.value.length,t=el.selectionEnd??s;
+  el.value=el.value.slice(0,s)+ins+el.value.slice(t);el.focus();el.setSelectionRange(s+ins.length,s+ins.length);
+  el.dispatchEvent(new Event('input',{bubbles:true}))});
+let armReset=null;
+function resetArm(){clearTimeout(armReset);armReset=null;const b=$('#msetReset');b.textContent='この送り先の件名・本文を最初に戻す';b.classList.remove('warn')}
+$('#msetReset').onclick=e=>{const b=e.currentTarget;
+  if(!armReset){b.textContent='もう一度押すと最初の文面に戻します';b.classList.add('warn');armReset=setTimeout(resetArm,3000);return}
+  resetArm();M[setG].subject=MAILDEF[setG].subject;M[setG].body=MAILDEF[setG].body;mailSave();renderSet();msg('#msetMsg','最初の文面に戻しました')};
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(!$('#mset').hidden)closeSet();else if(!$('#ms').hidden)closeMail()});
 
 /* ---- タブ ---- */
 function show(t){
