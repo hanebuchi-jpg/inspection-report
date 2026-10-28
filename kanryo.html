@@ -246,6 +246,53 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
   .shutter{width:64px;height:64px}
 }
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 20px);transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:80;max-width:calc(100% - 32px)}
+/* ---- メールで送る（共通部品） ---- */
+.om-bar{display:flex;flex-direction:column;gap:8px;margin-top:4px;padding-top:12px;border-top:1px solid var(--line)}
+.om-bar-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted)}
+.om-bar .om-btns{display:flex;gap:8px;flex-wrap:wrap}
+.om-bar .om-btns .btn{flex:1 1 140px;padding:12px 14px}
+.om-link{border:0;background:transparent;color:var(--brand);font-size:13px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit}
+.om-md{position:fixed;inset:0;z-index:2000;background:rgba(10,14,20,.55);display:flex;justify-content:center;align-items:flex-start;overflow:auto;overscroll-behavior:contain;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+.om-md[hidden]{display:none!important}
+#omSet{z-index:2001}
+.om-box{background:var(--surface);color:var(--ink);border-radius:14px;width:100%;max-width:560px;padding:16px;display:flex;flex-direction:column;gap:14px;text-align:left}
+.om-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.om-head h3{margin:0;font-size:18px}
+.om-f{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted);min-width:0}
+.om-box input[type=text],.om-box input[type=email],.om-box textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:9px 10px;font-size:16px;color:var(--ink);min-width:0;font-family:inherit}
+.om-box textarea{resize:vertical;line-height:1.6}
+.om-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.om-steps{margin:0;padding:10px 12px 10px 2em;font-size:13px;line-height:1.7;background:var(--bg);border-radius:10px;color:var(--ink)}
+.om-steps li.note{list-style:none;margin-left:-1.2em;margin-top:4px;font-size:12px;color:var(--muted)}
+.om-list{display:flex;flex-direction:column;gap:6px}
+.om-addr{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;color:var(--ink)}
+.om-addr input{width:22px;height:22px;flex:none;margin:0;accent-color:var(--brand)}
+.om-addr.on{border-color:var(--brand);background:var(--om-soft,var(--bg))}
+.om-addr span,.om-srow span{display:flex;flex-direction:column;min-width:0;flex:1}
+.om-addr b,.om-srow b{font-size:14px}
+.om-addr small,.om-srow small{font-size:13px;color:var(--muted);word-break:break-all}
+.om-srow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;color:var(--ink)}
+.om-del{border:0;background:transparent;color:var(--muted);font-size:13px;padding:6px 8px;cursor:pointer;font-family:inherit}
+.om-empty{font-size:13px;color:var(--muted);background:var(--bg);border-radius:10px;padding:10px 12px;margin:0}
+.om-add{display:grid;grid-template-columns:1fr 1.6fr auto;gap:6px}
+@media (max-width:480px){.om-add{grid-template-columns:1fr auto}.om-add input:first-child{grid-column:1/-1}}
+.om-add button{border:1px solid var(--brand);color:var(--brand);background:transparent;border-radius:8px;padding:0 16px;font-weight:700;min-height:42px;cursor:pointer;font-family:inherit}
+.om-big{width:100%;padding:16px!important;font-size:16px!important}
+.om-done{background:#2e7d32!important;color:#fff!important;border-color:#2e7d32!important}
+.om-warn{background:#b3261e!important;color:#fff!important;border-color:#b3261e!important}
+.om-msg{margin:0;font-size:13px;color:var(--ink);background:var(--om-soft,var(--bg));border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-all}
+.om-seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.om-seg button{flex:1;border:0;background:transparent;padding:10px 4px;font-size:14px;color:var(--muted);cursor:pointer;font-family:inherit;line-height:1.35}
+.om-seg button+button{border-left:1px solid var(--line)}
+.om-seg button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);font-weight:700}
+.om-seg button small{display:block;font-size:11px;font-weight:400}
+.om-chips{display:flex;flex-wrap:wrap;gap:6px}
+.om-chips button{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:4px 11px;font-size:12px;color:var(--ink);cursor:pointer;font-family:inherit}
+.om-hint{font-size:12px;color:var(--muted);margin:0}
+@supports (background:color-mix(in srgb,red 50%,blue)){:root{--om-soft:color-mix(in srgb,var(--brand) 13%,var(--surface))}}
+@media print{.om-bar,.om-md{display:none!important}}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -402,6 +449,10 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
         <input type="file" id="jsonIn" accept="application/json,.json" hidden>
       </div>
       <p class="hint">写真をまとめて保存すると、施工看板入りの写真がzipファイルにまとまります（異常箇所の写真は名前の頭に「異常_」）。iPhoneは「写真アプリへまとめて保存」から共有画面を開き「画像を保存」を選ぶと写真アプリに入ります。CSVはExcelでそのまま開けます。点検データ（写真・設定込み）は別の端末に渡すときに使い、読み込むと新しい報告として追加されます。</p>
+      <div class="om-bar">
+        <div class="om-bar-h">メールで送る（PDF付き）<button type="button" class="om-link" data-omset>⚙ 宛先・文面の設定</button></div>
+        <div class="om-btns"><button type="button" class="btn pri" data-om="cust">お客様へメール</button><button type="button" class="btn pri" data-om="office">社内へメール</button></div>
+      </div>
     </div>
     <div class="pages" id="pages"><p class="hint">報告書を作成中…</p></div>
   </section>
@@ -563,6 +614,39 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
+
+<!-- メールで送る（共通部品） -->
+<div class="om-md" id="omSend" hidden role="dialog" aria-modal="true" aria-labelledby="omTitle"><div class="om-box">
+  <div class="om-head"><h3 id="omTitle">メールで送る</h3><button type="button" class="btn" id="omClose">閉じる</button></div>
+  <div class="om-f" id="omModeWrap">送り方（この端末で覚えます）
+    <div class="om-seg" id="omMode"><button type="button" data-m="auto">iPhoneメール<small>ショートカット</small></button><button type="button" data-m="attach">iPhoneメール<small>PDFは手で添付</small></button><button type="button" data-m="paste">Gmailなど<small>宛先を貼り付け</small></button></div>
+  </div>
+  <ol class="om-steps" id="omSteps"></ol>
+  <div class="om-f"><div class="om-row"><span>送り先</span><button type="button" class="om-link" data-omset>⚙ 宛先・文面の設定</button></div>
+    <div class="om-list" id="omList"></div>
+    <div class="om-add"><input type="text" id="omNewName" placeholder="名前（例：本部）" autocomplete="off"><input type="email" id="omNewAddr" placeholder="新しいメールアドレス" autocomplete="off" inputmode="email"><button type="button" id="omAddBtn">追加</button></div>
+  </div>
+  <div class="om-f"><div class="om-row"><span>件名</span><button type="button" class="om-link" id="omCopySub">件名をコピー</button></div><input type="text" id="omSubject" autocomplete="off"></div>
+  <div class="om-f">本文<textarea id="omBody" rows="12"></textarea></div>
+  <p class="om-msg" id="omMsg" hidden aria-live="polite"></p>
+  <button type="button" class="btn om-big" id="omCopy">① 宛先をコピー</button>
+  <button type="button" class="btn pri om-big" id="omGo">② メールアプリを開く（PDF付き）</button>
+</div></div>
+<div class="om-md" id="omSet" hidden role="dialog" aria-modal="true" aria-labelledby="omSetTitle"><div class="om-box">
+  <div class="om-head"><h3 id="omSetTitle">メールの設定</h3><button type="button" class="btn" id="omSetClose">閉じる</button></div>
+  <div class="om-seg" id="omSetTabs"><button type="button" data-g="cust" aria-pressed="true">お客様へ</button><button type="button" data-g="office" aria-pressed="false">社内へ</button></div>
+  <p class="om-hint" id="omSetHint"></p>
+  <div class="om-f">送り先アドレス
+    <div class="om-list" id="omSetList"></div>
+    <div class="om-add"><input type="text" id="omSetNewName" placeholder="名前（例：事務所）" autocomplete="off"><input type="email" id="omSetNewAddr" placeholder="メールアドレス" autocomplete="off" inputmode="email"><button type="button" id="omSetAddBtn">追加</button></div>
+  </div>
+  <p class="om-msg" id="omSetMsg" hidden aria-live="polite"></p>
+  <div class="om-f">件名<input type="text" id="omSetSubject" autocomplete="off"></div>
+  <div class="om-f">本文<textarea id="omSetBody" rows="14"></textarea></div>
+  <div class="om-f">差し込み項目（押すと、件名か本文のカーソルの位置に入ります）<div class="om-chips" id="omSetChips"></div></div>
+  <p class="om-hint">{ } の部分は、報告書の内容に自動で置き換わります。中身が空の項目しかない行は、自動で消えます。設定はこの端末に保存されます。</p>
+  <button type="button" class="btn" id="omSetReset">この送り先の件名・本文を最初に戻す</button>
+</div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -2164,6 +2248,202 @@ $("#btnShare").onclick=async e=>{
     toast("共有できませんでした。PDFを保存して送ってください");sharePrep=null;
   }
 };
+const OM_JP=v=>{const [y,m,d]=String(v||"").split("-");return y&&m&&d?(+y)+"年"+(+m)+"月"+(+d)+"日":""};
+const OM_CFG={key:"ok-kanryo-mail-v1",siteWord:"店舗",
+  siteKey:()=>{const m=R().meta;return [(m.site||"").trim(),(m.storeNo||"").trim()].join("|")},
+  tags:["店名","店番","実施日","開始","終了","作業内容","報告者名","連絡先"],
+  vals:()=>{const m=R().meta,s=(m.site||"").trim();
+    return {"店名":s?(formOf(m)==="seisou"?s:s+"店"):"","店番":m.storeNo,"実施日":OM_JP(m.date),"開始":m.start,"終了":m.end,"作業内容":workSummary(m),"報告者名":m.inspector,"作業責任者":m.inspector,"連絡先":m.contact}},
+  defs:{
+    cust:{subject:"【作業完了報告書】{実施日} {店名}",
+      body:"{店名}\nご担当者様\n\nいつもお世話になっております。\n株式会社オーアンドケーです。\n\n{実施日}に実施いたしました作業の完了報告書をお送りいたします。\n添付のPDFをご確認くださいますよう、お願い申し上げます。\n\n今後ともよろしくお願いいたします。\n\n株式会社オーアンドケー\n{報告者名}\nTEL 052-877-2887",
+      hint:"お客様（店舗）のアドレスを登録します。送るときは、店舗ごとに前回チェックした相手を覚えていて、次回から自動でチェックします（別の店舗への送り間違いを防ぐため、初めての店舗では何もチェックされていません）。"},
+    office:{subject:"【作業完了報告書】{実施日} {店名}",
+      body:"お疲れさまです。\n{店名}の作業完了報告書を送ります。\n\n実施日：{実施日}\n作業時間：{開始}〜{終了}\n店番：{店番}\n作業内容：{作業内容}\n報告者：{報告者名}\n\n添付のPDFをご確認ください。",
+      hint:"社内の送り先を登録します。送るときは、ここに登録したアドレスが最初からすべてチェックされています。"}},
+  pdf:async()=>{const b=await makePdf(null);return b?new File([b],fname("pdf",outName()),{type:"application/pdf"}):null},
+  save:f=>saveFile(f,f.name)};
+/* ---------- メールで送る（共通部品：PDFは共有画面で添付／宛先はコピー・ショートカット・mailto） ---------- */
+(function(C){
+  const q=s=>document.querySelector(s);
+  const hx=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+  let share=false;try{share=!!(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))}catch(e){}
+  const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const SC_NAME="O&K報告書メール",SC_SEP="|||",GN={cust:"お客様へ",office:"社内へ"};
+  let M;try{M=JSON.parse(localStorage.getItem(C.key))}catch(e){}
+  if(!M||typeof M!=="object")M={};
+  ["cust","office"].forEach(g=>{const o=M[g]&&typeof M[g]==="object"?M[g]:{};
+    M[g]={list:Array.isArray(o.list)?o.list.filter(a=>a&&a.addr):[],subject:typeof o.subject==="string"?o.subject:C.defs[g].subject,body:typeof o.body==="string"?o.body:C.defs[g].body}});
+  if(!M.last||typeof M.last!=="object")M.last={};
+  const keep=()=>{try{localStorage.setItem(C.key,JSON.stringify(M))}catch(e){}};
+  const isMail=v=>/^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()".]+$/.test(v);
+  function fill(t){
+    const v=C.vals();const g=k=>Object.prototype.hasOwnProperty.call(v,k)?String(v[k]==null?"":v[k]).trim():"{"+k+"}";
+    return String(t||"").split("\n").map(l=>l.replace(/の\{([^{}\n]+)\}です/g,(m,k)=>g(k)?"の"+g(k)+"です":"です"))
+      .filter(l=>{const ks=[...l.matchAll(/\{([^{}\n]+)\}/g)].map(m=>m[1]);return !ks.length||ks.some(k=>g(k))})
+      .map(l=>l.replace(/\{([^{}\n]+)\}様/g,(m,k)=>g(k)?g(k)+"様":"").replace(/\{([^{}\n]+)\}/g,(m,k)=>g(k)).replace(/ {2,}/g," ").replace(/^ +| +$/g,""))
+      .join("\n").replace(/\n{3,}/g,"\n\n").trim();
+  }
+  async function copy(t){
+    try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(t);return true}}catch(e){}
+    try{const ta=document.createElement("textarea");ta.value=t;ta.setAttribute("readonly","");
+      ta.style.cssText="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px";document.body.appendChild(ta);
+      ta.select();ta.setSelectionRange(0,t.length);const ok=document.execCommand("copy");ta.remove();return ok}catch(e){return false}
+  }
+  let open=0,sy=0;
+  function show(el,on){if(el.hidden===!on)return;el.hidden=!on;open+=on?1:-1;const de=document.documentElement;
+    if(on&&open===1){sy=window.scrollY;de.style.overflow="hidden";document.body.style.overflow="hidden"}
+    if(!on&&open===0){de.style.overflow="";document.body.style.overflow="";window.scrollTo(0,sy)}
+    if(on)el.scrollTop=0}
+  const msg=(id,t)=>{const m=q(id);m.textContent=t||"";m.hidden=!t};
+  function addAddr(g,nEl,aEl,mid){
+    const addr=aEl.value.trim(),name=nEl.value.trim();
+    if(!isMail(addr)){msg(mid,"メールアドレスの形が正しくありません（例：jimu@example.co.jp）");aEl.focus();return null}
+    const L=M[g].list;let a=L.find(x=>x.addr.toLowerCase()===addr.toLowerCase());
+    if(a){if(name)a.name=name}else{a={name,addr};L.push(a)}
+    keep();nEl.value="";aEl.value="";msg(mid,"");return a;
+  }
+  const ah=a=>`<span>${a.name?`<b>${hx(a.name)}</b><small>${hx(a.addr)}</small>`:`<b>${hx(a.addr)}</b>`}</span>`;
+
+  /* 送り方 */
+  const MODES={
+    auto:{b1:"① 送信内容をコピー",b2:"② 共有画面を開く（PDF）",
+      steps:["送り先にチェック、件名・本文を確かめる","「① 送信内容をコピー」を押す","「② 共有画面を開く」を押し、一覧から「"+SC_NAME+"」を選ぶ","宛先・件名・本文・PDFの入ったメールが開くので、送信する"],
+      note:"iPhoneにショートカット「"+SC_NAME+"」の準備が必要です（作り方は操作マニュアル）"},
+    attach:{b1:"① PDFを「ファイル」に保存",b2:"② メールを開く（宛先・件名・本文入り）",
+      steps:["送り先にチェック、件名・本文を確かめる","「① PDFを「ファイル」に保存」を押し、一覧から「“ファイル”に保存」を選んで保存する","「② メールを開く」を押す（宛先・件名・本文が入ったメールが開きます）","メールの本文の中を押し、キーボードの上の「＜」→ 書類のマークから保存したPDFを選んで添付し、送信する"]},
+    paste:{b1:"① 宛先をコピー",b2:"② メールアプリを開く（PDF付き）",
+      steps:["送り先にチェック、件名・本文を確かめる","「① 宛先をコピー」を押す","「② メールアプリを開く」を押し、メールアプリ（Gmail・Outlookなど）を選ぶ","メールの宛先欄を長押しして「ペースト」し、送信する"]},
+    mailto:{b1:"",b2:"② メールを開く（PDFは保存されます）",
+      steps:["送り先にチェック、件名・本文を確かめる","「② メールを開く」を押すと、PDFが保存され、宛先・件名・本文の入ったメールが開きます","保存したPDFをメールに添付して、送信する"]}
+  };
+  const mode=()=>!share?"mailto":(MODES[M.mode]&&M.mode!=="mailto"?M.mode:(isIOS?"attach":"paste"));
+  function resetCopy(){const b=q("#omCopy");b.classList.remove("om-done");b.textContent=MODES[mode()].b1}
+  function renderMode(){
+    const m=mode(),c=MODES[m];
+    q("#omModeWrap").hidden=m==="mailto";
+    q("#omMode").querySelectorAll("[data-m]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===m));
+    q("#omSteps").innerHTML=c.steps.map(s=>`<li>${hx(s)}</li>`).join("")+(c.note?`<li class="note">${hx(c.note)}</li>`:"");
+    q("#omCopy").hidden=!c.b1;q("#omGo").textContent=c.b2;resetCopy();msg("#omMsg","");
+  }
+  q("#omMode").addEventListener("click",e=>{const b=e.target.closest("[data-m]");if(!b)return;M.mode=b.dataset.m;keep();renderMode()});
+
+  /* 送る画面 */
+  let G="cust",sel=new Set(),prep=null;
+  const siteKey=()=>G+"|"+C.siteKey();
+  function renderList(){
+    const L=M[G].list;
+    q("#omList").innerHTML=L.length?L.map((a,i)=>`<label class="om-addr${sel.has(a.addr)?" on":""}"><input type="checkbox" data-i="${i}"${sel.has(a.addr)?" checked":""}>${ah(a)}</label>`).join("")
+      :`<p class="om-empty">送り先がまだ登録されていません。下の欄にアドレスを入れて「追加」を押してください（次回から自動で出てきます）。</p>`;
+    if(L.length&&!sel.size&&G==="cust")q("#omList").insertAdjacentHTML("afterbegin",`<p class="om-empty">このお客様に送る相手にチェックを入れてください。次回から同じ${hx(C.siteWord||"お客様")}では自動でチェックされます。</p>`);
+    resetCopy();
+  }
+  q("#omList").addEventListener("change",e=>{const t=e.target;if(t.dataset.i==null)return;const a=M[G].list[+t.dataset.i];
+    if(t.checked)sel.add(a.addr);else sel.delete(a.addr);renderList()});
+  q("#omAddBtn").onclick=()=>{const a=addAddr(G,q("#omNewName"),q("#omNewAddr"),"#omMsg");if(a){sel.add(a.addr);renderList()}};
+  q("#omNewAddr").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();q("#omAddBtn").click()}});
+  function openSend(g){
+    G=g;const last=M.last[siteKey()];
+    sel=new Set(M[g].list.filter(a=>Array.isArray(last)?last.includes(a.addr):g==="office").map(a=>a.addr));
+    q("#omTitle").textContent=GN[g]+"メール";
+    q("#omSubject").value=fill(M[g].subject);q("#omBody").value=fill(M[g].body);
+    renderMode();renderList();show(q("#omSend"),true);
+    // PDFは先に作っておき、ボタンを押したらすぐ共有画面を開けるようにする
+    const p={file:null};p.p=Promise.resolve().then(()=>C.pdf()).then(f=>{p.file=f||null;return p.file}).catch(()=>null);prep=p;
+  }
+  function closeSend(){show(q("#omSend"),false);prep=null}
+  document.addEventListener("click",e=>{const b=e.target.closest("[data-om]");if(b)openSend(b.dataset.om)});
+  q("#omClose").onclick=closeSend;
+  const toList=()=>M[G].list.filter(a=>sel.has(a.addr)).map(a=>a.addr);
+  function needTo(){const to=toList();if(!to.length){msg("#omMsg","送り先にチェックを入れてください（下の欄から新しいアドレスも追加できます）");return null}M.last[siteKey()]=to;keep();return to}
+  async function getPdf(b){
+    let f=prep&&prep.file;if(f)return f;
+    const L=b.textContent;b.disabled=true;b.textContent="PDFを作成中…";
+    try{f=prep?await prep.p:null;if(!f)f=await C.pdf()}catch(err){f=null}finally{b.disabled=false;b.textContent=L}
+    if(!f){msg("#omMsg","PDFを作成できませんでした。報告書に入れるものを確かめるか、電波のある場所で開き直してから、もう一度押してください");return null}
+    if(prep)prep.file=f;else prep={file:f};
+    f.__late=true;return f;
+  }
+  async function sharePdf(f,data,done,btn){
+    try{await navigator.share(Object.assign({files:[f]},data||{}));if(done)msg("#omMsg",done);return true}
+    catch(err){
+      if(err.name==="AbortError")return false;
+      if(err.name==="NotAllowedError"){msg("#omMsg","準備ができました。もう一度「"+btn+"」を押してください");return false}
+      msg("#omMsg","共有画面を開けませんでした。PDFを保存して、メールに添付してください");return false;
+    }
+  }
+  function mailto(to,subject,body){
+    const u="mailto:"+to.join(",")+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body.replace(/\r?\n/g,"\r\n"));
+    if(window.top!==window){const w=window.open(u,"_blank");if(w)return}
+    location.href=u;
+  }
+  const done=(b,t)=>{b.classList.add("om-done");b.textContent=t};
+  q("#omCopy").onclick=async e=>{
+    const b=e.currentTarget,m=mode(),to=needTo();if(!to)return;
+    const subject=q("#omSubject").value.trim(),body=q("#omBody").value;
+    if(m==="paste"){const s=to.join(", ");
+      if(await copy(s)){done(b,"✓ 宛先をコピーしました（"+to.length+"件）");msg("#omMsg","")}
+      else msg("#omMsg","コピーできませんでした。メールの宛先欄に次のアドレスを入力してください：\n"+s);return}
+    if(m==="auto"){
+      if(await copy([to.join(","),subject,body].join(SC_SEP))){done(b,"✓ 送信内容をコピーしました");msg("#omMsg","")}
+      else msg("#omMsg","コピーできませんでした。もう一度押してください");return}
+    if(m==="attach"){const f=await getPdf(b);if(!f)return;
+      if(f.__late){f.__late=false;msg("#omMsg","PDFができました。もう一度「"+MODES.attach.b1+"」を押してください");return}
+      if(await sharePdf(f,null,"",MODES.attach.b1)){done(b,"✓ PDFを保存しました");msg("#omMsg","続けて「② メールを開く」を押してください")}}
+  };
+  q("#omCopySub").onclick=async()=>{msg("#omMsg",await copy(q("#omSubject").value)?"件名をコピーしました。メールの件名欄に貼り付けてください":"件名をコピーできませんでした")};
+  q("#omGo").onclick=async e=>{
+    const b=e.currentTarget,m=mode(),to=needTo();if(!to)return;
+    const subject=q("#omSubject").value.trim(),body=q("#omBody").value;
+    if(m==="attach"){mailto(to,subject,body);msg("#omMsg","開いたメールに、保存したPDFを添付して送信してください。送信が済んだら「閉じる」を押してください");return}
+    if(m==="auto"&&!q("#omCopy").classList.contains("om-done")){msg("#omMsg","先に「① 送信内容をコピー」を押してください");return}
+    const f=await getPdf(b);if(!f)return;
+    if(m==="mailto"){await C.save(f);mailto(to,subject,body);
+      msg("#omMsg","PDF（"+f.name+"）を保存しました。開いたメールに、保存したPDFを添付して送信してください");return}
+    if(f.__late){f.__late=false;msg("#omMsg","PDFができました。もう一度「"+MODES[m].b2+"」を押してください");return}
+    if(m==="auto")await sharePdf(f,null,"メールが開かなかったときは、「① 送信内容をコピー」からやり直してください。送信が済んだら「閉じる」を押してください",MODES[m].b2);
+    else await sharePdf(f,{title:subject,text:body},"送信が済んだら「閉じる」を押してください。宛先が入っていなかったときは、宛先欄を長押しして「ペースト」してください",MODES[m].b2);
+  };
+
+  /* 設定画面 */
+  let SG="cust",focusEl=null,snap="";
+  const tplNow=()=>JSON.stringify([M.cust.subject,M.cust.body,M.office.subject,M.office.body]);
+  function renderSet(){
+    q("#omSetTabs").querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.g===SG));
+    q("#omSetHint").textContent=C.defs[SG].hint;
+    const L=M[SG].list;
+    q("#omSetList").innerHTML=L.length?L.map((a,i)=>`<div class="om-srow">${ah(a)}<button type="button" class="om-del" data-del="${i}">削除</button></div>`).join("")
+      :`<p class="om-empty">まだ登録されていません。</p>`;
+    q("#omSetSubject").value=M[SG].subject;q("#omSetBody").value=M[SG].body;msg("#omSetMsg","");unarm();
+  }
+  function openSet(){SG=q("#omSend").hidden?"cust":G;snap=tplNow();focusEl=null;renderSet();show(q("#omSet"),true)}
+  function closeSet(){show(q("#omSet"),false);
+    if(!q("#omSend").hidden){if(tplNow()!==snap){q("#omSubject").value=fill(M[G].subject);q("#omBody").value=fill(M[G].body)}renderList()}}
+  document.addEventListener("click",e=>{if(e.target.closest("[data-omset]"))openSet()});
+  q("#omSetClose").onclick=closeSet;
+  q("#omSetTabs").addEventListener("click",e=>{const b=e.target.closest("[data-g]");if(b){SG=b.dataset.g;focusEl=null;renderSet()}});
+  q("#omSetList").addEventListener("click",e=>{const b=e.target.closest("[data-del]");if(!b)return;
+    const a=M[SG].list.splice(+b.dataset.del,1)[0];if(a&&SG===G)sel.delete(a.addr);keep();renderSet()});
+  q("#omSetAddBtn").onclick=()=>{if(addAddr(SG,q("#omSetNewName"),q("#omSetNewAddr"),"#omSetMsg"))renderSet()};
+  q("#omSetNewAddr").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();q("#omSetAddBtn").click()}});
+  q("#omSetSubject").addEventListener("input",e=>{M[SG].subject=e.target.value;keep()});
+  q("#omSetBody").addEventListener("input",e=>{M[SG].body=e.target.value;keep()});
+  ["#omSetSubject","#omSetBody"].forEach(s=>q(s).addEventListener("focus",e=>{focusEl=e.target}));
+  q("#omSetChips").innerHTML=C.tags.map(t=>`<button type="button" data-tag="${hx(t)}">${hx(t)}</button>`).join("");
+  q("#omSetChips").addEventListener("mousedown",e=>{if(e.target.closest("[data-tag]"))e.preventDefault()});
+  q("#omSetChips").addEventListener("click",e=>{const b=e.target.closest("[data-tag]");if(!b)return;
+    const el=focusEl||q("#omSetBody"),ins="{"+b.dataset.tag+"}";
+    const s=el.selectionStart==null?el.value.length:el.selectionStart,t=el.selectionEnd==null?s:el.selectionEnd;
+    el.value=el.value.slice(0,s)+ins+el.value.slice(t);el.focus();el.setSelectionRange(s+ins.length,s+ins.length);
+    el.dispatchEvent(new Event("input",{bubbles:true}))});
+  let arm=null;
+  function unarm(){clearTimeout(arm);arm=null;const b=q("#omSetReset");b.textContent="この送り先の件名・本文を最初に戻す";b.classList.remove("om-warn")}
+  q("#omSetReset").onclick=e=>{const b=e.currentTarget;
+    if(!arm){b.textContent="もう一度押すと最初の文面に戻します";b.classList.add("om-warn");arm=setTimeout(unarm,3000);return}
+    unarm();M[SG].subject=C.defs[SG].subject;M[SG].body=C.defs[SG].body;keep();renderSet();msg("#omSetMsg","最初の文面に戻しました")};
+  document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;if(!q("#omSet").hidden)closeSet();else if(!q("#omSend").hidden)closeSend()});
+})(OM_CFG);
+
 function csvCell(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
 $("#btnCsv").onclick=()=>{
   const r=R(),L={ok:"良",ng:"否",na:"該当なし"};
