@@ -201,6 +201,9 @@ table.p-tbl{width:100%;border-collapse:collapse;border:1.5px solid #111;table-la
 .md-msg{margin:0;font-size:13px;color:var(--ink);background:var(--accent-soft);border-radius:8px;padding:8px 10px;white-space:pre-wrap;word-break:break-all}
 .seg-wide{display:flex}
 .seg-wide button{flex:1;padding:10px;font-size:14px}
+.seg-mode button{padding:8px 4px;font-size:13px;line-height:1.35}
+.seg-mode button small{display:block;font-size:11px;font-weight:400}
+.steps li.note{list-style:none;margin-left:-1.2em;margin-top:4px;font-size:12px;color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){.tabs button{transition:background .15s}}
 
 html{color-scheme:light}
@@ -321,6 +324,9 @@ body{margin:0}
 <!-- メールで送る -->
 <div class="md" id="ms" hidden role="dialog" aria-modal="true" aria-labelledby="msTitle"><div class="md-box">
   <div class="md-head"><h3 id="msTitle">メールで送る</h3><button class="btn ghost" id="msClose">閉じる</button></div>
+  <div class="f" id="msModeWrap">送り方（この端末で覚えます）
+    <div class="seg seg-wide seg-mode" id="msMode"><button type="button" data-m="auto">iPhoneメール<small>ショートカット</small></button><button type="button" data-m="attach">iPhoneメール<small>PDFは手で添付</small></button><button type="button" data-m="paste">Gmailなど<small>宛先を貼り付け</small></button></div>
+  </div>
   <ol class="steps" id="msSteps"></ol>
   <div class="f"><div class="lbl-row"><span>送り先</span><button type="button" class="linkbtn" data-mset>⚙ 宛先・文面の設定</button></div>
     <div class="ms-list" id="msList"></div>
@@ -668,7 +674,30 @@ function renderMsList(){
   if(L.length&&!mailSel.size&&mailG==='cust')$('#msList').insertAdjacentHTML('afterbegin','<p class="ms-empty">このお客様に送る相手にチェックを入れてください。次回から同じお客様では自動でチェックされます。</p>');
   resetCopyBtn();
 }
-function resetCopyBtn(){const b=$('#msCopy');b.classList.remove('done');b.textContent='① 宛先をコピー'}
+/* 送り方（この端末で記憶）：auto=iPhoneメール（ショートカット）／attach=iPhoneメール（PDFは手で添付）／paste=Gmailなど（宛先を貼り付け） */
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const SC_NAME='O&K報告書メール',SC_SEP='|||';
+const MODES={
+  auto:{b1:'① 送信内容をコピー',b2:'② 共有画面を開く（PDF）',
+    steps:['送り先にチェック、件名・本文を確かめる','「① 送信内容をコピー」を押す','「② 共有画面を開く」を押し、一覧から「'+SC_NAME+'」を選ぶ','宛先・件名・本文・PDFの入ったメールが開くので、送信する'],
+    note:'iPhoneにショートカット「'+SC_NAME+'」の準備が必要です（作り方は操作マニュアル）'},
+  attach:{b1:'① PDFを「ファイル」に保存',b2:'② メールを開く（宛先・件名・本文入り）',
+    steps:['送り先にチェック、件名・本文を確かめる','「① PDFを「ファイル」に保存」を押し、一覧から「“ファイル”に保存」を選んで保存する','「② メールを開く」を押す（宛先・件名・本文が入ったメールが開きます）','メールの本文の中を押し、キーボードの上の「＜」→ 書類のマークから保存したPDFを選んで添付し、送信する']},
+  paste:{b1:'① 宛先をコピー',b2:'② メールアプリを開く（PDF付き）',
+    steps:['送り先にチェック、件名・本文を確かめる','「① 宛先をコピー」を押す','「② メールアプリを開く」を押し、メールアプリ（Gmail・Outlookなど）を選ぶ','メールの宛先欄を長押しして「ペースト」し、送信する']},
+  mailto:{b1:'',b2:'② メールを開く（PDFは保存されます）',
+    steps:['送り先にチェック、件名・本文を確かめる','「② メールを開く」を押すと、PDFが保存され、宛先・件名・本文の入ったメールが開きます','保存したPDFをメールに添付して、送信する']}
+};
+function curMode(){if(!canFileShare)return 'mailto';return MODES[M.mode]&&M.mode!=='mailto'?M.mode:(isIOS?'attach':'paste')}
+function renderMode(){
+  const m=curMode(),c=MODES[m];
+  $('#msModeWrap').hidden=m==='mailto';
+  $('#msMode').querySelectorAll('[data-m]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===m));
+  $('#msSteps').innerHTML=c.steps.map(s=>`<li>${esc(s)}</li>`).join('')+(c.note?`<li class="note">${esc(c.note)}</li>`:'');
+  $('#msCopy').hidden=!c.b1;$('#msSend').textContent=c.b2;resetCopyBtn();msg('#msMsg','');
+}
+function resetCopyBtn(){const b=$('#msCopy');b.classList.remove('done');b.textContent=MODES[curMode()].b1}
+$('#msMode').addEventListener('click',e=>{const b=e.target.closest('[data-m]');if(!b)return;M.mode=b.dataset.m;mailSave();renderMode()});
 $('#msList').addEventListener('change',e=>{const t=e.target;if(t.dataset.i==null)return;const a=M[mailG].list[+t.dataset.i];
   if(t.checked)mailSel.add(a.addr);else mailSel.delete(a.addr);renderMsList()});
 $('#msAddBtn').onclick=()=>{const a=addAddr(mailG,$('#msNewName'),$('#msNewAddr'),'#msMsg');if(a){mailSel.add(a.addr);renderMsList()}};
@@ -677,52 +706,63 @@ function openMail(g){
   mailG=g;const last=M.last[siteKey()];
   mailSel=new Set(M[g].list.filter(a=>Array.isArray(last)?last.includes(a.addr):g==='office').map(a=>a.addr));
   $('#msTitle').textContent=MAILDEF[g].name+'メール';
-  $('#msSteps').innerHTML=canFileShare
-    ?'<li>送り先にチェック、件名・本文を確かめる</li><li>「① 宛先をコピー」を押す</li><li>「② メールアプリを開く」を押し、メール（Gmail・Outlookなど）を選ぶ</li><li>メールの宛先欄を長押しして「ペースト」し、送信する</li>'
-    :'<li>送り先にチェック、件名・本文を確かめる</li><li>「② メールアプリを開く」を押すと、PDFが保存され、宛先・件名・本文の入ったメールが開きます</li><li>保存したPDFをメールに添付して、送信する</li>';
-  $('#msCopy').hidden=!canFileShare;
   $('#msSubject').value=fillTpl(M[g].subject);$('#msBody').value=fillTpl(M[g].body);
-  msg('#msMsg','');renderMsList();mdShow($('#ms'),true);
-  // PDFは先に作っておき、②を押したらすぐ共有画面を開けるようにする
+  renderMode();renderMsList();mdShow($('#ms'),true);
+  // PDFは先に作っておき、ボタンを押したらすぐ共有画面を開けるようにする
   const p={file:null};p.p=makePdf().then(f=>{p.file=f;return f}).catch(()=>null);mailPrep=p;
 }
 function closeMail(){mdShow($('#ms'),false);mailPrep=null}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-mail]');if(b)openMail(b.dataset.mail)});
 $('#msClose').onclick=closeMail;
 const toList=()=>M[mailG].list.filter(a=>mailSel.has(a.addr)).map(a=>a.addr);
-$('#msCopy').onclick=async()=>{
-  const to=toList();if(!to.length){msg('#msMsg','送り先にチェックを入れてください');return}
-  const s=to.join(', ');
-  if(await copyText(s)){const b=$('#msCopy');b.classList.add('done');b.textContent='✓ 宛先をコピーしました（'+to.length+'件）';msg('#msMsg','')}
-  else msg('#msMsg','コピーできませんでした。メールの宛先欄に次のアドレスを入力してください：\n'+s);
-};
-$('#msCopySub').onclick=async()=>{msg('#msMsg',await copyText($('#msSubject').value)?'件名をコピーしました。メールの件名欄に貼り付けてください':'件名をコピーできませんでした')};
+function needTo(){const to=toList();if(!to.length)msg('#msMsg','送り先にチェックを入れてください（下の欄から新しいアドレスも追加できます）');else M.last[siteKey()]=to,mailSave();return to.length?to:null}
+async function getPdf(b){
+  let f=mailPrep&&mailPrep.file;if(f)return f;
+  const L=b.textContent;b.disabled=true;b.textContent='PDFを作成中…';
+  try{f=mailPrep?await mailPrep.p:null;if(!f)f=await makePdf()}catch(err){f=null}finally{b.disabled=false;b.textContent=L}
+  if(!f){msg('#msMsg','PDFを作成できませんでした。電波のある場所で開き直すか、もう一度押してください');return null}
+  if(mailPrep)mailPrep.file=f;else mailPrep={file:f};
+  f.__late=true;return f;
+}
+async function sharePdf(f,data,doneMsg,btnName){
+  try{await navigator.share(Object.assign({files:[f]},data||{}));if(doneMsg)msg('#msMsg',doneMsg);return true}
+  catch(err){
+    if(err.name==='AbortError')return false;
+    if(err.name==='NotAllowedError'){msg('#msMsg','準備ができました。もう一度「'+btnName+'」を押してください');return false}
+    msg('#msMsg','共有画面を開けませんでした。報告書画面の「PDFを保存」で保存して、メールに添付してください');return false;
+  }
+}
 function openMailto(to,subject,body){
-  const u='mailto:'+to.map(encodeURIComponent).join(',')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body.replace(/\n/g,'\r\n'));
+  const u='mailto:'+to.join(',')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body.replace(/\r?\n/g,'\r\n'));
   if(window.top!==window){const w=window.open(u,'_blank');if(w)return}
   location.href=u;
 }
-$('#msSend').onclick=async e=>{
-  const b=e.currentTarget,L='② メールアプリを開く（PDF付き）';
-  const to=toList();if(!to.length){msg('#msMsg','送り先にチェックを入れてください（下の欄から新しいアドレスも追加できます）');return}
+const doneBtn=(b,t)=>{b.classList.add('done');b.textContent=t};
+$('#msCopy').onclick=async e=>{
+  const b=e.currentTarget,m=curMode(),to=needTo();if(!to)return;
   const subject=$('#msSubject').value.trim(),body=$('#msBody').value;
-  M.last[siteKey()]=to;mailSave();
-  let f=mailPrep&&mailPrep.file;
-  if(!f){b.disabled=true;b.textContent='PDFを作成中…';
-    try{f=mailPrep?await mailPrep.p:null;if(!f)f=await makePdf()}catch(err){f=null}finally{b.disabled=false;b.textContent=L}
-    if(!f){msg('#msMsg','PDFを作成できませんでした。電波のある場所で開き直すか、もう一度押してください');return}
-    if(mailPrep)mailPrep.file=f;else mailPrep={file:f};
-  }
-  if(!canFileShare){await saveBlob(f);openMailto(to,subject,body);
+  if(m==='paste'){const s=to.join(', ');
+    if(await copyText(s)){doneBtn(b,'✓ 宛先をコピーしました（'+to.length+'件）');msg('#msMsg','')}
+    else msg('#msMsg','コピーできませんでした。メールの宛先欄に次のアドレスを入力してください：\n'+s);return}
+  if(m==='auto'){
+    if(await copyText([to.join(','),subject,body].join(SC_SEP))){doneBtn(b,'✓ 送信内容をコピーしました');msg('#msMsg','')}
+    else msg('#msMsg','コピーできませんでした。もう一度押してください');return}
+  if(m==='attach'){const f=await getPdf(b);if(!f)return;
+    if(f.__late){f.__late=false;msg('#msMsg','PDFができました。もう一度「① PDFを「ファイル」に保存」を押してください');return}
+    if(await sharePdf(f,null,'','① PDFを「ファイル」に保存')){doneBtn(b,'✓ PDFを保存しました');msg('#msMsg','続けて「② メールを開く」を押してください')}}
+};
+$('#msCopySub').onclick=async()=>{msg('#msMsg',await copyText($('#msSubject').value)?'件名をコピーしました。メールの件名欄に貼り付けてください':'件名をコピーできませんでした')};
+$('#msSend').onclick=async e=>{
+  const b=e.currentTarget,m=curMode(),to=needTo();if(!to)return;
+  const subject=$('#msSubject').value.trim(),body=$('#msBody').value;
+  if(m==='attach'){openMailto(to,subject,body);msg('#msMsg','開いたメールに、保存したPDFを添付して送信してください。送信が済んだら「閉じる」を押してください');return}
+  const f=await getPdf(b);if(!f)return;
+  if(m==='mailto'){await saveBlob(f);openMailto(to,subject,body);
     msg('#msMsg','PDF（'+f.name+'）を保存しました。開いたメールに、保存したPDFを添付して送信してください');return}
-  msg('#msMsg','');
-  try{await navigator.share({files:[f],title:subject,text:body});
-    msg('#msMsg','送信が済んだら「閉じる」を押してください。宛先が入っていなかったときは、宛先欄を長押しして「ペースト」してください')}
-  catch(err){
-    if(err.name==='AbortError')return;
-    if(err.name==='NotAllowedError'){msg('#msMsg','準備ができました。もう一度「② メールアプリを開く」を押してください');return}
-    msg('#msMsg','メールアプリを開けませんでした。報告書画面の「PDFを保存」で保存して、メールに添付してください');
-  }
+  if(m==='auto'&&!$('#msCopy').classList.contains('done')){msg('#msMsg','先に「① 送信内容をコピー」を押してください');return}
+  if(f.__late){f.__late=false;msg('#msMsg','PDFができました。もう一度「'+MODES[m].b2+'」を押してください');return}
+  if(m==='auto')await sharePdf(f,null,'メールが開かなかったときは、「① 送信内容をコピー」からやり直してください。送信が済んだら「閉じる」を押してください',MODES[m].b2);
+  else await sharePdf(f,{title:subject,text:body},'送信が済んだら「閉じる」を押してください。宛先が入っていなかったときは、宛先欄を長押しして「ペースト」してください',MODES[m].b2);
 };
 
 /* 設定画面 */
