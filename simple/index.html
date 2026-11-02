@@ -949,7 +949,7 @@ const OM_CFG={key:"ok-board-photo-mail-v1",siteWord:"現場",
   defs:{
     cust:{subject:"【{報告書名}】{撮影日} {現場名}",
       body:"{現場名}\nご担当者様\n\nいつもお世話になっております。\n株式会社オーアンドケーです。\n\n{撮影日}に実施いたしました作業の写真報告書をお送りいたします。\n作業内容：{作業内容}\n添付のPDFをご確認くださいますよう、お願い申し上げます。\n\n今後ともよろしくお願いいたします。\n\n株式会社オーアンドケー\nTEL 052-877-2887",
-      hint:"お客様のアドレスを登録します。送るときは、現場ごとに前回チェックした相手を覚えていて、次回から自動でチェックします（別の現場への送り間違いを防ぐため、初めての現場では何もチェックされていません）。"},
+      hint:"お客様のアドレスを登録します。送るときは、現場ごとに前回チェックした相手を覚えていて、次回から自動でチェックします（別の現場への送り間違いを防ぐため、初めての現場では「報告書専用（控え）」以外はチェックされていません）。"},
     office:{subject:"【{報告書名}】{撮影日} {現場名}",
       body:"お疲れさまです。\n{現場名}の写真報告書を送ります。\n\n撮影日：{撮影日}\n作業内容：{作業内容}\n\n添付のPDFをご確認ください。",
       hint:"社内の送り先を登録します。送るときは、ここに登録したアドレスが最初からすべてチェックされています。"}},
@@ -973,6 +973,8 @@ const OM_CFG={key:"ok-board-photo-mail-v1",siteWord:"現場",
     M[g]={list:Array.isArray(o.list)?o.list.filter(a=>a&&a.addr):[],subject:typeof o.subject==="string"?o.subject:C.defs[g].subject,body:typeof o.body==="string"?o.body:C.defs[g].body}});
   if(!M.last||typeof M.last!=="object")M.last={};
   const keep=()=>{try{localStorage.setItem(C.key,JSON.stringify(M))}catch(e){}};
+  // 報告書専用（控え）のアドレスを最初から両方の送り先に入れ、いつもチェックする（設定で削除したら戻さない）
+  if(!M.seed1){["cust","office"].forEach(g=>{if(!M[g].list.some(a=>a.addr.toLowerCase()==="ok-houkoku@oandk.ne.jp"))M[g].list.unshift({name:"報告書専用（控え）",addr:"ok-houkoku@oandk.ne.jp",always:true})});M.seed1=true;keep()}
   const isMail=v=>/^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()".]+$/.test(v);
   function fill(t){
     const v=C.vals();const g=k=>Object.prototype.hasOwnProperty.call(v,k)?String(v[k]==null?"":v[k]).trim():"{"+k+"}";
@@ -1032,7 +1034,7 @@ const OM_CFG={key:"ok-board-photo-mail-v1",siteWord:"現場",
     const L=M[G].list;
     q("#omList").innerHTML=L.length?L.map((a,i)=>`<label class="om-addr${sel.has(a.addr)?" on":""}"><input type="checkbox" data-i="${i}"${sel.has(a.addr)?" checked":""}>${ah(a)}</label>`).join("")
       :`<p class="om-empty">送り先がまだ登録されていません。下の欄にアドレスを入れて「追加」を押してください（次回から自動で出てきます）。</p>`;
-    if(L.length&&!sel.size&&G==="cust")q("#omList").insertAdjacentHTML("afterbegin",`<p class="om-empty">このお客様に送る相手にチェックを入れてください。次回から同じ${hx(C.siteWord||"お客様")}では自動でチェックされます。</p>`);
+    if(L.some(a=>!a.always)&&!L.some(a=>!a.always&&sel.has(a.addr))&&G==="cust")q("#omList").insertAdjacentHTML("afterbegin",`<p class="om-empty">このお客様に送る相手にチェックを入れてください。次回から同じ${hx(C.siteWord||"お客様")}では自動でチェックされます。</p>`);
     resetCopy();
   }
   q("#omList").addEventListener("change",e=>{const t=e.target;if(t.dataset.i==null)return;const a=M[G].list[+t.dataset.i];
@@ -1041,7 +1043,7 @@ const OM_CFG={key:"ok-board-photo-mail-v1",siteWord:"現場",
   q("#omNewAddr").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();q("#omAddBtn").click()}});
   function openSend(g){
     G=g;const last=M.last[siteKey()];
-    sel=new Set(M[g].list.filter(a=>Array.isArray(last)?last.includes(a.addr):g==="office").map(a=>a.addr));
+    sel=new Set(M[g].list.filter(a=>a.always||(Array.isArray(last)?last.includes(a.addr):g==="office")).map(a=>a.addr));
     q("#omTitle").textContent=GN[g]+"メール";
     q("#omSubject").value=fill(M[g].subject);q("#omBody").value=fill(M[g].body);
     renderMode();renderList();show(q("#omSend"),true);
