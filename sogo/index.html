@@ -111,6 +111,12 @@ button,input,select,textarea{font:inherit;color:inherit}
 .snav .who b{font-size:14px;color:var(--fg)}
 body.sb-nonadmin #S [data-chg="me"]{display:none}
 #sb-login[hidden]{display:none!important}
+/* 案件ボード：次にやること */
+#G .flow{display:flex;gap:4px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:5px;margin-top:2px}
+#G .flow.stale{color:var(--warn);font-weight:700}
+#G .flow .btn{padding:1px 8px;font-size:11px;font-weight:400}
+#G .sheet .flow{border-top:0;font-size:13px;padding:6px 8px;background:var(--surface-2);border-radius:8px}
+#G .toast .btn{background:var(--bg);color:var(--fg)}
 
 /* ===== 業務 ===== */
 #G{--bg:#f1f3f6; --surface:#ffffff; --surface-2:#e8ebf1; --line:#d3d8e2; --fg:#1a2130; --muted:#5a6476;
@@ -970,6 +976,10 @@ const SHELL=(()=>{
   function canApproveFor(rid,me){ return window.G_API?G_API.canApproveFor(rid,me):true; }
   function apCount(me){ return window.G_API?G_API.apCount(me||meId()):0; }
   function openApprovals(){ show('G'); G_API.rerender(); G_API.openApprovals(); renderNav(); }
+  function flowMine(me){ return window.G_API?G_API.flowMine(me):[]; }
+  function noticesFor(me){ return window.G_API?G_API.noticesFor(me):[]; }
+  function ackNotice(id){ if(window.G_API) G_API.ackNotice(id); }
+  function openJob(id){ show('G'); G_API.openJob(id); renderNav(); }
   function poMine(id){ if(!window.G_API||!id) return []; return G_API.poIssues().filter(x=>x.to.includes(id)); }
   function openOrder(id){ show('G'); G_API.openOrder(id); renderNav(); }
   function openVisit(id){ show('G'); G_API.openVisit(id); renderNav(); }
@@ -1048,7 +1058,7 @@ const SHELL=(()=>{
   function badges(){
     const out={}; if(!window.G_API||!window.S_API) return out;
     const g=G_API.badges(), s=S_API.badges();
-    out['G:jobs']=g.jobs; out['G:schedule']=g.schedule; out['S:reports']=s.reports; out['S:time']=s.time; out['S:porders']=s.porders; out['G:home']=apCount();
+    out['G:jobs']=g.jobs; out['G:schedule']=g.schedule; out['S:reports']=s.reports; out['S:time']=s.time; out['S:porders']=s.porders; out['G:home']=apCount(); { const me=S_API.meId(); const n=noticesFor(me).length+flowMine(me).length; if(n) out['S:home']=n; }
     return out;
   }
   function renderNav(){
@@ -1176,7 +1186,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {use,sync,seed,start,go,openVisit,openEvent,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {use,sync,seed,start,go,openVisit,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -2457,6 +2467,8 @@ docOn('click',async ev=>{
     case 'poAsk': await poAsk(); break;
     case 'poOpenOrder': closeSheet(); SHELL.openOrder(el.dataset.id); break;
     case 'openAp': SHELL.openApprovals(); break;
+    case 'ackNotice': SHELL.ackNotice(el.dataset.id); break;
+    case 'openJob': SHELL.openJob(el.dataset.id); break;
     case 'go': VS.route=el.dataset.r; closeSheet(); window.scrollTo(0,0); render(); break;
     case 'close': closeSheet(); break;
     case 'seed': await SHELL.seed(); break;
@@ -2842,7 +2854,12 @@ async function poAsk(){
   await put('porders',p.id,{...p,thread:[...(p.thread||[]),{from:'p',by:meId(),byName:staffName(meId()),at:new Date().toISOString(),text}]});
   toast('質問を送りました。回答はこの画面に表示されます'); renderOverlay();
 }
-function poHomePanel(){ return apHomePanel()+poHomePanel0(); }
+function poHomePanel(){ return flowHomePanel()+apHomePanel()+poHomePanel0(); }
+function flowHomePanel(){
+  const ns=SHELL.noticesFor(meId()), fs=SHELL.flowMine(meId()); let h='';
+  if(ns.length) h+=`<div class="panel" style="margin-bottom:14px;border-color:var(--accent)"><h2>新しい作業の連絡 <span class="num muted">${ns.length}</span></h2><div class="pbody"><div class="list">${ns.map(n=>`<div class="li" style="cursor:default;align-items:flex-start"><span class="grow"><b>${esc(n.title)}</b><br><span class="small muted">${esc(jd(n.date))} ${esc(n.start||n.end?timeRange(n.start,n.end):'')}　${esc(n.from)}より</span>${n.text?`<div class="small" style="white-space:pre-wrap;margin-top:4px">${esc(n.text)}</div>`:''}</span><button class="btn sm pri" data-act="ackNotice" data-id="${n.id}">確認しました</button></div>`).join('')}</div></div></div>`;
+  if(fs.length) h+=`<div class="panel" style="margin-bottom:14px;border-color:var(--warn)"><h2>今日の確認リスト <span class="num muted">${fs.length}</span></h2><div class="pbody"><div class="list">${fs.map(x=>`<button class="li" data-act="openJob" data-id="${x.id}" style="width:100%;text-align:left;border:0;background:none;font:inherit;cursor:pointer"><span class="pill w" style="flex:none">${esc(x.why)}</span><span class="grow">${esc(x.title)}</span></button>`).join('')}</div></div></div>`;
+  return h; }
 function apHomePanel(){ const n=SHELL.apCount(meId()); return n?`<div class="callout w" style="margin-bottom:12px"><span><b>承認待ちが${n}件</b>あります（見積・発注・中止・単価改定など）。</span><button class="btn sm pri" data-act="openAp">承認の画面を開く</button></div>`:''; }
 function poHomePanel0(){
   const items=SHELL.poMine(meId()); if(!items.length) return '';
@@ -2900,7 +2917,7 @@ const SOURCES=['既存顧客','紹介','Web問合せ','電話','飛び込み','�
 const COLS=['customers','sites','jobs','quotes','orders','prices','templates','contracts','visits','staff','settings','porders','approvals'];
 const O_STATUS=['作成中','承認待ち','発行済','完了','中止'];
 const O_TONE={作成中:'',承認待ち:'a',発行済:'a',完了:'g',中止:'r'};
-const DEFAULT_SETTINGS={apQuote:true,apQuoteMax:300000,apQuoteGpr:20,apOrder:true,apOrderMax:100000,apStop:true,apPrice:true,costForSales:true,poDueMode:'early',poDueDays:2,poDueBefore:3,poEscHours:24,poEscTo:[],companyName:'株式会社オーアンドケー',companyAddr:'',companyTel:'',taxRate:10,quoteValidDays:30,followDays:7,archiveDays:30,fyStartMonth:10,fyBaseNo:'',
+const DEFAULT_SETTINGS={flowAuto:true,flowIntakeDays:3,flowDraftDays:3,flowWonDays:3,apQuote:true,apQuoteMax:300000,apQuoteGpr:20,apOrder:true,apOrderMax:100000,apStop:true,apPrice:true,costForSales:true,poDueMode:'early',poDueDays:2,poDueBefore:3,poEscHours:24,poEscTo:[],companyName:'株式会社オーアンドケー',companyAddr:'',companyTel:'',taxRate:10,quoteValidDays:30,followDays:7,archiveDays:30,fyStartMonth:10,fyBaseNo:'',
   kanryoUrl:'https://hanebuchi-jpg.github.io/inspection-report/kanryo.html'};
 
 /* ---------------------------------------------------------
@@ -2972,6 +2989,7 @@ function onWriteErr(e){
   else toast('保存できませんでした（'+(c||'通信エラー')+'）');
 }
 function put(col,id,data){
+  if(col==='visits'&&data&&data.jobId&&!data.orderId&&!(id&&D.visits.has(id))) setTimeout(()=>flowVisitAdded(data.jobId),60);
   if(readOnly){toast('閲覧のみのため保存できません');return Promise.resolve(id);}
   id=id||uid();
   const rec={...(MASTER_C.has(col)?(D[col].get(id)||{}):{}),...data}; delete rec.id;
@@ -3171,7 +3189,7 @@ function renderNav(){
     `<button data-act="more" ${['customers','analytics','master'].includes(VS.route)?'aria-current="page"':''}>${icon('M5 12h.01M12 12h.01M19 12h.01')}<span>その他</span></button>`;
 }
 function render(){
-  renderNav(); SHELL.sync(); schedulePartnerSync();
+  renderNav(); SHELL.sync(); schedulePartnerSync(); setTimeout(flowDailyCheck,500);
   const v=VIEWS[VS.route]||VIEWS.home;
   const main=$('#main');
   if(shellRoute!==VS.route||!$('#vb')){
@@ -3282,7 +3300,7 @@ VIEWS.home={
     const active=all('jobs').filter(j=>!['完了','失注'].includes(j.stage));
     const fol=followups(), rec=recurringCandidates(), late=vs.filter(isLate);
     const unsT=tmV.filter(v=>!v.date&&isOpenVisit(v)).length, unsN=nmV.filter(v=>!v.date&&isOpenVisit(v)).length;
-    const alerts=[...apHomeAlerts(),...poHomeAlerts()];
+    const fsN=flowStale().length; const alerts=[...apHomeAlerts(),...(fsN?[['w',fsN,'止まっている案件（要確認）','jobs','check']]:[]),...poHomeAlerts()];
     if(late.length) alerts.push(['r',late.length,'予定日を過ぎて未完了の作業','schedule','late']);
     if(unsT) alerts.push(['w',unsT,`今月（${+tm.slice(5)}月）の定期作業で日程が未定`,'schedule','uns']);
     alerts.push(['a',nmV.length,`来月（${+nm.slice(5)}月）の定期作業${unsN?`／うち日程未定 ${unsN}件`:''}`,'schedule','next']);
@@ -3327,7 +3345,7 @@ VIEWS.jobs={
      <span class="toolbar" id="tools" style="margin:0"></span>
    </div>`,
   tools:()=>`${pickerBtn('job')}${jobMonthSel()}<select class="inp ${VS.jobType?'on':''}" id="jobType" style="width:auto" aria-label="種別">${opt('','種別：すべて',VS.jobType)}${opt('スポット','種別：スポット',VS.jobType)}${opt('定期','種別：定期',VS.jobType)}</select>${VS.jobView==='archive'?`<select class="inp ${VS.arcRes?'on':''}" id="arcRes" style="width:auto" aria-label="結果">${opt('','結果：すべて',VS.arcRes)}${opt('完了','結果：完了',VS.arcRes)}${opt('失注','結果：失注',VS.arcRes)}</select>`:''}
-     <div class="seg" role="group" aria-label="表示">${[['board','ボード','ボード'],['follow','要フォロー','要フォロー'],['rec','定期未提案','定期化'],['list','一覧','一覧'],['archive','過去の案件','過去']].map(([k,l,sh])=>`<button data-act="jobview" data-v="${k}" aria-pressed="${VS.jobView===k}"><span class="lg">${l}</span><span class="sm">${sh}</span></button>`).join('')}</div>`,
+     <div class="seg" role="group" aria-label="表示">${[['board','ボード','ボード'],['check','要確認','要確認'],['follow','要フォロー','要フォロー'],['rec','定期未提案','定期化'],['list','一覧','一覧'],['archive','過去の案件','過去']].map(([k,l,sh])=>`<button data-act="jobview" data-v="${k}" aria-pressed="${VS.jobView===k}"><span class="lg">${l}</span><span class="sm">${sh}</span></button>`).join('')}</div>`,
   body(){
     const q=VS.jobQ.trim();
     const os=VS.jobOwners;
@@ -3340,6 +3358,7 @@ VIEWS.jobs={
       const ids=new Set(recurringCandidates().map(x=>x.id)); js=js.filter(j=>ids.has(j.id));
       return `<p class="small muted" style="margin:0 0 10px">完了したスポット案件のうち、その現場に有効な定期契約がないものです。案件を開いて「定期契約にする」で契約を登録できます。</p>`+jobTable(js);
     }
+    if(VS.jobView==='check') return flowCheckTable(js);
     if(VS.jobView==='archive') return archiveTable(js.filter(isArchived).filter(j=>!VS.arcRes||j.stage===VS.arcRes));
     js=js.filter(j=>!isArchived(j));
     if(VS.jobView==='list') return jobTable(js.sort(by(j=>j.updatedAt||'',-1)));
@@ -3352,6 +3371,7 @@ VIEWS.jobs={
           <div class="tt">${esc(j.title)}${exMark(j)}</div>
           <div class="meta"><span>${esc(custName(j.customerId))}</span></div>
           <div class="meta">${j.type==='定期'?'<span class="pill a">定期</span>':'<span class="pill">スポット</span>'}${fol.has(j.id)?'<span class="pill w">要フォロー</span>':''}<span>${esc(staffName(j.ownerId)||'担当未定')}</span><span class="amt num">${m.sales?man(m.sales):''}</span></div>
+          ${flowCardLine(j)}
         </div>`;}).join('')||'<p class="empty small" style="padding:4px">なし</p>'}</div></div>`;}).join('')}</div>`;
   }
 };
@@ -3617,6 +3637,12 @@ const MTABS={
       <label class="fld"><span>2026年${s.fyStartMonth}月に始まる期は「第何期」</span><input class="inp num" id="set_fyBaseNo" inputmode="numeric" placeholder="例：48" value="${esc(s.fyBaseNo)}"></label>
       <label class="fld"><span>完了・失注を「過去の案件」へ移すまでの日数</span><input class="inp num" id="set_archiveDays" inputmode="numeric" value="${esc(s.archiveDays)}"></label>
     </div></section>
+    <section class="sec"><h3>案件ボード（自動で進める・止まっている案件）</h3><div class="form">
+      <label class="fld wide"><span><input type="checkbox" id="set_flowAuto" ${s.flowAuto!==false?'checked':''}> 段階を自動で進める（現地調査の予定・見積の作成と提出・受注・発注書の発行・作業日の到来）</span></label>
+      <label class="fld"><span>依頼受付・現地調査で動きがない日数</span><input class="inp num" id="set_flowIntakeDays" inputmode="numeric" value="${esc(s.flowIntakeDays)}"></label>
+      <label class="fld"><span>見積が未提出のままの日数</span><input class="inp num" id="set_flowDraftDays" inputmode="numeric" value="${esc(s.flowDraftDays)}"></label>
+      <label class="fld"><span>受注後、発注・作業予定がない日数</span><input class="inp num" id="set_flowWonDays" inputmode="numeric" value="${esc(s.flowWonDays)}"></label>
+    </div><p class="small muted" style="margin:8px 0 0">見積の結果待ちは「要フォローにする日数」を使います。日数を過ぎた案件は、案件ボードの「要確認」と、営業担当のホームの「今日の確認リスト」に出ます。</p></section>
     <section class="sec"><h3>承認の流れ・お金の情報</h3><div class="form">
       <label class="fld wide"><span><input type="checkbox" id="set_costForSales" ${s.costForSales!==false?'checked':''}> 3 営業・事務に原価・粗利を見せる</span></label>
       <label class="fld wide"><span><input type="checkbox" id="set_apQuote" ${s.apQuote?'checked':''}> 見積の提出に承認を使う（値引きの行がある見積は必ず承認）</span></label>
@@ -3693,6 +3719,7 @@ SHEETS.job=({id})=>{
   ${ctr?`<div class="callout"><span>定期契約：</span><button class="btn sm" data-act="contract" data-id="${ctr.id}">${esc(ctr.service)}（${esc(cycleText(ctr.cycle))}）を開く</button></div>`:''}
   ${j.stage==='見積'&&lastQ?`<div class="callout w"><span>見積提出から ${daysSince(lastQ.issuedAt)}日${j.lastContact?`／最終連絡 ${esc(j.lastContact)}`:''}</span><button class="btn sm" data-act="contacted" data-id="${id}">今日連絡した</button></div>`:''}
   <section class="sec"><h3>進み具合</h3><div class="stages">${STAGES.map(s=>`<button class="${s==='失注'?'lost':''}" data-act="stage" data-id="${id}" data-v="${s}" aria-pressed="${j.stage===s}">${s}</button>`).join('')}</div>
+    ${(()=>{ const n=nextStep(j); return n?`<div class="flow ${n.stale?'stale':''}" style="margin-top:8px"><span>${n.stale?'⚠ ':'→ '}次にやること：${esc(n.txt)}</span>${(n.btns||[]).map(([a,l,x])=>`<button class="btn sm" data-act="${a}" data-id="${esc(x)}">${esc(l)}</button>`).join('')}</div>`:''; })()}${stageLogHtml(j)}
     ${['完了','失注'].includes(j.stage)?`<p class="small muted" style="margin:8px 0 0">${j.stage}日 ${esc(jobClosedDate(j))}${isArchived(j)?'（「過去の案件」に表示中）':`（${Math.max(0,(num(S().archiveDays)||30)-daysSince(jobClosedDate(j)))}日後に「過去の案件」へ移ります）`}</p>`:''}
     ${j.stage==='失注'?`<div class="form" style="margin-top:10px">${fld('失注理由',`<select class="inp" data-jf="lostReason">${opt('','（選択）',j.lostReason)}${LOST_REASONS.map(r=>opt(r,r,j.lostReason)).join('')}</select>`)}${fld('失注メモ',`<input class="inp" data-jf="lostNote" value="${esc(j.lostNote)}">`)}</div>`:''}</section>
   <section class="sec"><h3>基本情報<span class="sp small muted">変更は自動で保存されます</span></h3><div class="form">
@@ -4209,10 +4236,23 @@ docOn('click',async e=>{
     case 'ap-list': openSheet({kind:'approvals'}); break;
     case 'ap-ok': case 'ap-ng': { const c=(ROOT.querySelector('#apc_'+id)?.value||'').trim(); if(a==='ap-ng'&&!c) return toast('差し戻しの理由をコメントに入れてください'); await decideAp(id,a==='ap-ok',c); refreshSheet(); break; }
     case 'ap-open': { const ap=get('approvals',id); const q=ap&&get('quotes',ap.refId); if(q) openSheet({kind:'quote',live:false,draft:JSON.parse(JSON.stringify(q))}); break; }
+    case 'stage-undo': { const j=get('jobs',id); if(j){ await patch('jobs',id,stageCh(j,el.dataset.v,'元に戻した')); toast('元に戻しました'); } break; }
+    case 'qa-submit': await quickQuote(id,'提出済'); break;
+    case 'qa-won': await quickQuote(id,'受注'); break;
+    case 'qs-later': { const q=get('quotes',id); toast('作成中のままにしました。未提出が続くと「要確認」に出ます'); if(q) openSheet({kind:'job',id:q.jobId}); else closeSheet(); break; }
+    case 'qa-lost': openSheet({kind:'lost',id}); break;
+    case 'qa-lost-yes': { const j=get('jobs',id); const reason=val('lost_reason')||'その他', note=(ROOT.querySelector('#lost_note')?.value||'').trim(); await patch('jobs',id,{...stageCh(j,'失注','失注（'+reason+'）'),lostReason:reason,lostNote:note}); for(const q of jobQuotes(id).filter(q=>['作成中','提出済','承認待ち'].includes(q.status))) await patch('quotes',q.id,{status:'失注'}); closeSheet(); toast('失注にしました'); break; }
+    case 'qa-done': { const j=get('jobs',id); await patch('jobs',id,stageCh(j,'完了','完了にした')); const os=jobOrders(id).filter(o=>o.status==='発行済'); for(const o of os) await patch('orders',o.id,{status:'完了'}); openSheet({kind:'job',id}); toast(`案件を完了にしました${os.length?`（発注書 ${os.length}件も完了）`:''}`); break; }
+    case 'new-visit-job': openSheet({kind:'newVisit',live:false,draft:{jobId:id,date:today(),title:get('jobs',id)?.title||''}}); break;
+    case 'osend': openSheet({kind:'osend',id}); break;
+    case 'osend-later': { const o=get('orders',id); toast('「未送付」の印を付けました。案件ボードと今日の確認リストに出ます'); if(o) openSheet({kind:'job',id:o.jobId}); else closeSheet(); break; }
+    case 'osend-partner': { await syncPartnerOrders(); const o=get('orders',id); if(!o) break; const d=JSON.parse(JSON.stringify(o)); d.schedule=orderRows(d).map(r=>({...r})); openSheet({kind:'order',live:false,draft:d,contactOpen:true}); break; }
+    case 'os-copy': { const t=ROOT.querySelector('#os_msg')?.value||''; try{ await navigator.clipboard.writeText(t); toast('文面をコピーしました'); }catch(_){ toast('コピーできませんでした'); } break; }
+    case 'osend-int': { const o=get('orders',id); if(!o) break; const to=[...ROOT.querySelectorAll('[data-osto]:checked')].map(x=>x.value); if(!to.length) return toast('送る相手を選んでください'); const text=ROOT.querySelector('#os_msg')?.value||''; const at=nowIso(); for(const v of all('visits').filter(v=>v.orderId===o.id&&!['中止','完了'].includes(v.status)&&(v.staffIds||[]).some(s=>to.includes(s)))) await patch('visits',v.id,{notice:{at,by:SHELL.meId(),byName:staffName(SHELL.meId()),text,orderId:o.id}}); await put('orders',o.id,{...get('orders',o.id),sent:{at,by:SHELL.meId(),to:to.map(staffName),via:['ホーム']}}); toast(`${to.map(staffName).join('・')}さんのホームに送りました`); openSheet({kind:'job',id:o.jobId}); break; }
     case 'go-close': sheet=null; VS.route=el.dataset.r; render(); break;
     case 'more': VS.more=!VS.more; renderOverlay(); break;
     case 'close-more': VS.more=false; renderOverlay(); break;
-    case 'alert': { const r=el.dataset.r,f=el.dataset.f; VS.route=r; if(r==='jobs') VS.jobView=f==='rec'?'rec':f==='done'?'board':'follow'; if(r==='schedule'&&f==='next'){VS.weekStart=weekMonday(ymAdd(ymOf(today()),1)+'-01');} render(); break; }
+    case 'alert': { const r=el.dataset.r,f=el.dataset.f; VS.route=r; if(r==='jobs') VS.jobView=f==='check'?'check':f==='rec'?'rec':f==='done'?'board':'follow'; if(r==='schedule'&&f==='next'){VS.weekStart=weekMonday(ymAdd(ymOf(today()),1)+'-01');} render(); break; }
     case 'close-sheet': closeSheet(); break;
     case 'job': openSheet({kind:'job',id}); break;
     case 'customer': openSheet({kind:'customer',id}); break;
@@ -4233,7 +4273,7 @@ docOn('click',async e=>{
     case 'dayjump': VS.schedView='list'; VS.weekStart=weekMonday(el.dataset.d); render(); break;
     case 'week': VS.weekStart=el.dataset.d==='0'?weekMonday(today()):addDays(VS.weekStart,+el.dataset.d); render(); break;
     case 'mtab': VS.mtab=el.dataset.v; shellRoute=null; render(); break;
-    case 'stage': { if(!can('job.edit')) return toast('権限がありません'); const j=get('jobs',id); const ch={stage:el.dataset.v}; if(el.dataset.v==='完了'&&!j.completedAt) ch.completedAt=today(); ch.closedAt=['完了','失注'].includes(el.dataset.v)?(['完了','失注'].includes(j.stage)&&j.closedAt?j.closedAt:today()):''; await patch('jobs',id,ch); refreshSheet(); if(el.dataset.v==='施工'&&!jobOrders(id).length&&!j.orderSkip){ const sb=$('#overlay .sheet .sb'); if(sb) sb.scrollTop=0; toast('施工に変更しました。発注書を作成できます'); } else toast('「'+el.dataset.v+'」に変更しました'); break; }
+    case 'stage': { if(!can('job.edit')) return toast('権限がありません'); const j=get('jobs',id); const ch=stageCh(j,el.dataset.v,'手動'); if(el.dataset.v==='完了'&&!j.completedAt) ch.completedAt=today(); ch.closedAt=['完了','失注'].includes(el.dataset.v)?(['完了','失注'].includes(j.stage)&&j.closedAt?j.closedAt:today()):''; await patch('jobs',id,ch); refreshSheet(); if(el.dataset.v==='施工'&&!jobOrders(id).length&&!j.orderSkip){ const sb=$('#overlay .sheet .sb'); if(sb) sb.scrollTop=0; toast('施工に変更しました。発注書を作成できます'); } else toast('「'+el.dataset.v+'」に変更しました'); break; }
     case 'contacted': await patch('jobs',id,{lastContact:today()}); refreshSheet(); toast('連絡日を記録しました'); break;
     case 'no-recurring': await patch('jobs',id,{recurringDone:true}); refreshSheet(); toast('定期提案済みにしました'); break;
     case 'to-contract': { const j=get('jobs',id); const won=jobMoney(j); openSheet({kind:'contract',isNew:true,live:false,fromJob:id,draft:{id:uid(),customerId:j.customerId,siteId:j.siteId,service:j.service||j.title,unitPrice:won.sales||'',qty:1,unit:'式',cost:won.cost||'',partnerType:'自社',start:ymAdd(ymOf(today()),1)+'-01',cycle:{kind:'interval',every:3,anchor:ymAdd(ymOf(today()),1)},staffIds:j.workerId?[j.workerId]:[],active:true}}); break; }
@@ -4306,7 +4346,7 @@ docOn('click',async e=>{
     case 'staff-save': { readDraftForm(); const d=sheet.draft; if(roleOf(meStaff())!=='admin'&&get('staff',d.id)){ const o0=get('staff',d.id); if(val('st_role')!==(o0.role||'')||val('st_kind')!==(o0.kind||'社員')) return toast('段階・区分は管理者だけが変更できます'); } if(!val('st_name')) return toast('名前を入力してください'); await put('staff',d.id,{...d,name:val('st_name'),kind:val('st_kind'),company:val('st_company'),tel:val('st_tel'),role:val('st_role'),...(d.kind!=='協力会社'&&val('st_kind')!=='協力会社'?{approverId:val('st_approverId')||'',subApproverId:val('st_subApproverId')||'',away:!!ROOT.querySelector('#st_away')?.checked,extra:[...ROOT.querySelectorAll('[data-extra]:checked')].map(x=>x.value)}:{}),...(val('st_role')!==(get('staff',d.id)?.role||'')&&DEFAULT_MODE[val('st_role')]?{mode:DEFAULT_MODE[val('st_role')]}:{}),email:roleOf(meStaff())==='admin'?(val('st_email')||'').trim():(d.email||''),loginId:d.loginId||'',inactive:val('st_inactive')==='1'}); closeSheet(); toast('保存しました'); break; }
     case 'template': openSheet({kind:'template',isNew:!id,live:false,draft:id?JSON.parse(JSON.stringify(get('templates',id))):{id:uid(),name:'',lines:[{name:'',qty:1,unit:'式',price:0,cost:0}]}}); break;
     case 'template-save': { readDraftForm(); const d=sheet.draft; if(!d.name) return toast('テンプレート名を入力してください'); d.lines=(d.lines||[]).filter(l=>l.name); await put('templates',d.id,d); closeSheet(); toast('保存しました'); break; }
-    case 'save-settings': { const ch={}; ['companyName','companyTel','companyAddr','kanryoUrl'].forEach(k=>ch[k]=val('set_'+k)); ['taxRate','quoteValidDays','followDays','archiveDays','fyStartMonth','fyBaseNo','poDueDays','poDueBefore','poEscHours'].forEach(k=>ch[k]=num(val('set_'+k))); ch.poDueMode=val('set_poDueMode')||'early'; ['apQuoteMax','apQuoteGpr','apOrderMax'].forEach(k=>ch[k]=num(val('set_'+k))); ['costForSales','apQuote','apOrder','apStop','apPrice'].forEach(k=>ch[k]=!!ROOT.querySelector('#set_'+k)?.checked); ch.poEscTo=[...ROOT.querySelectorAll('[data-esc]:checked')].map(x=>x.value); await put('settings','main',{...(D.settings.get('main')||{}),...ch}); toast('設定を保存しました'); break; }
+    case 'save-settings': { const ch={}; ['companyName','companyTel','companyAddr','kanryoUrl'].forEach(k=>ch[k]=val('set_'+k)); ['taxRate','quoteValidDays','followDays','archiveDays','fyStartMonth','fyBaseNo','poDueDays','poDueBefore','poEscHours'].forEach(k=>ch[k]=num(val('set_'+k))); ch.poDueMode=val('set_poDueMode')||'early'; ['apQuoteMax','apQuoteGpr','apOrderMax','flowIntakeDays','flowDraftDays','flowWonDays'].forEach(k=>ch[k]=num(val('set_'+k))); ch.flowAuto=!!ROOT.querySelector('#set_flowAuto')?.checked; ['costForSales','apQuote','apOrder','apStop','apPrice'].forEach(k=>ch[k]=!!ROOT.querySelector('#set_'+k)?.checked); ch.poEscTo=[...ROOT.querySelectorAll('[data-esc]:checked')].map(x=>x.value); await put('settings','main',{...(D.settings.get('main')||{}),...ch}); toast('設定を保存しました'); break; }
     case 'import': if(!can('import')) return toast('権限がありません'); openSheet({kind:'import',live:false,year:new Date().getFullYear()}); break;
     case 'import-run': readImportForm(); await runImport(sheet); break;
     case 'backup': { const out={exportedAt:new Date().toISOString()}; COLS.forEach(c=>out[c]=all(c)); await saveFile(`OK業務管理_バックアップ_${today()}.json`,JSON.stringify(out,null,1),'application/json'); break; }
@@ -4373,7 +4413,7 @@ docOn('dragstart',e=>{ const j=e.target.closest('[data-drag-job]'), v=e.target.c
 docOn('dragover',e=>{ if(!dragData) return; const t=dragData.type==='job'?e.target.closest('[data-drop-stage]'):e.target.closest('[data-drop-d]'); if(t){e.preventDefault(); ROOT.querySelectorAll('.drop').forEach(x=>x!==t&&x.classList.remove('drop')); t.classList.add('drop');} });
 docOn('dragleave',e=>{ const t=e.target.closest&&e.target.closest('.drop'); if(t&&!t.contains(e.relatedTarget)) t.classList.remove('drop'); });
 docOn('drop',async e=>{ if(!dragData) return; const d=dragData; dragData=null; ROOT.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop'));
-  if(d.type==='job'){ const c=e.target.closest('[data-drop-stage]'); if(!c) return; e.preventDefault(); const st=c.dataset.dropStage; const j=get('jobs',d.id); if(j.stage===st) return; const ch={stage:st}; if(st==='完了'&&!j.completedAt) ch.completedAt=today(); ch.closedAt=['完了','失注'].includes(st)?today():''; await patch('jobs',d.id,ch); toast(`「${j.title}」を${st}に移動しました`); if(st==='施工'&&!jobOrders(d.id).length&&!j.orderSkip) openSheet({kind:'job',id:d.id}); }
+  if(d.type==='job'){ const c=e.target.closest('[data-drop-stage]'); if(!c) return; e.preventDefault(); const st=c.dataset.dropStage; const j=get('jobs',d.id); if(j.stage===st) return; const ch=stageCh(j,st,'手動（ボード）'); if(st==='完了'&&!j.completedAt) ch.completedAt=today(); ch.closedAt=['完了','失注'].includes(st)?today():''; await patch('jobs',d.id,ch); toast(`「${j.title}」を${st}に移動しました`); if(st==='施工'&&!jobOrders(d.id).length&&!j.orderSkip) openSheet({kind:'job',id:d.id}); }
   else { const c=e.target.closest('[data-drop-d]'); if(!c) return; e.preventDefault(); if(String(d.id).startsWith('ev~')){ SHELL.moveEvent(String(d.id).slice(3),c.dataset.dropD,c.dataset.dropS); return; } if(VS.multi&&VS.multi.has(d.id)&&VS.multi.size>1){ await bulkMove([...VS.multi],c.dataset.dropD,c.dataset.dropS); return; } const ch={date:c.dataset.dropD,month:ymOf(c.dataset.dropD)}; const hasS=c.dataset.dropS!==undefined; if(hasS) ch.staffIds=c.dataset.dropS?[c.dataset.dropS]:[]; await patch('visits',d.id,ch); VS.placing=null; toast(hasS?`${jd(ch.date)}・${c.dataset.dropS?staffName(c.dataset.dropS):'担当未定'} に配置しました`:`${jd(ch.date)} に配置しました（担当はそのまま）`); }
 });
 docOn('dragend',()=>{dragData=null;ROOT.querySelectorAll('.drop').forEach(x=>x.classList.remove('drop'));});
@@ -4412,11 +4452,11 @@ async function saveQuote(){
   await put('quotes',q.id,q);
   if(apQ){ await requestAp('quote',q.id,q.title||get('jobs',q.jobId)?.title||'見積',{amount:qc.sub,gpr:qc.sub?qc.gpr:null,note:(q.lines||[]).some(l=>num(l.price)<0)?'値引きの行があります':''}); closeSheet(); return; }
   const j=get('jobs',q.jobId);
-  if(j){ const ch={}; if(q.status==='受注'&&j.keepOpenQuotes) ch.keepOpenQuotes=false; if(q.status==='提出済'&&['依頼受付','現地調査'].includes(j.stage)) ch.stage='見積'; if(q.status==='受注'&&['依頼受付','現地調査','見積'].includes(j.stage)) ch.stage='受注'; if(Object.keys(ch).length) await patch('jobs',j.id,ch); toast(ch.stage?`見積を保存し、案件を「${ch.stage}」にしました`:'見積を保存しました'); openSheet({kind:'job',id:j.id}); }
+  if(j){ await flowAfterQuote(q,j); }
   else { toast('見積を保存しました'); closeSheet(); }
 }
 function jobAllDone(j){ if(!['受注','施工'].includes(j.stage)) return false; const vs=all('visits').filter(v=>v.jobId===j.id); return vs.length>0&&vs.every(v=>['完了','中止'].includes(v.status)); }
-function afterVisitDone(vid){ const v=get('visits',vid); const j=v&&get('jobs',v.jobId); if(j&&jobAllDone(j)) toast('この案件の作業がすべて完了しました。案件の画面から完了にできます'); else toast('完了にしました'); }
+function afterVisitDone(vid){ const v=get('visits',vid); const j=v&&get('jobs',v.jobId); if(j&&jobAllDone(j)) openSheet({kind:'jdone',id:j.id}); else toast('完了にしました'); }
 async function bulkMove(ids,date,sid){
   const ch={date,month:ymOf(date)}; const hasS=sid!==undefined; if(hasS) ch.staffIds=sid?[sid]:[];
   toast(`${ids.length}件を移動しています…`);
@@ -4455,13 +4495,13 @@ async function saveOrder(){
   if(j){ const ch={};
     if(o.supplierId&&j.workerId!==o.supplierId){ ch.workerId=o.supplierId; moved.push('施工担当'); }
     const wd=jobWorkDateFromOrders(j.id); if(wd&&j.workDate!==wd){ ch.workDate=wd; moved.push('作業予定日（最終作業日）'); }
-    if(['依頼受付','現地調査','見積','受注'].includes(j.stage)){ ch.stage='施工'; ch.closedAt=''; }
+    if(o.status==='発行済'&&flowAuto()&&['依頼受付','現地調査','見積','受注'].includes(j.stage)){ Object.assign(ch,stageCh(j,'施工','発注書を発行した')); }
     if(Object.keys(ch).length) await patch('jobs',j.id,ch);
     const r=await syncOrderVisits(get('orders',o.id),get('jobs',j.id));
     const vmsg=r.add||r.upd||r.delN?`日程・差配の作業予定を${[r.add?`${r.add}件追加`:'',r.upd?`${r.upd}件更新`:'',r.delN?`${r.delN}件削除`:''].filter(Boolean).join('・')}し、`:'';
     toast(`発注書を保存しました。${moved.length?moved.join('・')+'を基本情報に反映し、':''}${vmsg}${ch.stage?'案件を「施工」にしました':'案件の段階はそのままです'}`);
   } else toast('発注書を保存しました');
-  if(j) openSheet({kind:'job',id:j.id}); else closeSheet();
+  if(o.status==='発行済'&&!apO&&orderUnsent(get('orders',o.id)||o)) openSheet({kind:'osend',id:o.id}); else if(j) openSheet({kind:'job',id:j.id}); else closeSheet();
 }
 async function saveContract(){
   if(!can('contract.edit')) return toast('権限がありません');
@@ -4717,6 +4757,7 @@ function poMsg(o,p,kind){
 }
 function poBlock(o,st){
   const p=get('porders',o.id), s=poState(p), sup=get('staff',o.supplierId);
+  if(!s&&sup&&sup.kind!=='協力会社') return intSendBlock(get('orders',o.id)||o);
   if(!s) return sup?.kind==='協力会社'?`<div class="callout"><span>状態を「発行済」にして保存すると、${esc(sup.name)}の画面（発注書）に表示され、確認・了承をもらえます。了承期限は${o.ackDue?jd(o.ackDue):'設定のルール'}で決まります。</span></div>`:'';
   const a=p.ack, views=(p.views||[]).slice(-3).reverse(), q=SHELL.poOpenQ(p), owner=poOwner(p);
   const kind=s.key==='stop'||s.key==='stopok'?'stop':p.change?.kind==='reack'?'reack':(p.change?.kind==='notice'&&(p.contact?.upd||0)<(p.upd||0))?'notice':'issue';
@@ -4830,6 +4871,150 @@ SHEETS.approvals=()=>{
   foot:`<button class="btn" data-act="close-sheet">閉じる</button>`, after(){ apReturned().forEach(a=>put('approvals',a.id,{...a,seen:true})); }};
 };
 
+/* =========================================================
+   案件ボードの流れ（案3）
+   ・確実なものは自動で段階を進める（元に戻せる・履歴に残る）
+   ・完了／失注／発注書の送付は確認を出す
+   ・カードに「次にやること」とその場で押せるボタン
+   ・止まっている案件は「要確認」とホームの「今日の確認リスト」に出す
+   ========================================================= */
+const FLOW_ORDER=['依頼受付','現地調査','見積','受注','施工','完了'];
+const flowAuto=()=>S().flowAuto!==false;
+const nowIso=()=>new Date().toISOString();
+const stageAgeFrom=j=>j.stageAt||j.updatedAt||j.createdAt||'';
+function undoToast(m,jid,from){
+  toast(m); const t=$('.toast'); if(!t) return;
+  t.innerHTML=`${esc(m)} <button class="btn sm" data-act="stage-undo" data-id="${esc(jid)}" data-v="${esc(from)}" style="margin-left:8px">元に戻す</button>`;
+  clearTimeout(toastT); toastT=setTimeout(()=>t.remove(),7000);
+}
+function stageCh(j,to,why){ const at=nowIso(); const ch={stage:to,stageAt:at,stageLog:[...(j.stageLog||[]),{from:j.stage||'依頼受付',to,at,by:SHELL.meId(),why}].slice(-30)};
+  if(to==='完了'&&!j.completedAt) ch.completedAt=today(); ch.closedAt=['完了','失注'].includes(to)?today():''; return ch; }
+// 段階を進める。auto=true のときは「前へ進む」動きだけ・設定でオフなら何もしない
+async function moveStage(jid,to,why,auto=true){
+  const j=get('jobs',jid); if(!j) return false; const from=j.stage||'依頼受付';
+  if(from===to) return false;
+  if(auto){ if(!flowAuto()||['完了','失注'].includes(from)) return false; if(FLOW_ORDER.indexOf(to)<=FLOW_ORDER.indexOf(from)) return false; }
+  await patch('jobs',jid,stageCh(j,to,why));
+  undoToast(`「${j.title}」を「${to}」に移しました（${why}）`,jid,from);
+  return true;
+}
+let flowLastCheck=0;
+async function flowDailyCheck(){ // 作業日が来たら「施工」へ
+  if(Date.now()-flowLastCheck<60e3||loaded.size!==COLS.length) return; flowLastCheck=Date.now();
+  if(!['admin','lead','manager'].includes(roleOf(get('staff',SHELL.meId())))||!flowAuto()) return;
+  const t=today();
+  for(const j of all('jobs').filter(j=>j.stage==='受注')){
+    if(all('visits').some(v=>v.jobId===j.id&&v.status!=='中止'&&v.date&&v.date<=t)) await moveStage(j.id,'施工','作業日になった');
+  }
+}
+function flowVisitAdded(jid){ const j=get('jobs',jid); if(j&&(j.stage||'依頼受付')==='依頼受付') moveStage(jid,'現地調査','現地調査の予定を入れた'); }
+async function flowAfterQuote(q,j){
+  const ch={}; if(q.status==='受注'&&j.keepOpenQuotes) ch.keepOpenQuotes=false;
+  if(Object.keys(ch).length) await patch('jobs',j.id,ch);
+  if(q.status==='受注'&&['依頼受付','現地調査','見積'].includes(j.stage)) await moveStage(j.id,'受注','見積を受注にした');
+  else if(['依頼受付','現地調査'].includes(j.stage)) await moveStage(j.id,'見積',q.status==='提出済'?'見積を提出した':'見積を作った');
+  else toast('見積を保存しました');
+  const jj=get('jobs',j.id);
+  if(q.status==='作成中') openSheet({kind:'qsubmit',id:q.id});
+  else if(q.status==='受注'&&!jobOrders(j.id).length&&!all('visits').some(v=>v.jobId===j.id)) openSheet({kind:'wonNext',id:jj.id});
+  else openSheet({kind:'job',id:jj.id});
+}
+async function quickQuote(qid,status){
+  const q=get('quotes',qid); if(!q) return;
+  sheet={kind:'quote',live:false,draft:JSON.parse(JSON.stringify({...q,status}))};
+  await saveQuote();
+}
+/* 発注書の送付 */
+const isPartnerSup=o=>get('staff',o?.supplierId)?.kind==='協力会社';
+function orderUnsent(o){
+  if(!o||o.status!=='発行済') return false;
+  if(isPartnerSup(o)){ const p=get('porders',o.id); return !p||!p.contact||p.contact.rev<(p.rev||1); }
+  return !o.sent;
+}
+function orderStaffIds(o){ return [...new Set(orderRows(o).map(r=>r.staffId||o.supplierId).filter(Boolean))]; }
+function intMsg(o){ const j=get('jobs',o.jobId)||{}, ds=orderRows(o).map(r=>`${jd(r.date)}${timeRange(r.start,r.end)?' '+timeRange(r.start,r.end):''}`).join('、');
+  return `作業のお願いです。\n件名：${o.title||j.title||''}\n現場：${custName(j.customerId)}　${siteName(j.siteId)}\n日程：${ds||'未定'}${o.note?`\n注意：${o.note}`:''}\n真総合アプリの「ホーム」と「自分の予定」で確認してください。`; }
+function intSendBlock(o){
+  if(o.status!=='発行済') return '';
+  const s=o.sent;
+  return `<div class="callout ${s?'g':'w'}" style="justify-content:space-between"><span><b>担当者への送付：</b>${s?`送付済み（${esc(poWhen(s.at))}　${esc((s.to||[]).join('・'))}）`:'まだ送っていません'}</span><button class="btn sm ${s?'':'pri'}" data-act="osend" data-id="${o.id}">${s?'もう一度送る':'担当者に送る'}</button></div>`;
+}
+/* 次にやること・止まっている案件 */
+function nextStep(j){
+  const st=S(), stg=j.stage||'依頼受付', t=today();
+  if(['完了','失注'].includes(stg)) return null;
+  const qs=jobQuotes(j.id), q=qs[qs.length-1], os=jobOrders(j.id).filter(o=>o.status!=='中止'), vs=all('visits').filter(v=>v.jobId===j.id&&v.status!=='中止');
+  const intake=num(st.flowIntakeDays)||3, draft=num(st.flowDraftDays)||3, won=num(st.flowWonDays)||3, fol=num(st.followDays)||7;
+  const age=daysSince(stageAgeFrom(j)), unsent=os.find(orderUnsent);
+  const nextV=vs.filter(v=>v.date&&v.date>=t&&v.status!=='完了').sort(by(v=>v.date))[0];
+  if(unsent) return {txt:'発注書がまだ担当者に送られていません',stale:true,why:'発注書未送付',btns:[['osend','送る',unsent.id]]};
+  if(stg==='依頼受付'||stg==='現地調査'){
+    if(nextV) return {txt:`${stg==='現地調査'?'現地調査':'予定'} ${jd(nextV.date)}`,stale:false};
+    if(q) return {txt:'見積を作成中',stale:false};
+    return {txt:stg==='現地調査'?'現地調査が済んだら見積を作る':'現地調査の予定か見積を入れる',stale:age>=intake,why:`${age}日動きなし`,btns:[['new-quote','見積を作る',j.id]]};
+  }
+  if(stg==='見積'){
+    if(!q) return {txt:'見積を作る',stale:age>=draft,why:`${age}日動きなし`,btns:[['new-quote','見積を作る',j.id]]};
+    if(q.status==='作成中'){ const a=daysSince(q.updatedAt||q.createdAt); return {txt:'見積がまだ提出されていません',stale:a>=draft,why:`見積未提出 ${a}日`,btns:[['qa-submit','提出済にする',q.id]]}; }
+    if(q.status==='承認待ち') return {txt:'見積の承認待ち',stale:false};
+    if(q.status==='提出済'){ const a=daysSince(q.issuedAt||q.updatedAt), c=daysSince(j.lastContact||'2000-01-01'); return {txt:`結果待ち（提出から${a}日）`,stale:a>=fol&&c>=fol,why:`結果待ち ${a}日`,btns:[['qa-won','受注',q.id],['qa-lost','失注',j.id]]}; }
+    if(q.status==='失注') return {txt:'見積が失注になっています',stale:true,why:'案件の失注が未入力',btns:[['qa-lost','失注にする',j.id]]};
+    return {txt:'受注の処理を',stale:false,btns:[['qa-won','受注',q.id]]};
+  }
+  if(stg==='受注'){
+    if(!os.length&&!vs.length) return {txt:'発注書か作業予定を入れる',stale:age>=won,why:`発注・予定なし ${age}日`,btns:[['new-order','発注書',j.id],['new-visit-job','作業予定',j.id]]};
+    return {txt:nextV?`作業 ${jd(nextV.date)}`:'作業日待ち',stale:false};
+  }
+  if(stg==='施工'){
+    if(jobAllDone(j)) return {txt:'作業がすべて完了しました',stale:true,why:'完了の入力待ち',btns:[['qa-done','完了にする',j.id]]};
+    const late=vs.find(isLate); if(late) return {txt:`作業日（${jd(late.date)}）を過ぎて未完了`,stale:true,why:'作業日超過'};
+    return {txt:nextV?`次の作業 ${jd(nextV.date)}`:'作業予定を入れる',stale:!vs.length&&age>=won,why:'作業予定なし'};
+  }
+  return null;
+}
+function flowCardLine(j){
+  const n=nextStep(j); if(!n) return '';
+  return `<div class="flow ${n.stale?'stale':''}"><span>${n.stale?'⚠ ':'→ '}${esc(n.txt)}</span>${(n.btns||[]).map(([a,l,id])=>`<button class="btn sm" data-act="${a}" data-id="${esc(id)}">${esc(l)}</button>`).join('')}</div>`;
+}
+function flowStale(js){ return (js||all('jobs')).filter(j=>!isArchived(j)).map(j=>({j,n:nextStep(j)})).filter(x=>x.n&&x.n.stale); }
+function flowMine(me){ me=me||SHELL.meId(); const r=roleOf(get('staff',me)); return flowStale().filter(x=>(x.j.ownerId||'')===me||(!x.j.ownerId&&['admin','lead'].includes(r))); }
+function flowCheckTable(js){
+  const xs=flowStale(js); if(!xs.length) return `<p class="empty">止まっている案件はありません。</p>`;
+  return `<p class="small muted" style="margin:0 0 10px">次の作業が止まっている案件です（日数の目安は「マスタ・設定 → 会社・連携」で変更できます）。ボタンでそのまま進められます。</p><div class="panel scroll"><table class="t"><thead><tr><th>案件</th><th>段階</th><th>理由</th><th>担当</th><th></th></tr></thead><tbody>${
+    xs.sort(by(x=>staffName(x.j.ownerId)+x.j.title)).map(({j,n})=>`<tr class="click" data-act="job" data-id="${j.id}"><td><b>${esc(j.title)}</b><div class="small muted">${esc(custName(j.customerId))}</div></td><td><span class="pill ${STAGE_TONE[j.stage||'依頼受付']}">${esc(j.stage||'依頼受付')}</span></td><td>${esc(n.why||n.txt)}</td><td>${esc(staffName(j.ownerId)||'担当未定')}</td><td>${(n.btns||[]).map(([a,l,id])=>`<button class="btn sm" data-act="${a}" data-id="${esc(id)}">${esc(l)}</button>`).join(' ')}</td></tr>`).join('')}</tbody></table></div>`;
+}
+/* 確認の画面 */
+SHEETS.qsubmit=({id})=>{ const q=get('quotes',id), c=q?qcalc(q):null;
+  return {title:'見積をお客様に提出しましたか？',body:`<section class="sec"><p style="margin:0"><b>${esc(q?.title||'')}</b>　${c?yen(c.total)+'（税込）':''}</p><p class="small muted" style="margin:8px 0 0">提出したら「提出済にする」を押してください。結果待ちの日数を数えて、${num(S().followDays)||7}日たっても結果がなければ「要確認」に出します。</p></section>`,
+    foot:`<button class="btn" data-act="qs-later" data-id="${id}">まだ（作成中のまま）</button><button class="btn pri" data-act="qa-submit" data-id="${id}">提出済にする</button>`}; };
+SHEETS.wonNext=({id})=>{ const j=get('jobs',id);
+  return {title:'受注しました。施工はどうしますか？',body:`<section class="sec"><p style="margin:0"><b>${esc(j?.title||'')}</b></p><p class="small muted" style="margin:8px 0 0">協力会社・社内の施工担当に頼むなら発注書を、自社だけで作業するなら作業予定を入れてください。</p></section>`,
+    foot:`<button class="btn" data-act="job" data-id="${id}">あとで</button><button class="btn" data-act="new-visit-job" data-id="${id}">作業予定を入れる</button><button class="btn pri" data-act="new-order" data-id="${id}">発注書を作る</button>`}; };
+SHEETS.jdone=({id})=>{ const j=get('jobs',id);
+  return {title:'作業がすべて完了しました',body:`<section class="sec"><p style="margin:0"><b>${esc(j?.title||'')}</b> の作業予定がすべて完了（または中止）になりました。案件を「完了」にしますか？</p></section>`,
+    foot:`<button class="btn" data-act="close-sheet">まだ</button><button class="btn pri" data-act="qa-done" data-id="${id}">完了にする</button>`}; };
+SHEETS.lost=({id})=>{ const j=get('jobs',id);
+  return {title:'失注にする',body:`<section class="sec"><p style="margin:0 0 8px"><b>${esc(j?.title||'')}</b></p><div class="form">${fld('失注の理由',`<select class="inp" id="lost_reason">${LOST_REASONS.map(r=>opt(r,r,j?.lostReason)).join('')}</select>`)}${fld('メモ（任意）',`<input class="inp" id="lost_note" value="${esc(j?.lostNote||'')}">`,true)}</div></section>`,
+    foot:`<button class="btn" data-act="close-sheet">やめる</button><button class="btn danger" data-act="qa-lost-yes" data-id="${id}">失注にする</button>`}; };
+SHEETS.osend=({id})=>{
+  const o=get('orders',id); if(!o) return {title:'発注書',body:'<p class="empty">見つかりません</p>'};
+  const sup=get('staff',o.supplierId)||{}, partner=sup.kind==='協力会社';
+  if(partner) return {title:'協力会社に送りますか？',body:`<section class="sec"><p style="margin:0"><b>${esc(o.title||'')}</b>　発注先：${esc(sup.name||'')}</p><p class="small muted" style="margin:8px 0 0">発注書は協力会社の画面（発注書）に表示されています。協力会社へ連絡すると「連絡済み」になり、未送付の印が消えます。</p></section>`,
+    foot:`<button class="btn" data-act="osend-later" data-id="${id}">あとで</button><button class="btn pri" data-act="osend-partner" data-id="${id}">協力会社へ連絡する</button>`};
+  const ids=orderStaffIds(o);
+  return {title:'担当者に送りますか？',body:`<section class="sec"><p style="margin:0 0 6px"><b>${esc(o.title||'')}</b></p>
+    <div class="fld"><span>送る相手（社内の施工担当）</span><div style="display:flex;flex-wrap:wrap;gap:6px">${ids.map(s=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-osto value="${s}" checked> ${esc(staffName(s))}</label>`).join('')||'<span class="small muted">担当が決まっていません</span>'}</div></div>
+    ${fld('伝えること',`<textarea class="inp" id="os_msg" rows="6">${esc(intMsg(o))}</textarea>`,true)}
+    <p class="small muted" style="margin:6px 0 0">「送る」を押すと、相手のホームに「新しい作業の連絡」として出ます。LINEなどでも伝える場合は「文面をコピー」を使ってください。</p></section>`,
+    foot:`<button class="btn" data-act="osend-later" data-id="${id}">あとで</button><button class="btn" data-act="os-copy">文面をコピー</button><button class="btn pri" data-act="osend-int" data-id="${id}">送る</button>`};
+};
+/* 現場の人：新しい作業の連絡 */
+function noticesFor(me){ me=me||SHELL.meId(); return all('visits').filter(v=>v.notice&&!v.notice.seen&&(v.staffIds||[]).includes(me)).sort(by(v=>v.date||'')); }
+async function ackNotice(vid){ const v=get('visits',vid); if(!v||!v.notice) return; await patch('visits',vid,{notice:{...v.notice,seen:nowIso(),seenBy:SHELL.meId()}}); toast('確認しました'); }
+/* 案件の画面：段階の履歴 */
+function stageLogHtml(j){ const l=(j.stageLog||[]).slice(-6).reverse(); if(!l.length) return '';
+  return `<details class="small" style="margin-top:6px"><summary class="muted">段階の履歴</summary>${l.map(x=>`<div>${esc(poWhen(x.at))}　${esc(x.from)} → <b>${esc(x.to)}</b>　${esc(x.why||'')}${x.by?'　'+esc(staffName(x.by)):''}</div>`).join('')}</details>`; }
+
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
   route:()=>VS.route,
@@ -4842,6 +5027,10 @@ window.G_API={
   size:c=>D[c]?D[c].size:0,
   makeDemo:()=>makeDemo(), putMany:(items,p)=>putMany(items,p),
   addVisit:d=>put('visits',null,d),
+  flowMine:me=>flowMine(me).map(x=>({id:x.j.id,title:x.j.title,why:x.n.why||x.n.txt})),
+  noticesFor:me=>noticesFor(me).map(v=>({id:v.id,title:visitTitle(v),date:v.date,start:v.start,end:v.end,text:v.notice.text,from:v.notice.byName||''})),
+  ackNotice:id=>ackNotice(id),
+  openJob(id){ if(!get('jobs',id)) return toast('案件が見つかりません'); openSheet({kind:'job',id}); },
   canApproveFor:(rid,me)=>canApproveFor(rid,me),
   apCount:me=>apMine(me).length,
   openApprovals(){ openSheet({kind:'approvals'}); },
