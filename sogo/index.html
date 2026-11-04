@@ -1625,7 +1625,7 @@ function dayView(ids){
 function repCard(r){
   const need=r.kind==='要対応・クレーム';
   return `<button class="rcard" data-act="openReport" data-id="${r.id}"><div class="rh"><span class="dot" style="background:${pc(get('staff',r.staffId))}"></span><b>${esc(staffName(r.staffId))}</b>${r.kind&&r.kind!=='日報'?`<span class="pill ${need?(r.resolved?'g':'r'):''}">${esc(r.kind)}${need&&r.resolved?' 対応済':''}</span>`:''}${r.title?`<b>${esc(r.title)}</b>`:''}<span class="small muted" style="margin-left:auto">${r.time||''}</span></div>
-    <div class="rb">${esc(r.body)}</div>${reportTags(r).length?`<div class="tags">${reportTags(r).map(t=>`<span class="tag t-${t.k}"><span class="k">${TAGK[t.k]}</span>${esc(tagName(t))}</span>`).join('')}</div>`:''}</button>`;
+    <div class="rb">${esc(r.body)}</div>${reportTags(r).length||(r.unreg||[]).length?`<div class="tags">${reportTags(r).map(t=>`<span class="tag t-${t.k}"><span class="k">${TAGK[t.k]}</span>${esc(tagName(t))}</span>`).join('')}${(r.unreg||[]).map(u=>`<span class="tag" style="border:1px dashed var(--line,#ccc)"><span class="k">${u.k==='site'?'現場':'顧客'}（未登録）</span>${esc(u.name)}</span>`).join('')}</div>`:''}</button>`;
 }
 /* 報告の期間 */
 const wkStart=d=>{ const x=parseD(d); return addDays(d,-((x.getDay()+6)%7)); };
@@ -1732,6 +1732,7 @@ VIEWS.relations=()=>{
   if(VS.relQ) items=items.filter(x=>(x.name+(x.aliases||'')).includes(VS.relQ));
   let h=`<div class="vhead"><h1>顧客・担当別</h1></div>
   <div class="toolbar"><div class="seg">${REL_KINDS.map(([v,l])=>`<button data-act="relKind" data-v="${v}" aria-pressed="${k===v}">${l}</button>`).join('')}</div><input class="inp search" id="relQ" placeholder="名前で検索" value="${esc(VS.relQ)}" data-inp="relQ"></div>`;
+  h+=unregPanel();
   if(!items.length) return h+`<div class="panel"><div class="pbody empty">登録がありません。設定から追加できます。</div></div>`;
   const t=today(), from=addDays(t,-30);
   h+=`<div class="rel">${items.map(x=>{ const a=relActivity(k,x.id); const next=a.evs.filter(e=>e.date>=t).sort(by(e=>e.date+(e.start||'')))[0]; const last=a.reps.sort(by(r=>r.date,-1))[0];
@@ -1942,7 +1943,7 @@ function csSelHtml(r){
   const cs=r.tags.filter(t=>t.k==='customer'||t.k==='site');
   // 現場があれば顧客は現場の前に並べる
   const order=t=>{ const c=custOfTag(t)||''; return c+(t.k==='site'?'1':'0'); };
-  return cs.sort(by(order)).map(t=>tagHtml(t,{act:'repTagRm',x:true})).join('')+
+  return cs.sort(by(order)).map(t=>tagHtml(t,{act:'repTagRm',x:true})).join('')+unregSelHtml(r)+
     `<button type="button" class="btn sm${sheet.pick?' pri':''}" data-act="csToggle">${sheet.pick?'閉じる':(cs.length?'＋ 追加・変更':'＋ 顧客・現場を選ぶ')}</button>`;
 }
 function csRecent(){
@@ -1970,6 +1971,7 @@ function csListHtml(){
   });
   const orphan=sites.filter(st=>!get('customers',st.customerId)&&nameHit(st,q));
   if(orphan.length) rows.push(`<div class="cp-row"><span class="small muted">顧客未設定の現場</span><div class="chips">${orphan.map(sb).join('')}</div></div>`);
+  h+=unregPickHtml(q);
   h+=`<div class="cp-h">${q?`「${esc(q)}」の検索結果 ${rows.length}件`:'すべての顧客'}</div>`+(rows.length?`<div class="cp-list">${rows.join('')}</div>`:'<div class="empty">見つかりません</div>');
   return h;
 }
@@ -2592,6 +2594,12 @@ docOn('click',async ev=>{
     case 'poRepOk': await SHELL.poRepOk(el.dataset.id,el.dataset.k); renderOverlay(); break;
     case 'poReplyS': await poReplyS(); break;
     case 'poContactS': await poContactS(); break;
+    case 'unregAdd': unregAdd(el.dataset.k,el.dataset.name,el.dataset.c); break;
+    case 'unregRm': { const r=sheet.r; r.unreg=(r.unreg||[]).filter((_,i)=>i!==+el.dataset.i); refreshRepTags(); break; }
+    case 'unregReq': { const r=sheet.r; const u=(r.unreg||[])[+el.dataset.i]; if(u){ u.req=true; toast('保存すると事務所に登録の依頼が届きます'); } refreshRepTags(); break; }
+    case 'unregOpen': VS.unregOpen=VS.unregOpen===el.dataset.id?'':el.dataset.id; render(); break;
+    case 'unregNew': await unregNew(el.dataset.id); break;
+    case 'unregAlias': await unregAlias(el.dataset.id); break;
     case 'go': VS.route=el.dataset.r; closeSheet(); window.scrollTo(0,0); render(); break;
     case 'close': closeSheet(); break;
     case 'seed': await SHELL.seed(); break;
@@ -2985,7 +2993,7 @@ async function poAsk(){
   await put('porders',p.id,{...p,thread:[...(p.thread||[]),{from:'p',by:meId(),byName:staffName(meId()),at:new Date().toISOString(),text}]});
   toast('質問を送りました。回答はこの画面に表示されます'); renderOverlay();
 }
-function poHomePanel(){ return poPartnerHome()+flowHomePanel()+apHomePanel()+poHomePanel0()+fieldHomePanel()+planHomePanel(); }
+function poHomePanel(){ return poPartnerHome()+flowHomePanel()+apHomePanel()+poHomePanel0()+fieldHomePanel()+unregHomeNote()+planHomePanel(); }
 function flowHomePanel(){
   const ns=SHELL.noticesFor(meId()), fs=SHELL.flowMine(meId()); let h='';
   if(ns.length) h+=`<div class="panel" style="margin-bottom:14px;border-color:var(--accent)"><h2>新しい作業の連絡 <span class="num muted">${ns.length}</span></h2><div class="pbody"><div class="list">${ns.map(n=>`<div class="li" style="cursor:default;align-items:flex-start"><span class="grow"><b>${esc(n.title)}</b><br><span class="small muted">${esc(jd(n.date))} ${esc(n.start||n.end?timeRange(n.start,n.end):'')}　${esc(n.from)}より</span>${n.text?`<div class="small" style="white-space:pre-wrap;margin-top:4px">${esc(n.text)}</div>`:''}</span><button class="btn sm pri" data-act="ackNotice" data-id="${n.id}">確認しました</button></div>`).join('')}</div></div></div>`;
@@ -3296,6 +3304,89 @@ docOn('change',e=>{ const t=e.target; if(sheet?.kind!=='plan') return;
     r[k]=v; if(k==='siteId'){ r.areaId=''; r.patId=''; } if(k==='areaId') r.patId=''; renderOverlay(); return; }
   if(t.dataset.pf){ const k=t.dataset.pf; sheet.fx[k]=t.value; if(k==='siteId'){ sheet.fx.areaId=''; sheet.fx.patId=''; } if(k==='areaId') sheet.fx.patId=''; renderOverlay(); return; }
   if(t.dataset.act2==='planHide'){ sheet.hide=t.checked; return; } });
+/* =========================================================
+   未登録の訪問先（顧客・現場）
+   1回目は報告に名前だけ残す（report.unreg=[{k,name,key,customerId?,req?}]）。
+   同じ訪問先が2回目になったら登録をすすめ、事務所（段階1〜3）が
+   「新しく登録」か「既存の別名にする」を選ぶ。登録すると過去の報告もつながる。
+   ========================================================= */
+const UNREG_MIN=2;
+const canReg=()=>['admin','lead','manager'].includes(roleS());
+const unregKey=s=>String(s||'').normalize('NFKC').replace(/株式会社|有限会社|合同会社|\(株\)|\(有\)|㈱|㈲|様|さん|御中/g,'').replace(/[\s　・･\-－ー()（）「」]/g,'').toLowerCase();
+const unregId=u=>u.k+'|'+(u.k==='site'?(u.customerId||'')+'|':'')+u.key;
+function unregAll(){ // 未登録の訪問先ごとに集計
+  const m=new Map();
+  for(const r of all('reports')) for(const u of (r.unreg||[])){ const id=unregId(u); if(!m.has(id)) m.set(id,{id,k:u.k,name:u.name,customerId:u.customerId||'',key:u.key,reps:[],req:false,names:new Set()}); const g=m.get(id); g.reps.push(r); g.names.add(u.name); if(u.req) g.req=true; }
+  return [...m.values()].map(g=>({...g,n:g.reps.length,last:g.reps.map(r=>r.date).sort().slice(-1)[0]||'',by:[...new Set(g.reps.map(r=>r.staffId))],names:[...g.names]})).sort(by(g=>(g.req||g.n>=UNREG_MIN?'0':'1')+String(9999-g.n).padStart(4,'0')+g.name));
+}
+const unregDue=()=>unregAll().filter(g=>g.req||g.n>=UNREG_MIN);
+function unregCount(u){ const id=unregId(u); return all('reports').filter(r=>(r.unreg||[]).some(x=>unregId(x)===id)).length; }
+/* 報告の画面：選んだ未登録の訪問先 */
+function unregSelHtml(r){
+  return (r.unreg||[]).map((u,i)=>{ const others=all('reports').filter(x=>x.id!==r.id&&(x.unreg||[]).some(y=>unregId(y)===unregId(u))).length; const nth=others+1;
+    return `<span class="tag" style="border:1px dashed var(--line,#ccc)"><span class="k">${u.k==='site'?'現場':'顧客'}（未登録）</span>${esc(u.name)}${u.k==='site'&&u.customerId?` <span class="muted small">${esc(custName(u.customerId))}</span>`:''}${nth>=UNREG_MIN?` <b class="small" style="color:var(--warn,#c06a12)">${nth}回目</b>`:''}<button type="button" class="x" data-act="unregRm" data-i="${i}" aria-label="外す">×</button></span>${nth>=UNREG_MIN?(u.req?'<span class="pill g small">登録を依頼済み</span>':`<button type="button" class="btn sm" data-act="unregReq" data-i="${i}">${u.k==='site'?'現場':'顧客'}として登録を頼む</button>`):''}`; }).join('');
+}
+/* 検索欄：登録がないときの記録ボタンと、前に記録された未登録の訪問先 */
+function unregPickHtml(q){
+  const r=sheet.r; q=(q||'').trim(); if(!q) return '';
+  const key=unregKey(q); if(!key) return '';
+  const cust=r.tags.find(t=>t.k==='customer'), cname=cust?custName(cust.id):'';
+  const prev=unregAll().filter(g=>g.key.includes(key)||key.includes(g.key)).slice(0,6);
+  let h=`<div class="cp-h">登録のない訪問先</div><div class="chips">`;
+  h+=prev.map(g=>`<button type="button" data-act="unregAdd" data-k="${g.k}" data-name="${esc(g.name)}" data-c="${esc(g.customerId)}">${g.k==='site'?'現場':'顧客'}「${esc(g.name)}」${g.k==='site'&&g.customerId?'（'+esc(custName(g.customerId))+'）':''}<span class="muted small">　前にも${g.n}回</span></button>`).join('');
+  if(!prev.some(g=>g.key===key&&g.k==='customer')) h+=`<button type="button" data-act="unregAdd" data-k="customer" data-name="${esc(q)}">「${esc(q)}」を未登録の顧客として記録</button>`;
+  if(cust&&!prev.some(g=>g.key===key&&g.k==='site'&&g.customerId===cust.id)) h+=`<button type="button" data-act="unregAdd" data-k="site" data-name="${esc(q)}" data-c="${cust.id}">「${esc(q)}」を${esc(cname)}の未登録の現場として記録</button>`;
+  return h+`</div><div class="small muted">顧客・現場の登録は事務所が行います。同じ訪問先が2回目になると、登録をすすめる表示が出ます。</div>`;
+}
+function unregAdd(k,name,customerId){
+  const r=sheet.r; r.unreg=r.unreg||[]; const u={k,name:String(name).trim(),key:unregKey(name),...(k==='site'?{customerId:customerId||''}:{})};
+  if(r.unreg.some(x=>unregId(x)===unregId(u))) return;
+  r.unreg.push(u); sheet.pq=''; const q=$('#cs-q'); if(q) q.value='';
+  const n=unregCount(u)+1; if(n>=UNREG_MIN) toast(`「${u.name}」は${n}回目です。よく行くなら「登録を頼む」を押してください`);
+  refreshRepTags();
+}
+/* 事務所：未登録の訪問先の一覧と登録 */
+function unregPanel(){
+  if(!canReg()) return '';
+  const gs=unregAll(); if(!gs.length) return '';
+  const due=gs.filter(g=>g.req||g.n>=UNREG_MIN), once=gs.filter(g=>!(g.req||g.n>=UNREG_MIN));
+  const row=g=>{ const sel=VS.unregOpen===g.id;
+    return `<div class="li" style="cursor:default;align-items:flex-start;flex-wrap:wrap"><span class="pill ${g.req?'g':g.n>=UNREG_MIN?'w':''}" style="flex:none">${g.k==='site'?'現場':'顧客'}</span>
+      <span class="grow"><b>${esc(g.name)}</b>${g.names.length>1?` <span class="small muted">（表記：${g.names.map(esc).join('／')}）</span>`:''}${g.k==='site'&&g.customerId?` <span class="small muted">顧客：${esc(custName(g.customerId))}</span>`:''}<br><span class="small muted">${g.n}回　最後 ${esc(jd(g.last))}　書いた人：${g.by.map(staffName).map(esc).join('・')}${g.req?'　<b>登録の依頼あり</b>':''}</span></span>
+      <button class="btn sm" data-act="unregOpen" data-id="${esc(g.id)}">${sel?'閉じる':'登録する'}</button>
+      ${sel?`<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        ${g.k==='site'?`<select class="inp auto" id="ur_c">${all('customers').slice().sort(by(c=>c.name||'')).map(c=>`<option value="${c.id}" ${c.id===g.customerId?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`:''}
+        <input class="inp" id="ur_name" value="${esc(g.name)}" style="max-width:220px"><button class="btn sm pri" data-act="unregNew" data-id="${esc(g.id)}">新しい${g.k==='site'?'現場':'顧客'}として登録</button>
+        <span class="small muted">または</span><select class="inp auto" id="ur_to"><option value="">既存の${g.k==='site'?'現場':'顧客'}を選ぶ</option>${(g.k==='site'?all('sites').filter(s=>!g.customerId||s.customerId===g.customerId):all('customers')).slice().sort(by(x=>x.name||'')).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="btn sm" data-act="unregAlias" data-id="${esc(g.id)}">の別名にする</button></div>`:''}</div>`; };
+  return `<div class="panel" style="margin-bottom:16px;border-color:var(--warn)"><h2>未登録の訪問先 <span class="num muted">${due.length}</span><span class="sp small muted" style="font-weight:400">2回目以上・依頼ありのもの</span></h2><div class="pbody">
+    ${due.length?`<div class="list">${due.map(row).join('')}</div>`:'<div class="small muted">登録をすすめる訪問先はありません</div>'}
+    ${once.length?`<details style="margin-top:8px"><summary class="small">1回だけの訪問先 ${once.length}件（登録しなくてかまいません）</summary><div class="list">${once.map(row).join('')}</div></details>`:''}
+    <div class="hint">登録すると、これまでに同じ名前で書かれた報告も、その顧客・現場につながります。「別名にする」と、次からは本文に書くだけで自動でタグが付きます。</div></div></div>`;
+}
+async function unregLink(g,k,id){ // 過去の報告をつなぐ
+  for(const r of g.reps){ const cur=get('reports',r.id); if(!cur) continue;
+    const unreg=(cur.unreg||[]).filter(u=>unregId(u)!==g.id); const tags=[...(cur.tags||[])];
+    const add=t=>{ if(!tags.some(x=>x.k===t.k&&x.id===t.id)) tags.push(t); };
+    add({k,id}); if(k==='site'){ const c=get('sites',id)?.customerId; if(c) add({k:'customer',id:c}); }
+    const {id:_i,...rest}=cur; await put('reports',r.id,{...rest,unreg,tags}); }
+}
+async function unregNew(gid){
+  if(!canReg()) return toast('登録できるのは段階1〜3の人です'); const g=unregAll().find(x=>x.id===gid); if(!g) return;
+  const name=(ROOT.querySelector('#ur_name')?.value||'').trim()||g.name;
+  let nid;
+  if(g.k==='customer') nid=await put('customers',null,{name,aliases:g.names.filter(n=>n!==name).join(',')});
+  else { const cid=ROOT.querySelector('#ur_c')?.value||g.customerId; if(!cid) return toast('顧客を選んでください'); nid=await put('sites',null,{customerId:cid,name,aliases:g.names.filter(n=>n!==name).join(',')}); }
+  await unregLink(g,g.k,nid); VS.unregOpen=''; toast(`「${name}」を${g.k==='site'?'現場':'顧客'}に登録し、報告${g.n}件をつなぎました`); render();
+}
+async function unregAlias(gid){
+  if(!canReg()) return toast('登録できるのは段階1〜3の人です'); const g=unregAll().find(x=>x.id===gid); if(!g) return;
+  const to=ROOT.querySelector('#ur_to')?.value; if(!to) return toast(`既存の${g.k==='site'?'現場':'顧客'}を選んでください`);
+  const col=g.k==='site'?'sites':'customers', x=get(col,to); if(!x) return;
+  const al=[...new Set([...String(x.aliases||'').split(/[,、，]/).map(s=>s.trim()).filter(Boolean),...g.names])].join(',');
+  const {id:_i,...rest}=x; await put(col,to,{...rest,aliases:al});
+  await unregLink(g,g.k,to); VS.unregOpen=''; toast(`「${g.name}」を「${x.name}」の別名にし、報告${g.n}件をつなぎました`); render();
+}
+function unregHomeNote(){ if(!canReg()) return ''; const n=unregDue().length; return n?`<div class="callout w" style="margin-bottom:12px"><span><b>登録をすすめる訪問先が${n}件</b>あります（報告で2回以上書かれた、または登録の依頼があった顧客・現場）。</span><button class="btn sm pri" data-act="go" data-r="relations">開く</button></div>`:''; }
 
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
@@ -3309,6 +3400,7 @@ window.S_API={
   dispatchEvents:()=>all('events').filter(isDispatch),
   dataVer:()=>dataVer,
   openFieldVisit:id=>openFieldVisit(id),
+  unregDue:()=>unregDue().length,
   get:(c,id)=>get(c,id), list:c=>all(c), patMinOf:c=>patMin(patOfCell(c)), closed:ym=>!!closeOf(ym),
   ready:()=>loaded.size===COLS.length,
   makeSample:()=>makeSample(),
@@ -3752,7 +3844,7 @@ VIEWS.home={
     </div>
     <div class="grid2">
       <section class="panel"><h2>対応が必要なこと</h2><div class="pbody"><div class="alerts">
-        ${alerts.map(([tone,n,l,r,f])=>`<button class="alert ${tone}" ${r==='po'?'data-sgo="go" data-m="S" data-r="porders"':r==='ap'?'data-act="ap-list"':`data-act="alert" data-r="${r}" data-f="${f}"`}><span class="bar"></span><b>${n}</b><span>${esc(l)}</span></button>`).join('')}
+        ${alerts.map(([tone,n,l,r,f])=>`<button class="alert ${tone}" ${r==='po'?'data-sgo="go" data-m="S" data-r="porders"':r==='ap'?'data-act="ap-list"':r==='unreg'?'data-sgo="go" data-m="S" data-r="relations"':`data-act="alert" data-r="${r}" data-f="${f}"`}><span class="bar"></span><b>${n}</b><span>${esc(l)}</span></button>`).join('')}
       </div></div></section>
       <section class="panel"><h2>今日の作業　<span class="muted small">${jd(t)}</span></h2><div class="pbody">
         ${todays.length?`<div class="list">${todays.map(visitLi).join('')}</div>`:`<p class="empty">今日の予定はありません。</p>`}
@@ -5350,7 +5442,7 @@ async function decideAp(id,ok,comment){
 function apMine(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='申請中'&&canApproveFor(a.requestedBy,me,a)); }
 function apReturned(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='差戻し'&&a.requestedBy===me&&!a.seen); }
 function apApproved(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='承認'&&a.requestedBy===me&&!a.seen); }
-function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（発注書の送付など次の操作へ）','ap','']); return a; }
+function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（発注書の送付など次の操作へ）','ap','']); const u=['admin','lead','manager'].includes(roleOf(meStaff()))&&window.S_API?S_API.unregDue():0; if(u) a.push(['w',u,'登録をすすめる訪問先（日常報告に2回以上）','unreg','']); return a; }
 /* 承認が止まっていたら：設定の時間を過ぎた申請は、責任者・管理者・代理の人も承認できる */
 const apOverdue=a=>{ const h=num(S().apEscHours); return h>0&&a.status==='申請中'&&Date.now()-new Date(a.requestedAt).getTime()>h*3600e3; };
 SHEETS.approvals=()=>{
