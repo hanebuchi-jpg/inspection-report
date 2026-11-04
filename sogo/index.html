@@ -1487,7 +1487,7 @@ function render(){
 }
 
 /* ================= ホーム ================= */
-VIEWS.home=()=>poHomePanel()+homeBody();
+VIEWS.home=()=>homeBody();
 const homeBody=()=>{
   const m=me(); if(!m) return `<div class="vhead"><h1>ホーム</h1></div><div class="panel"><div class="pbody">担当者が登録されていません。<button class="btn sm" data-act="go" data-r="settings">設定で登録</button></div></div>`;
   const t=today(); const p=punchOf(m.id,t); const st=punchState(m.id,t);
@@ -1495,9 +1495,9 @@ const homeBody=()=>{
   const reps=all('reports').filter(r=>r.staffId===m.id&&r.date===t);
   let h=`<div class="vhead"><h1>${esc(m.name)}さん、おつかれさまです</h1><span class="muted">${jd(t)}</span></div>`;
   const uT=usesTime(m), uR=usesReport(m);
-  h+=wishPrompt();
+  let notes=poHomePanel()+wishPrompt();
   if(isSimple()){ const myF=all('fixreqs').filter(f=>f.staffId===m.id&&(f.status==='申請中'||(f.reviewedAt&&daysAgo(f.reviewedAt)<=7))).sort(by(f=>f.at||'',-1));
-    if(myF.length) h+=`<div class="panel" style="margin-bottom:16px"><h2>打刻の修正申請<span class="sp"><button class="btn sm" data-act="go" data-r="time">タイムカード</button></span></h2><div class="pbody">${fixListHtml(myF.slice(0,3),false)}</div></div>`; }
+    if(myF.length) notes+=`<div class="panel" style="margin-bottom:16px"><h2>打刻の修正申請<span class="sp"><button class="btn sm" data-act="go" data-r="time">タイムカード</button></span></h2><div class="pbody">${fixListHtml(myF.slice(0,3),false)}</div></div>`; }
   if(uT) h+=`<div class="panel" style="margin-bottom:16px"><div class="punch">
     <div><div class="clock" id="clock">${nowHM()}</div>
       <div class="pstat"><span>出勤 <b>${p?.in||'—'}</b></span><span>退勤 <b>${p?.out||'—'}</b></span><span>休憩 <b>${p?.in?fmtMin(+p.breakMin||0):'—'}</b></span>${p?.out?`<span>実働 <b>${fmtMin(workMin(p))}</b></span>`:''}</div>
@@ -1506,6 +1506,7 @@ const homeBody=()=>{
       <button class="pbig in" data-act="punchIn" ${st!=='before'?'disabled':''}>出勤<small>${st==='before'?'タップで打刻':p.in}</small></button>
       <button class="pbig out" data-act="punchOut" ${st!=='working'?'disabled':''}>退勤<small>${st==='done'?p.out:uR?'報告の下書きも開きます':'タップで打刻'}</small></button>
     </div></div></div>`;
+  h+=notes;
   if(isPartner(m)){ const tm=addDays(t,1); const te=genbaEvents([m.id],e=>e.date===t), tme=genbaEvents([m.id],e=>e.date===tm);
     h+=`<div class="grid2" style="margin-bottom:16px"><div class="panel"><h2>今日の現場<span class="sp"><button class="btn sm" data-act="go" data-r="genba">月別の現場</button></span></h2><div class="pbody">${te.length?`<div class="list">${te.map(e=>genbaCard(e,m.id)).join('')}</div>`:'<div class="empty">今日の現場はありません</div>'}</div></div>
       <div class="panel"><h2>明日の現場　<span class="muted small" style="font-weight:400">${jd(tm)}</span></h2><div class="pbody">${tme.length?`<div class="list">${tme.map(e=>genbaCard(e,m.id)).join('')}</div>`:'<div class="empty">明日の現場はありません</div>'}</div></div></div>`; }
