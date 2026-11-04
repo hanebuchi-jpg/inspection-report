@@ -1006,6 +1006,7 @@ const SHELL=(()=>{
         return {name:s.name,hm}; },
     });
   }
+  const sPut=(c,id,d)=>S_API.put(c,id,d), sList=c=>window.S_API?S_API.list(c):[], sDel=(c,id)=>S_API.del(c,id);
   const loginApi={ get live(){ return !!SB; }, call:(a,b)=>SB?sbFn(a,b):Promise.reject(new Error('本番（ログインあり）の画面で使えます')), kioskDemo:()=>kioskDemo() };
   function use(n){
     if(cache[n]) return cache[n];
@@ -1289,7 +1290,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -5508,7 +5509,7 @@ async function defpwState(){ const el=ROOT.querySelector('#defpw_state'); if(!el
 let impPending=null;
 function impSec(){
   if(roleOf(meStaff())!=='admin') return '';
-  const tags={}; COLS.forEach(c=>all(c).forEach(r=>{ if(r.imp) tags[r.imp]=(tags[r.imp]||0)+1; }));
+  const tags={}; COLS.forEach(c=>all(c).forEach(r=>{ if(r.imp) tags[r.imp]=(tags[r.imp]||0)+1; })); S_COLS.forEach(c=>SHELL.sList(c).forEach(r=>{ if(r.imp) tags[r.imp]=(tags[r.imp]||0)+1; }));
   const p=impPending;
   return `<section class="sec"><h3>移行ファイルの取り込み（管理者のみ）</h3>
     <p class="small" style="margin:0 0 8px">データ移行用のファイル（JSON）やバックアップを取り込みます。同じIDのデータは上書きします（担当者・顧客・現場は今ある項目を残して足します）。</p>
@@ -5517,13 +5518,14 @@ function impSec(){
     ${Object.keys(tags).length?`<div style="margin-top:10px">${Object.entries(tags).map(([t,n])=>`<div class="small" style="display:flex;gap:8px;align-items:center;margin-top:4px">取り込み「${esc(t)}」のデータ ${n}件 <button class="btn sm danger" data-act="imp-del" data-tag="${esc(t)}">${VS.impDelAsk===t?'もう一度押すと削除します':'まとめて削除'}</button></div>`).join('')}<p class="small muted">テスト用に取り込んだデータは、本番運用の前にここでまとめて消せます（あとから入力・変更したデータも、取り込んだ記録が付いたものは消えます）。</p></div>`:''}
   </section>`;
 }
-const COL_L={customers:'顧客',sites:'現場',jobs:'案件',quotes:'見積',orders:'発注書',prices:'価格表',templates:'テンプレート',contracts:'定期契約',visits:'作業予定',staff:'担当者',settings:'設定',porders:'協力会社の発注',approvals:'承認'};
+const S_COLS=['areas','patterns','shifts','wishes','punches','reports','events','fixreqs','meta','bizlib'];
+const COL_L={areas:'持ち場',patterns:'勤務パターン',shifts:'シフト',wishes:'休み希望',punches:'打刻',reports:'日常報告',events:'予定',fixreqs:'修正申請',meta:'その他',bizlib:'BizLib',customers:'顧客',sites:'現場',jobs:'案件',quotes:'見積',orders:'発注書',prices:'価格表',templates:'テンプレート',contracts:'定期契約',visits:'作業予定',staff:'担当者',settings:'設定',porders:'協力会社の発注',approvals:'承認'};
 async function impRead(f){
   try{
     const j=JSON.parse(await f.text()); let items=[];
     if(Array.isArray(j)) items=j.filter(x=>x&&x.col&&x.id&&x.data&&typeof x.data==='object').map(x=>({col:x.col,id:String(x.id),data:x.data}));
     else if(j&&typeof j==='object') Object.entries(j).forEach(([c,arr])=>{ if(Array.isArray(arr)) arr.forEach(r=>{ if(r&&r.id){ const {id,...d}=r; items.push({col:c,id:String(id),data:d}); } }); });
-    const ok=items.filter(x=>COLS.includes(x.col)), count={}; ok.forEach(x=>count[x.col]=(count[x.col]||0)+1);
+    const ok=items.filter(x=>COLS.includes(x.col)||S_COLS.includes(x.col)), count={}; ok.forEach(x=>count[x.col]=(count[x.col]||0)+1);
     if(!ok.length) return toast('取り込めるデータが見つかりませんでした');
     impPending={name:f.name,items:ok,count,skip:items.length-ok.length}; render();
   }catch(e){ toast('ファイルを読めませんでした（'+e.message+'）'); }
@@ -5531,15 +5533,18 @@ async function impRead(f){
 async function impRun(){
   const p=impPending; if(!p) return; impPending=null; render();
   const t0=Date.now(); toast(`${p.items.length}件を取り込んでいます…`);
-  await putMany(p.items,(d,n)=>{ if(d%100===0||d===n) toast(`取り込み中… ${d} / ${n}`); });
+  const gi=p.items.filter(x=>COLS.includes(x.col)), si=p.items.filter(x=>!COLS.includes(x.col));
+  await putMany(gi,(d,n)=>{ if(d%100===0||d===n) toast(`取り込み中… ${d} / ${p.items.length}`); });
+  for(const x of si) await SHELL.sPut(x.col,x.id,x.data);
   autoGenDone=false; setTimeout(()=>autoGen(),500);
   toast(`${p.items.length}件を取り込みました（${Math.round((Date.now()-t0)/1000)}秒）`);
 }
 async function impDel(tag){
   if(VS.impDelAsk!==tag){ VS.impDelAsk=tag; render(); return; }
   VS.impDelAsk=''; const items=[]; COLS.forEach(c=>all(c).filter(r=>r.imp===tag&&!(c==='staff'&&r.id===SHELL.meId())).forEach(r=>items.push({col:c,id:r.id})));
+  const sItems=[]; S_COLS.forEach(c=>SHELL.sList(c).filter(r=>r.imp===tag).forEach(r=>sItems.push([c,r.id])));
   const ks=new Set(items.filter(x=>x.col==='contracts').map(x=>x.id)); all('visits').filter(v=>ks.has(v.contractId)&&!v.imp).forEach(v=>items.push({col:'visits',id:v.id}));
-  toast(`${items.length}件を削除しています…`); await delMany(items,(d,n)=>{ if(d%100===0) toast(`削除中… ${d} / ${n}`); }); toast('削除しました（自分の担当者データは残しています）');
+  toast(`${items.length}件を削除しています…`); await delMany(items,(d,n)=>{ if(d%100===0) toast(`削除中… ${d} / ${n}`); }); for(const [c,id] of sItems) await SHELL.sDel(c,id); toast('削除しました（自分の担当者データは残しています）');
 }
 docOn('change',e=>{ const t=e.target; if(t.id==='migFile'&&t.files&&t.files[0]) impRead(t.files[0]); });
 
