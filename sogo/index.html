@@ -2451,7 +2451,7 @@ function needTable(site,area,ps,whole){
 }
 SHEETS.pat=()=>{ const p=sheet.p; const isNew=!p.id; const areas=areasOf(p.siteId);
   const body=`<div class="sec"><div class="form">
-    <label class="fld"><span>記号</span><input class="inp" data-pt="code" value="${esc(p.code||'')}" maxlength="4" placeholder="A"></label>
+    <label class="fld"><span>記号</span><input class="inp" data-pt="code" value="${esc(p.code||'')}" maxlength="8" placeholder="A"></label>
     <label class="fld"><span>持ち場</span><select class="inp" data-pt="areaId"><option value="">共通（全持ち場）</option>${areas.map(a=>`<option value="${a.id}" ${p.areaId===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></label>
     <label class="fld"><span>開始</span><input class="inp" type="time" step="900" data-pt="start" value="${p.start||''}"></label>
     <label class="fld"><span>終了</span><input class="inp" type="time" step="900" data-pt="end" value="${p.end||''}"></label>
