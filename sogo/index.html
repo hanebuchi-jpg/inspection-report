@@ -982,7 +982,12 @@ const SHELL=(()=>{
   function openJob(id){ show('G'); G_API.openJob(id); renderNav(); }
   function poMine(id){ if(!window.G_API||!id) return []; return G_API.poIssues().filter(x=>x.to.includes(id)); }
   function openOrder(id){ show('G'); G_API.openOrder(id); renderNav(); }
-  function openVisit(id){ show('G'); G_API.openVisit(id); renderNav(); }
+  function openVisit(id){ // 事務所の人は差配の画面、現場の人・協力会社は簡単な画面で開く
+    if(window.G_API&&!G_API.isOffice()&&window.S_API){ show('S'); S_API.openFieldVisit(id); renderNav(); return; }
+    show('G'); G_API.openVisit(id); renderNav(); }
+  const apResults=me=>window.G_API?G_API.apResults(me):0;
+  const canMakeVisits=()=>!!window.G_API&&G_API.isOffice();
+  const poRepOk=(p,k)=>G_API.poRepOk(p,k), visitInfo=id=>G_API.visitInfo(id), visitDone=(id,n)=>G_API.visitDone(id,n), visitAttach=(id,f)=>G_API.visitAttach(id,f), visitPatch=(id,ch)=>G_API.visitPatch(id,ch);
   function openEvent(id){ show('S'); S_API.openEvent(id); renderNav(); }
 
   /* ---------- サンプルデータ（業務の例示＋報告・勤怠の例を、同じ担当者・顧客で） ---------- */
@@ -1186,7 +1191,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {use,sync,seed,start,go,openVisit,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -1211,7 +1216,7 @@ const MODES={full:'フル機能',simple:'報告＋勤怠',report:'報告のみ',
 const MODE_DESC={full:'すべての機能（カレンダー・シフト・差配・全員の報告と勤怠・修正申請の承認・顧客別・設定）',simple:'出退勤・日常報告・自分の予定・タイムカード',report:'日常報告・自分の予定（出退勤ボタンは出ません）',time:'出退勤・自分の予定・タイムカード（報告は出ません）'};
 const MODE_ROUTES={simple:['home','calendar','reports','time'],report:['home','calendar','reports'],time:['home','calendar','time']};
 const usesTime=s=>!s||['full','simple','time'].includes(s.mode||'full');
-const usesReport=s=>!s||['full','simple','report'].includes(s.mode||'full');
+const usesReport=s=>!s||(s.kind!=='協力会社'&&['full','simple','report'].includes(s.mode||'full'));
 const modeTag=s=>(s.mode&&s.mode!=='full')?`（${MODES[s.mode]}）`:'';
 const TAGK={customer:'顧客',site:'現場',partner:'協力会社',staff:'担当',job:'案件'};
 const TAGC={customer:'customers',site:'sites',partner:'staff',staff:'staff',job:'jobs'};
@@ -1256,7 +1261,7 @@ function onWriteErr(e){
   else if(c==='quota_exceeded') toast('保存容量の上限に達しました');
   else toast('保存できませんでした（'+(c||'通信エラー')+'）');
 }
-function put(col,id,data){
+function put0(col,id,data){
   if(readOnly){toast('閲覧のみのため保存できません');return Promise.resolve(id);}
   id=id||uid();
   const rec={...(MASTER_C.has(col)?(D[col].get(id)||{}):{}),...data}; delete rec.id;
@@ -1266,7 +1271,7 @@ function put(col,id,data){
   if(MODE!=='db') return Promise.resolve(id);
   return chain(col+'/'+id,()=>db.collection(col).doc(id).set(rec)).then(()=>id,e=>{onWriteErr(e);return id;});
 }
-function del(col,id){
+function del0(col,id){
   D[col].delete(id); dataVer++; requestRender();
   if(MODE!=='db') return Promise.resolve();
   return chain(col+'/'+id,()=>db.collection(col).doc(id).delete()).catch(onWriteErr);
@@ -1341,7 +1346,7 @@ const NAV_FULL=[
   ['relations','顧客・担当別','M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM16 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5'],
   ['settings','設定','M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4'],
 ];
-const navItems=()=>{ if(!isSimple()) return NAV_FULL; const r=[...(MODE_ROUTES[myMode()]||MODE_ROUTES.simple)]; if(isPartner(me())) r.push('porders','genba');
+const navItems=()=>{ if(!isSimple()) return NAV_FULL; const r=[...(MODE_ROUTES[myMode()]||MODE_ROUTES.simple)]; if(isPartner(me())){ const k=r.indexOf('reports'); if(k>=0) r.splice(k,1); r.push('porders','genba'); }
   return NAV_FULL.filter(n=>r.includes(n[0])).map(n=>n[0]==='calendar'?[n[0],'自分の予定',n[2]]:n[0]==='porders'?[n[0],'発注書',n[2]]:n[0]==='time'?[n[0],'タイムカード',n[2]]:n); };
 const VS={shCust:'',shSite:'',shArea:'',shView:'site',ssTab:'pat',ssArea:'',route:'home',calDate:today(),calSel:today(),repQ:'',repTag:'',repKind:'',repMonth:ymOf(today()),rp:null,tMonth:ymOf(today()),tStaff:'',tTab:'today',sMonth:ymAdd(ymOf(today()),1),gMonth:ymOf(today()),gStaff:'',wishMode:false,relKind:'customer',relQ:'',setTab:'users'};
 let sheet=null;
@@ -1604,7 +1609,7 @@ VIEWS.time=()=>{
   const tcList=staffList().filter(s=>usesTime(s)&&nameHit(s,F('tc_q'))&&staffAtSite(s,F('tc_site',siteDef()),m));
   h+=`<div class="toolbar">${simple?'':`${fSearch('tc_q','担当を名前で探す')}${fSel('tc_site',siteOptsF(),'現場',siteDef())}<select class="inp auto" data-chg="tStaff" aria-label="担当">${(tcList.some(s=>s.id===sid)?tcList:[get('staff',sid),...tcList].filter(Boolean)).map(s=>`<option value="${s.id}" ${s.id===sid?'selected':''}>${esc(s.name)}</option>`).join('')}</select><span class="small muted">${tcList.length}名</span>`}
     <span style="display:inline-flex;gap:4px;align-items:center"><button class="btn sm" data-act="tMonth" data-n="-1" aria-label="前月">‹</button><b style="min-width:84px;text-align:center">${ymLabel(m)}</b><button class="btn sm" data-act="tMonth" data-n="1" aria-label="翌月">›</button></span>
-    <button class="btn sm" data-act="copyCsv" data-staff="${sid}" style="margin-left:auto">CSVをコピー</button></div>
+    <button class="btn sm" data-act="copyCsv" data-staff="${sid}" style="margin-left:auto">CSVをコピー</button></div>${closeBar(m)}
   <div class="kpis"><div class="kpi"><div class="l">出勤日数</div><div class="v num">${cnt}<small class="muted" style="font-size:13px"> 日</small></div></div><div class="kpi"><div class="l">実働合計</div><div class="v num">${fmtMin(tw)}</div></div><div class="kpi"><div class="l">残業（8h超）</div><div class="v num">${fmtMin(tot)}</div></div><div class="kpi"><div class="l">打刻修正</div><div class="v num">${edits}<small class="muted" style="font-size:13px"> 件</small></div></div></div>
   <div class="panel"><div class="pbody"><div class="scroll"><table class="t"><thead><tr><th>日付</th><th>出勤</th><th>退勤</th><th class="r">休憩</th><th class="r">実働</th><th class="r">残業</th><th>備考</th></tr></thead><tbody>${rows}</tbody>
   <tfoot><tr><td>合計</td><td></td><td></td><td></td><td class="r num">${fmtMin(tw)}</td><td class="r num">${fmtMin(tot)}</td><td></td></tr></tfoot></table></div>${simple?'<div class="hint" style="margin-top:6px">打刻を直したい日をタップすると、修正申請を出せます（管理者が承認すると反映されます）。</div>':''}</div></div>`;
@@ -1763,7 +1768,7 @@ async function saveEvent(){
   const e=sheet.e;
   if(!e.title.trim()){ toast('タイトルを入れてください'); return; }
   if(!(e.staffIds||[]).length) e.staffIds=[meId()];
-  if(e.type==='作業'&&e.customerId&&e.dispatch!==false){ await SHELL.eventToVisit(e); if(e.id&&get('events',e.id)) await del('events',e.id); closeSheet(); toast('作業予定として「日程・差配」に登録しました'); return; }
+  if(e.type==='作業'&&e.customerId&&e.dispatch!==false&&SHELL.canMakeVisits()){ await SHELL.eventToVisit(e); if(e.id&&get('events',e.id)) await del('events',e.id); closeSheet(); toast('作業予定として「日程・差配」に登録しました'); return; }
   const {id,...rest}=e; await put('events',id,rest);
   closeSheet(); toast(e.customerId&&e.dispatch!==false?'保存しました（差配にも反映）':'保存しました');
 }
@@ -1799,6 +1804,7 @@ SHEETS.report=()=>{
       <textarea class="inp" id="rep-body" data-rf="body" placeholder="今日やったこと、気づいたこと、顧客からの要望など">${esc(r.body)}</textarea>
       <div id="mpop"></div>
     </div>
+    ${repVisitBox(r)}
     <div class="fld"><span>その他のタグ<span class="muted" style="font-weight:400"> — 担当・協力会社・案件など。本文から候補が出ます</span></span>
       <div class="tags" id="rep-tags">${tagsEditHtml(r,sugs)}</div></div>
   </div>
@@ -1908,7 +1914,9 @@ async function saveReport(){
   const r=sheet.r; if(!repMine(r)||(r.id&&get('reports',r.id)?.staffId!==meId())){ toast('自分の報告だけ編集できます'); return; }
   r.staffId=r.id?r.staffId:meId();
   if(!r.body.trim()){ toast('本文を入れてください'); return; }
-  const {id,off,...rest}=r; await put('reports',id,rest);
+  const {id,off,vdone,...rest}=r; await put('reports',id,rest);
+  for(const v of (vdone||[])) await SHELL.visitDone(v);
+  if((vdone||[]).length) setTimeout(()=>toast(`作業予定${vdone.length}件を完了にしました`),2500);
   closeSheet(); toast(r.tags.length?`報告を保存しました（${r.tags.map(tagName).slice(0,3).join('・')}${r.tags.length>3?' ほか':''} から見えます）`:'報告を保存しました');
 }
 
@@ -2066,10 +2074,10 @@ let VEV=[],VEVk=-1;
 function shiftVirtual(){ if(VEVk===dataVer) return VEV; const out=[];
   for(const d of all('shifts')){ const st=get('sites',d.siteId);
     for(const [k,arr] of Object.entries(d.cells||{})){ const [sid,day]=k.split('|'); const date=`${d.ym}-${pad(day)}`;
-      (arr||[]).forEach((c,i)=>{ const p=get('patterns',c.p); if(!p) return; const ar=get('areas',c.a);
-        out.push({id:`sh~${d.siteId}~${d.ym}~${sid}~${day}~${i}`,virtual:true,shift:true,date,start:p.start,end:p.end,title:`${p.code} ${st?.name||''}${ar?' '+ar.name:''}`,type:'シフト',staffIds:[sid],customerId:st?.customerId||'',siteId:d.siteId,jobId:'',note:'',dispatch:true,ym:d.ym,day:+day,areaId:c.a||'',patternId:c.p}); }); } }
+      (arr||[]).forEach((c,i)=>{ const p=patOfCell(c); if(!p) return; const ar=get('areas',c.a);
+        out.push({id:`sh~${d.siteId}~${d.ym}~${sid}~${day}~${i}`,virtual:true,shift:true,date,start:p.start,end:p.end,title:`${p.code} ${st?.name||''}${ar?' '+ar.name:''}`,type:'シフト',staffIds:[sid],customerId:st?.customerId||'',siteId:d.siteId,jobId:'',note:'',dispatch:true,ym:d.ym,day:+day,areaId:c.a||'',patternId:c.p,fz:c.fz||null}); }); } }
   VEV=out; VEVk=dataVer; return out; }
-const evAll=()=>[...all('events'),...shiftVirtual(),...SHELL.visitsAsEvents()];
+const evAll=()=>isPartner(me())?[...all('events').filter(e=>(e.staffIds||[]).includes(meId())),...poEvents()]:[...all('events'),...shiftVirtual(),...SHELL.visitsAsEvents()];
 
 /* 1日の予定（全現場）と、重なり・移動時間の判定 */
 function dayItems(staffId,date){
@@ -2105,8 +2113,8 @@ function cellView(site,ym,s,day,areaId){
   const mine=own.filter(c=>!areaId||c.a===areaId); const otherArea=own.filter(c=>areaId&&c.a!==areaId);
   const others=evAll().filter(e=>e.date===date&&(e.staffIds||[]).includes(s.id)&&e.shift&&e.siteId!==site.id);
   const conf=(own.length+others.length)>1||(own.length&&evAll().some(e=>!e.shift&&e.date===date&&(e.staffIds||[]).includes(s.id)&&e.start))?dayConflict(s.id,date):{lv:0,msg:[]};
-  const chips=mine.map(c=>{ const p=get('patterns',c.p); return p?`<span class="pc ${c.l?'lk':''}" style="--pcol:${p.color||PAL[0]}">${esc(p.code)}</span>`:''; }).join('');
-  const sub=[...otherArea.map(c=>{const p=get('patterns',c.p);const a=get('areas',c.a);return `${esc((a?.name||'').slice(0,1))}${esc(p?.code||'')}`;}),...others.map(e=>`${esc(siteShort(get('sites',e.siteId)))}${esc(get('patterns',e.patternId)?.code||'')}`)].join(' ');
+  const chips=mine.map(c=>{ const p=patOfCell(c); return p?`<span class="pc ${c.l?'lk':''}" style="--pcol:${p.color||PAL[0]}">${esc(p.code)}</span>`:''; }).join('');
+  const sub=[...otherArea.map(c=>{const p=patOfCell(c);const a=get('areas',c.a);return `${esc((a?.name||'').slice(0,1))}${esc(p?.code||'')}`;}),...others.map(e=>`${esc(siteShort(get('sites',e.siteId)))}${esc((e.fz||get('patterns',e.patternId))?.code||'')}`)].join(' ');
   const rest=restOf(s,date); const onRest=rest&&own.length;
   const restTxt=rest?`<span class="rest">${esc(rest.label)}</span>`:(w?.kind==='on'?`<span class="rest on">出勤希望</span>`:'');
   return {html:`${chips}${!chips||onRest?restTxt:''}${sub?`<span class="oth">${sub}</span>`:''}`,cls:`${rest?(rest.auto?'w-x auto':WISH[rest.kind]?.c||''):w?.kind==='on'?'w-on':''} ${onRest?'conf':conf.lv===2?'conf':conf.lv===1?'warn':''}`,title:[rest?`${rest.label}${rest.note?'（'+rest.note+'）':''}${onRest?'なのにシフトが入っています':''}`:w?wishLabel(w):'',...conf.msg].filter(Boolean).join(' / '),mine,own,rest};
@@ -2146,7 +2154,7 @@ VIEWS.shift=()=>{
   h+=`<div class="scroll" id="shScroll"><table class="stbl"><thead><tr><th class="nm">名前</th>${rngDays.map(d=>{const w=wdOf(d);return `<th class="${w===0?'sun':w===6?'sat':''} ${d===today()?'tdy':''}"><span class="num">${+d.slice(8)}</span><br><small>${WD[w]}</small></th>`;}).join('')}<th>月の日数</th><th>月の時間</th><th>希</th></tr></thead><tbody>`;
   rows.forEach(s=>{ let n=0,min=0,wc=0;
     h+=`<tr><td class="nm"><span class="dot" style="background:${pc(s)}"></span> ${esc(s.name)}<small>${(s.areaIds||[]).map(id=>esc(get('areas',id)?.name||'')).filter(Boolean).join('・')}${s.cond?.days?.length?' '+s.cond.days.map(x=>WD[x]).join(''):''}</small></td>`;
-    allDays.forEach((d,i)=>{ const mine=cellOf(site.id,ym,s.id,i+1).filter(c=>!aId||c.a===aId); if(mine.length){n++; mine.forEach(c=>min+=patMin(get('patterns',c.p)));} if(wishOf(s.id,d)&&wishOf(s.id,d).kind!=='on') wc++; });
+    allDays.forEach((d,i)=>{ const mine=cellOf(site.id,ym,s.id,i+1).filter(c=>!aId||c.a===aId); if(mine.length){n++; mine.forEach(c=>min+=patMin(patOfCell(c)));} if(wishOf(s.id,d)&&wishOf(s.id,d).kind!=='on') wc++; });
     rngDays.forEach(d=>{ const day=+d.slice(8); const v=cellView(site,ym,s,day,aId);
       h+=`<td class="c ${v.cls} ${wdOf(d)%6===0?'wk':''}" tabindex="0" data-act="shCell" data-staff="${s.id}" data-day="${day}" title="${esc(v.title)}">${v.html}</td>`; });
     h+=`<td class="num">${n}</td><td class="num">${fmtMin(min)}</td><td class="num">${wc||''}</td></tr>`; });
@@ -2177,8 +2185,8 @@ function personGrid(m){
   rows.forEach(s=>{ let n=0,min=0;
     h+=`<tr><td class="nm"><span class="dot" style="background:${pc(s)}"></span> ${esc(s.name)}<small>${(s.shiftSites||[]).map(x=>esc(siteShort(get('sites',x)))).join('・')}</small></td>`;
     days.forEach(d=>{ const it=evAll().filter(e=>e.shift&&e.date===d&&(e.staffIds||[]).includes(s.id)).sort(by(e=>e.start||'')); const w=wishOf(s.id,d); const cf=it.length>1?dayConflict(s.id,d):{lv:0,msg:[]};
-      if(it.length){n++; it.forEach(e=>min+=patMin(get('patterns',e.patternId)));}
-      const rr=restOf(s,d); h+=`<td class="${rr?(rr.auto?'w-x auto':WISH[rr.kind]?.c||''):''} ${(rr&&it.length)||cf.lv===2?'conf':cf.lv===1?'warn':''}" title="${esc([...it.map(e=>`${e.title} ${e.start}〜${e.end}`),...cf.msg,w?wishLabel(w):''].filter(Boolean).join(' / '))}">${it.map(e=>{const p=get('patterns',e.patternId);return `<span class="pc2" style="--pcol:${p?.color||PAL[0]}"><b>${esc(p?.code||'')}</b> ${esc(siteShort(get('sites',e.siteId)).slice(0,3))}</span>`;}).join('')}${(()=>{const r=restOf(s,d); return r?`<span class="rest">${esc(r.label)}</span>`:'';})()}</td>`; });
+      if(it.length){n++; it.forEach(e=>min+=patMin((e.fz||get('patterns',e.patternId))));}
+      const rr=restOf(s,d); h+=`<td class="${rr?(rr.auto?'w-x auto':WISH[rr.kind]?.c||''):''} ${(rr&&it.length)||cf.lv===2?'conf':cf.lv===1?'warn':''}" title="${esc([...it.map(e=>`${e.title} ${e.start}〜${e.end}`),...cf.msg,w?wishLabel(w):''].filter(Boolean).join(' / '))}">${it.map(e=>{const p=(e.fz||get('patterns',e.patternId));return `<span class="pc2" style="--pcol:${p?.color||PAL[0]}"><b>${esc(p?.code||'')}</b> ${esc(siteShort(get('sites',e.siteId)).slice(0,3))}</span>`;}).join('')}${(()=>{const r=restOf(s,d); return r?`<span class="rest">${esc(r.label)}</span>`:'';})()}</td>`; });
     h+=`<td class="num">${n}</td><td class="num">${fmtMin(min)}</td></tr>`; });
   return h+`</tbody></table></div>`;
 }
@@ -2197,7 +2205,7 @@ SHEETS.cell=()=>{
   const groups=gAreas.map(a=>({a,ps:patsOf(siteId,a?a.id:undefined)}));
   const pbtn=(p,g)=>`<button type="button" data-act="cellAdd" data-p="${p.id}" data-a="${g.a?g.a.id:''}" style="border-left:4px solid ${p.color||PAL[0]}">${esc(p.code)}　${patLabel(p)}</button>`;
   const body=`<div class="sec"><div class="callout">${esc(s?.name)}さん　${jd(date)}　${esc(site?.name)}${w?`　<span class="wish ${w.kind==='on'?'on':'off'}">${esc(wishLabel(w))}</span>${w.note?` <span class="small">${esc(w.note)}</span>`:''}`:''}</div>
-    <div class="fld"><span>この日のシフト（この現場）</span><div class="chips">${arr.length?arr.map((c,i)=>{const p=get('patterns',c.p);const a=get('areas',c.a);return `<button type="button" ${ro?'disabled':`data-act="cellRm" data-i="${i}"`} style="border-color:${p?.color}">${esc(p?.code||'?')} ${patLabel(p)}${a?' '+esc(a.name):''}${ro?'':' ×'}</button>${ro?'':`<button type="button" data-act="cellLock" data-i="${i}" aria-pressed="${!!c.l}" title="自動作成で上書きしない">${c.l?'固定中':'固定'}</button>`}`;}).join(''):'<span class="hint">なし</span>'}</div></div>
+    <div class="fld"><span>この日のシフト（この現場）</span><div class="chips">${arr.length?arr.map((c,i)=>{const p=patOfCell(c);const a=get('areas',c.a);return `<button type="button" ${ro?'disabled':`data-act="cellRm" data-i="${i}"`} style="border-color:${p?.color}">${esc(p?.code||'?')} ${patLabel(p)}${a?' '+esc(a.name):''}${ro?'':' ×'}</button>${ro?'':`<button type="button" data-act="cellLock" data-i="${i}" aria-pressed="${!!c.l}" title="自動作成で上書きしない">${c.l?'固定中':'固定'}</button>`}`;}).join(''):'<span class="hint">なし</span>'}</div></div>
     ${others.length?`<div class="fld"><span>同じ日の他の予定</span>${others.map(e=>`<div class="small">${e.start||''}〜${e.end||''}　${esc(e.title)}</div>`).join('')}</div>`:''}
     ${conf.msg.length?`<div class="callout ${conf.lv===2?'w':''}">${conf.msg.map(esc).join('<br>')}</div>`:''}
     ${(()=>{const r=restOf(s,date); return r?`<div class="callout w"><b>この日は「${esc(r.label)}」です</b>${r.note?`（${esc(r.note)}）`:''}。${r.auto?'スタッフ条件で出勤できない曜日になっています。':''}シフトを入れる場合は本人に確認してください。</div>`:'';})()}
@@ -2264,7 +2272,7 @@ function runAuto(siteId,ym,areaScope,mode){
       const ex=ext[s.id+'|'+date]||[]; const dayCount=mine.length+ex.filter(e=>e.shift).length;
       if(dayCount>=(+c.multi||1)) return false;
       const [a,b]=iv(p.start,p.end); const tm=shiftCfg().travelMin;
-      for(const x of mine){ const q=get('patterns',x.p); if(!q) continue; const [qa,qb]=iv(q.start,q.end); if(a<qb&&qa<b) return false; }
+      for(const x of mine){ const q=patOfCell(x); if(!q) continue; const [qa,qb]=iv(q.start,q.end); if(a<qb&&qa<b) return false; }
       for(const e of ex){ const [ea,eb]=iv(e.start,e.end); if(a<eb&&ea<b) return false; if(e.siteId&&e.siteId!==siteId&&(Math.abs(a-eb)<tm||Math.abs(ea-b)<tm)) return false; }
       if(!worked(s.id,date)){
         if(c.wMax&&weekCnt(s.id,date)>=+c.wMax) return false;
@@ -2378,17 +2386,17 @@ const BIZLIB={
   rows(site,ym){ const days=daysOfMonth(ym).length; const out=[];
     shiftStaffOf(site.id).concat(staffList().filter(s=>!shiftStaffOf(site.id).includes(s)&&Object.keys(shiftDoc(site.id,ym).cells||{}).some(k=>k.startsWith(s.id+'|')))).forEach(s=>{
       let lanes=1; for(let d=1;d<=days;d++) lanes=Math.max(lanes,cellOf(site.id,ym,s.id,d).length);
-      for(let l=0;l<lanes;l++){ const r=[s.empNo||'',s.name]; for(let d=1;d<=days;d++){ const c=cellOf(site.id,ym,s.id,d)[l]; r.push(c?(this.codeOf(c.p)||get('patterns',c.p)?.code||''):''); } if(l===0||r.slice(2).some(Boolean)) out.push(r); } });
+      for(let l=0;l<lanes;l++){ const r=[s.empNo||'',s.name]; for(let d=1;d<=days;d++){ const c=cellOf(site.id,ym,s.id,d)[l]; r.push(c?(this.codeOf(c.p)||patOfCell(c)?.code||''):''); } if(l===0||r.slice(2).some(Boolean)) out.push(r); } });
     return out; },
   copy(site,ym){ const days=daysOfMonth(ym); const head=['社員番号','氏名',...days.map(d=>+d.slice(8))]; copyText([head,...this.rows(site,ym)].map(r=>r.join('\t')).join('\n'),'取り込み用データをコピーしました（Excelに貼り付けできます）'); }
 };
 
 /* ================= 現場予定（協力会社） ================= */
 const isPartner=s=>s?.kind==='協力会社';
-function genbaEvents(ids,filter){ const set=new Set(ids); return evAll().filter(e=>(e.staffIds||[]).some(i=>set.has(i))&&(e.siteId||e.customerId)&&filter(e)).sort(by(e=>e.date+(e.start||''))); }
+function genbaEvents(ids,filter){ const set=new Set(ids); return evAll().filter(e=>(e.staffIds||[]).some(i=>set.has(i))&&(e.siteId||e.customerId||e.po)&&filter(e)).sort(by(e=>e.date+(e.start||''))); }
 function genbaCard(e,selfId){
   const others=(e.staffIds||[]).filter(i=>i!==selfId).map(staffName);
-  return `<button class="li" data-act="openEvent" data-id="${e.id}"><span class="tm">${timeRange(e.start,e.end)}</span><span class="grow"><b>${esc(siteName(e.siteId)||custName(e.customerId))}</b>${e.jobId?` <span class="tag t-job" style="cursor:inherit">${esc(jobName(e.jobId))}</span>`:''}<div class="small">${esc(e.title)}</div>${others.length?`<div class="small muted">一緒に入る人：${others.map(esc).join('・')}</div>`:''}${e.note?`<div class="small muted">メモ：${esc(e.note)}</div>`:''}</span></button>`;
+  return `<button class="li" data-act="openEvent" data-id="${e.id}"><span class="tm">${timeRange(e.start,e.end)}</span><span class="grow"><b>${esc(siteName(e.siteId)||custName(e.customerId)||e.siteLabel||'')}</b>${e.jobId?` <span class="tag t-job" style="cursor:inherit">${esc(jobName(e.jobId))}</span>`:''}<div class="small">${esc(e.title)}</div>${others.length?`<div class="small muted">一緒に入る人：${others.map(esc).join('・')}</div>`:''}${e.note?`<div class="small muted">メモ：${esc(e.note)}</div>`:''}</span></button>`;
 }
 VIEWS.genba=()=>{
   const self=isSimple(); const m=VS.gMonth;
@@ -2404,7 +2412,7 @@ VIEWS.genba=()=>{
   const bySite={}; list.forEach(e=>{const k=e.siteId||e.customerId; bySite[k]=(bySite[k]||0)+1;});
   h+=`<div class="panel"><h2>${ymLabel(m)}の現場　<span class="muted small" style="font-weight:400">${list.length}件・${Object.keys(bySite).length}現場</span></h2><div class="pbody">
     <div class="tags" style="margin-bottom:10px">${Object.entries(bySite).sort((a,b)=>b[1]-a[1]).map(([k,c])=>`<span class="tag ${get('sites',k)?'t-site':'t-customer'}" style="cursor:default">${esc(siteName(k)||custName(k))} ${c}回</span>`).join('')}</div>
-    ${list.length?`<div class="scroll"><table class="t"><thead><tr><th>日付</th><th>時間</th><th>現場</th><th>内容</th>${sid==='all'?'<th>協力会社</th>':''}<th>一緒に入る人</th></tr></thead><tbody>${list.map(e=>`<tr class="click ${e.date<t?'past':''} ${e.date===t?'tdy':''}" data-act="openEvent" data-id="${e.id}"><td class="num">${jd(e.date)}</td><td class="num">${timeRange(e.start,e.end)}</td><td><b>${esc(siteName(e.siteId)||custName(e.customerId))}</b><div class="small muted">${esc(custName(e.customerId))}</div></td><td>${esc(e.title)}</td>${sid==='all'?`<td>${(e.staffIds||[]).filter(i=>isPartner(get('staff',i))).map(staffName).map(esc).join('・')}</td>`:''}<td class="small">${(e.staffIds||[]).filter(i=>!ids.includes(i)).map(staffName).map(esc).join('・')||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">この月の現場はありません</div>'}
+    ${list.length?`<div class="scroll"><table class="t"><thead><tr><th>日付</th><th>時間</th><th>現場</th><th>内容</th>${sid==='all'?'<th>協力会社</th>':''}<th>一緒に入る人</th></tr></thead><tbody>${list.map(e=>`<tr class="click ${e.date<t?'past':''} ${e.date===t?'tdy':''}" data-act="openEvent" data-id="${e.id}"><td class="num">${jd(e.date)}</td><td class="num">${timeRange(e.start,e.end)}</td><td><b>${esc(siteName(e.siteId)||custName(e.customerId)||e.siteLabel||'')}</b><div class="small muted">${esc(custName(e.customerId))}</div></td><td>${esc(e.title)}</td>${sid==='all'?`<td>${(e.staffIds||[]).filter(i=>isPartner(get('staff',i))).map(staffName).map(esc).join('・')}</td>`:''}<td class="small">${(e.staffIds||[]).filter(i=>!ids.includes(i)).map(staffName).map(esc).join('・')||'—'}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">この月の現場はありません</div>'}
   </div></div>`;
   return h;
 };
@@ -2462,13 +2470,24 @@ docOn('click',async ev=>{
   if(el.closest('.cev')&&a!=='openEvent') return;
   if(a==='openEvent'||a==='openReport'||a==='rel'||a==='repTagRm'||a==='repTagAdd') ev.stopPropagation();
   switch(a){
-    case 'openPo': if(!isPartnerUser()&&el.dataset.internal){ SHELL.openOrder(el.dataset.id); break; } openSheet({kind:'porder',id:el.dataset.id}); poRecordView(el.dataset.id); break;
+    case 'openPo': VS.poRepKey=''; if(!isPartnerUser()&&el.dataset.internal){ SHELL.openOrder(el.dataset.id); break; } openSheet({kind:'porder',id:el.dataset.id}); poRecordView(el.dataset.id); break;
     case 'poAck': await poAnswer(el.dataset.v||'了承'); break;
     case 'poAsk': await poAsk(); break;
     case 'poOpenOrder': closeSheet(); SHELL.openOrder(el.dataset.id); break;
     case 'openAp': SHELL.openApprovals(); break;
     case 'ackNotice': SHELL.ackNotice(el.dataset.id); break;
     case 'openJob': SHELL.openJob(el.dataset.id); break;
+    case 'monthClose': await monthClose(el.dataset.m); break;
+    case 'monthOpen': await monthOpen(el.dataset.m); break;
+    case 'rvdone': { const r=sheet?.r; if(!r) break; const v=el.dataset.id, a=new Set(r.vdone||[]); a.has(v)?a.delete(v):a.add(v); r.vdone=[...a]; renderOverlay(); break; }
+    case 'fvSave': await SHELL.visitPatch(sheet.id,{reportNote:ROOT.querySelector('#fv-note')?.value||''}); toast('保存しました'); renderOverlay(); break;
+    case 'fvDone': await SHELL.visitDone(sheet.id,ROOT.querySelector('#fv-note')?.value??null); toast('作業を完了にしました'); renderOverlay(); break;
+    case 'poRepNew': VS.poRepKey=el.dataset.k; renderOverlay(); break;
+    case 'poRepCancel': VS.poRepKey=''; renderOverlay(); break;
+    case 'poRepSend': await poRepSend(el.dataset.k); break;
+    case 'poRepOk': await SHELL.poRepOk(el.dataset.id,el.dataset.k); renderOverlay(); break;
+    case 'poReplyS': await poReplyS(); break;
+    case 'poContactS': await poContactS(); break;
     case 'go': VS.route=el.dataset.r; closeSheet(); window.scrollTo(0,0); render(); break;
     case 'close': closeSheet(); break;
     case 'seed': await SHELL.seed(); break;
@@ -2481,7 +2500,7 @@ docOn('click',async ev=>{
     case 'calDay': { const d=el.dataset.date; if(VS.wishMode&&isShiftStaff(me())){ VS.calSel=d; await cycleWish(meId(),d); break; } if(matchMedia('(max-width:900px)').matches||VS.calSel!==d){ VS.calSel=d; render(); } else newEvent(d); break; }
     case 'dispatchOnly': P.dispatchOnly=!P.dispatchOnly; savePrefs(); render(); break;
     case 'newEvent': newEvent(el.dataset.date,el.dataset.staff); break;
-    case 'openEvent': { const id=el.dataset.id; if(String(id).startsWith('vs~')){ SHELL.openVisit(String(id).slice(3)); break; } if(String(id).startsWith('sh~')){ const [,site,ym,sid,day]=id.split('~'); openCell(site,ym,sid,day); break; } const e=get('events',id); if(e) openSheet({kind:'event',e:{note:'',siteId:'',jobId:'',customerId:'',...structuredClone(e)}}); break; }
+    case 'openEvent': { const id=el.dataset.id; if(String(id).startsWith('po~')){ VS.poRepKey=''; openSheet({kind:'porder',id:String(id).slice(3)}); poRecordView(String(id).slice(3)); break; } if(String(id).startsWith('vs~')){ SHELL.openVisit(String(id).slice(3)); break; } if(String(id).startsWith('sh~')){ const [,site,ym,sid,day]=id.split('~'); openCell(site,ym,sid,day); break; } const e=get('events',id); if(e) openSheet({kind:'event',e:{note:'',siteId:'',jobId:'',customerId:'',...structuredClone(e)}}); break; }
     case 'evType': sheet.e.type=el.dataset.v; renderOverlay(); break;
     case 'evStaff': { const s=sheet.e.staffIds||[]; const id=el.dataset.id; sheet.e.staffIds=s.includes(id)?s.filter(x=>x!==id):[...s,id]; refreshEvStaff(); break; }
     case 'evsPfClear': sheet.pc='';sheet.ps='';sheet.pa=''; refreshEvStaff(); break;
@@ -2805,8 +2824,7 @@ VIEWS.porders=()=>{
 };
 SHEETS.porder=()=>{
   const p=get('porders',sheet.id); if(!p) return {title:'発注書',body:'<div class="empty">見つかりません</div>'};
-  const st=poStateS(p), s=p.site||{}, self=isPartnerUser(), a=p.ack, rev=p.rev||1;
-  const map=s.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">地図を開く</a>`:'';
+  const st=poStateS(p), self=isPartnerUser(), a=p.ack, rev=p.rev||1;
   const row=(k,v)=>v?`<div class="porow" style="display:grid;grid-template-columns:7em 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)"><span class="muted small">${k}</span><span style="white-space:pre-wrap">${v}</span></div>`:'';
   const ch=p.change;
   const body=`
@@ -2815,21 +2833,19 @@ SHEETS.porder=()=>{
     ${!p.stopped&&ch&&ch.kind==='reack'&&a&&a.rev!==rev?`<div class="callout w" style="margin-top:8px">前回の確認のあとで発注内容が変わりました（${esc((ch.labels||[]).join('・'))}）。もう一度確認してください。</div>`:''}
     ${!p.stopped&&ch&&ch.kind==='notice'&&(!self||poUnseen(p))?`<div class="callout" style="margin-top:8px">${poWhenS(ch.at)}に一部更新しました（${esc((ch.labels||[]).join('・'))}）。${a&&a.rev===rev?'了承済みの内容はそのままです。':'再確認は不要の変更です。'}</div>`:''}
     ${p.cancelled?`<div class="callout w" style="margin-top:8px">この発注書は取り消されました。</div>`:''}</div>
-  <div class="sec"><h3 style="margin:0 0 6px">作業日程</h3>${(p.schedule||[]).length?`<table class="t"><thead><tr><th>日付</th><th>時間</th>${self?'':'<th>担当</th>'}</tr></thead><tbody>${p.schedule.map(r=>`<tr><td>${esc(jd(r.date))}</td><td>${esc(r.start||r.end?timeRange(r.start,r.end):'時間未定')}</td>${self?'':`<td>${esc(staffName(r.staffId))}</td>`}</tr>`).join('')}</tbody></table>`:'<div class="empty">日程は未定です</div>'}</div>
+  <div class="sec"><h3 style="margin:0 0 6px">作業日程</h3>${(p.schedule||[]).length?`<table class="t"><thead><tr><th>日付</th><th>時間</th>${p.kind==='contract'?'<th>現場・作業</th>':''}${self?'':'<th>担当</th>'}<th>完了報告</th></tr></thead><tbody>${p.schedule.map((r,i)=>`<tr><td>${esc(jd(r.date))}</td><td>${esc(r.start||r.end?timeRange(r.start,r.end):'時間未定')}</td>${p.kind==='contract'?`<td>${esc(r.title||r.siteName||'')}</td>`:''}${self?'':`<td>${esc(staffName(r.staffId))}</td>`}<td>${poRepCell(p,r,i,self)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">日程は未定です</div>'}${poRepForm(p,self)}</div>
   <div class="sec"><h3 style="margin:0 0 6px">発注内容</h3><table class="t"><thead><tr><th>品名</th><th style="text-align:right">数量</th><th>単位</th><th style="text-align:right">単価</th><th style="text-align:right">金額</th></tr></thead><tbody>${(p.lines||[]).map(l=>`<tr><td>${esc(l.name)}</td><td style="text-align:right">${esc(l.qty)}</td><td>${esc(l.unit)}</td><td style="text-align:right" class="num">${yenS(l.price)}</td><td style="text-align:right" class="num">${yenS((+l.qty||0)*l.price)}</td></tr>`).join('')}</tbody></table>
     <div style="text-align:right;margin-top:6px" class="small">小計 <span class="num">${yenS(p.sub)}</span>　消費税 <span class="num">${yenS(p.tax)}</span>　<b>発注金額 <span class="num">${yenS(p.total)}</span>（税込）</b></div>
     ${p.note?`<div class="callout" style="margin-top:8px;white-space:pre-wrap">${esc(p.note)}</div>`:''}</div>
-  <div class="sec"><h3 style="margin:0 0 6px">現場</h3>
-    ${row('お客様',esc(p.customer))}${row('現場',esc(s.name)+(s.storeNo?'（店番 '+esc(s.storeNo)+'）':''))}${row('住所',esc(s.address)+(map?'　'+map:''))}
-    ${row('鍵',s.keyRequired||s.key?(s.keyRequired?'必要':'不要')+(s.key?'　'+esc(s.key):''):'')}${row('駐車場',esc(s.parking))}${row('搬入・入館',esc(s.entry))}${row('作業できる時間',esc(s.hours))}${row('現場の連絡先',esc(s.contact))}${row('注意事項',esc(s.note))}
-    ${!s.address&&!s.parking&&!s.entry&&!s.hours&&!s.contact&&!s.note?'<div class="small muted">現場の詳しい情報はまだ登録されていません。</div>':''}</div>
-  <div class="sec"><h3 style="margin:0 0 6px">前回の施工報告</h3>${p.last?`<div class="small muted">${esc(jd(p.last.date))}　${esc(p.last.title)}</div>${p.last.note?`<div style="white-space:pre-wrap;margin-top:4px">${esc(p.last.note)}</div>`:''}${(p.last.files||[]).length?`<div class="list" style="margin-top:6px">${p.last.files.map(f=>`<a class="li" href="#" data-file="${esc(f.id)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>`:''}`:'<div class="small muted">共有された報告はありません。</div>'}</div>
+  ${poSitesSec(p,row)}
+  ${poLastSec(p)}
   <div class="sec"><h3 style="margin:0 0 6px">質問・やりとり</h3>${(p.thread||[]).length?`<div class="list">${p.thread.map(x=>`<div class="li" style="cursor:default"><span class="pill ${x.from==='p'?'w':'g'}">${x.from==='p'?'質問':'回答'}</span><span class="grow small">${esc(x.byName||'')}　${poWhenS(x.at)}<br>${esc(x.text)}</span></div>`).join('')}</div>`:'<div class="small muted">やりとりはまだありません。</div>'}
+    ${!self&&p.kind==='contract'&&SHELL.poOpenQ(p)?`<div style="display:flex;gap:6px;margin-top:8px"><input class="inp" id="po-reply-s" placeholder="回答を入力（協力会社の画面に表示されます）"><button class="btn sm pri" data-act="poReplyS">回答する</button></div>`:''}
     ${self&&!p.cancelled?`<label class="fld" style="margin-top:10px"><span>質問・相談</span><textarea class="inp" id="po-q" rows="3" placeholder="例：初日の開始時間を30分遅らせてもよいですか"></textarea></label>`:''}</div>
   <div class="sec"><h3 style="margin:0 0 6px">確認の記録</h3>${(p.acks||[]).length?`<div class="list">${p.acks.slice().reverse().map(x=>`<div class="li" style="cursor:default"><span class="pill ${x.status==='了承'?'g':''}">${esc(x.status)}</span><span class="grow small">${esc(x.byName||staffName(x.by))}　${poWhenS(x.at)}　第${x.rev}版</span></div>`).join('')}</div>`:'<div class="small muted">まだ確認されていません。</div>'}</div>`;
   const ackBtn=p.stopped?`<button class="btn pri" data-act="poAck" data-v="中止確認">中止を確認しました</button>`:`<button class="btn pri" data-act="poAck" data-v="了承">内容を確認し、了承します</button>`;
   const done=a&&a.rev===rev&&(p.stopped?a.status==='中止確認':a.status==='了承');
-  const foot=self?(!p.cancelled?`<button class="btn" data-act="close">閉じる</button><button class="btn" data-act="poAsk">質問・相談する</button>${done||p.done?'':ackBtn}`:`<button class="btn" data-act="close">閉じる</button>`):`<button class="btn" data-act="close">閉じる</button><button class="btn pri" data-act="poOpenOrder" data-id="${p.id}">社内の発注書を開く（回答・連絡・中止）</button>`;
+  const foot=self?(!p.cancelled?`<button class="btn" data-act="close">閉じる</button><button class="btn" data-act="poAsk">質問・相談する</button>${done||p.done?'':ackBtn}`:`<button class="btn" data-act="close">閉じる</button>`):`<button class="btn" data-act="close">閉じる</button>${p.kind==='contract'?poOfficeFoot(p):`<button class="btn pri" data-act="poOpenOrder" data-id="${p.id}">社内の発注書を開く（回答・連絡・中止）</button>`}`;
   return {title:esc(p.title),body,foot};
 };
 async function poRecordView(id){
@@ -2854,7 +2870,7 @@ async function poAsk(){
   await put('porders',p.id,{...p,thread:[...(p.thread||[]),{from:'p',by:meId(),byName:staffName(meId()),at:new Date().toISOString(),text}]});
   toast('質問を送りました。回答はこの画面に表示されます'); renderOverlay();
 }
-function poHomePanel(){ return flowHomePanel()+apHomePanel()+poHomePanel0(); }
+function poHomePanel(){ return poPartnerHome()+flowHomePanel()+apHomePanel()+poHomePanel0()+fieldHomePanel(); }
 function flowHomePanel(){
   const ns=SHELL.noticesFor(meId()), fs=SHELL.flowMine(meId()); let h='';
   if(ns.length) h+=`<div class="panel" style="margin-bottom:14px;border-color:var(--accent)"><h2>新しい作業の連絡 <span class="num muted">${ns.length}</span></h2><div class="pbody"><div class="list">${ns.map(n=>`<div class="li" style="cursor:default;align-items:flex-start"><span class="grow"><b>${esc(n.title)}</b><br><span class="small muted">${esc(jd(n.date))} ${esc(n.start||n.end?timeRange(n.start,n.end):'')}　${esc(n.from)}より</span>${n.text?`<div class="small" style="white-space:pre-wrap;margin-top:4px">${esc(n.text)}</div>`:''}</span><button class="btn sm pri" data-act="ackNotice" data-id="${n.id}">確認しました</button></div>`).join('')}</div></div></div>`;
@@ -2864,6 +2880,172 @@ function apHomePanel(){ const n=SHELL.apCount(meId()); return n?`<div class="cal
 function poHomePanel0(){
   const items=SHELL.poMine(meId()); if(!items.length) return '';
   return `<div class="panel" style="margin-bottom:14px;border-color:var(--warn)"><h2>協力会社の発注確認で対応が必要 <span class="num muted">${items.length}</span></h2><div class="pbody"><div class="list">${items.map(x=>`<button class="li" data-act="openPo" data-internal="1" data-id="${x.p.id}" style="width:100%;text-align:left;border:0;background:none;font:inherit;cursor:pointer"><span class="pill ${x.kind==='over'?'r':x.kind==='q'?'w':'a'}">${x.kind==='over'?'期限切れ':x.kind==='q'?(x.esc?'回答待ち・上長回付':'回答待ち'):'未連絡'}</span><span class="grow">${esc(x.p.title)}<br><span class="small muted">${esc(staffName(x.p.partnerId))}</span></span></button>`).join('')}</div></div></div>`;
+}
+
+/* 現場（定期作業は複数の現場）・前回の報告・協力会社の完了報告 */
+function poSiteOne(s,customer,row){
+  const map=s.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address)}" target="_blank" rel="noopener">地図を開く</a>`:'';
+  return `${row('お客様',esc(customer||''))}${row('現場',esc(s.name)+(s.storeNo?'（店番 '+esc(s.storeNo)+'）':''))}${row('住所',esc(s.address)+(map?'　'+map:''))}
+    ${row('鍵',s.keyRequired||s.key?(s.keyRequired?'必要':'不要')+(s.key?'　'+esc(s.key):''):'')}${row('駐車場',esc(s.parking))}${row('搬入・入館',esc(s.entry))}${row('作業できる時間',esc(s.hours))}${row('現場の連絡先',esc(s.contact))}${row('注意事項',esc(s.note))}
+    ${!s.address&&!s.parking&&!s.entry&&!s.hours&&!s.contact&&!s.note?'<div class="small muted">現場の詳しい情報はまだ登録されていません。</div>':''}`;
+}
+function poSitesSec(p,row){
+  const ss=p.sites||(p.site?[p.site]:[]);
+  return `<div class="sec"><h3 style="margin:0 0 6px">現場${ss.length>1?`（${ss.length}か所）`:''}</h3>${ss.length?ss.map((s,i)=>`${i?'<div style="height:10px"></div>':''}${poSiteOne(s,p.customer,row)}`).join(''):'<div class="small muted">現場の情報はありません。</div>'}</div>`;
+}
+function poLastOne(l){ return l?`<div class="small muted">${esc(jd(l.date))}　${esc(l.title)}</div>${l.note?`<div style="white-space:pre-wrap;margin-top:4px">${esc(l.note)}</div>`:''}${(l.files||[]).length?`<div class="list" style="margin-top:6px">${l.files.map(f=>`<a class="li" href="#" data-file="${esc(f.id)}" data-blob="${esc(f.id)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>`:''}`:''; }
+function poLastSec(p){
+  let h='';
+  if(p.lasts){ const ss=p.sites||[]; h=ss.map(s=>p.lasts[s.id]?`<div style="margin-bottom:8px"><b class="small">${esc(s.name)}</b>${poLastOne(p.lasts[s.id])}</div>`:'').join(''); }
+  else h=poLastOne(p.last);
+  return `<div class="sec"><h3 style="margin:0 0 6px">前回の施工報告</h3>${h||'<div class="small muted">共有された報告はありません。</div>'}</div>`;
+}
+const poRepOf=(p,r,i)=>(p.reports||[]).filter(x=>x.key===(r.vid||String(i))).slice(-1)[0];
+function poRepCell(p,r,i,self){
+  const x=poRepOf(p,r,i);
+  if(x) return `<span class="pill ${x.ok?'g':'a'}">${x.ok?'確認済み':'報告済み'}</span>${self||x.ok?'':` <button class="btn sm pri" data-act="poRepOk" data-id="${p.id}" data-k="${esc(x.key)}">確認して完了にする</button>`}`;
+  if(!self||p.cancelled||p.stopped) return '<span class="muted small">—</span>';
+  if(r.date>today()) return '<span class="muted small">作業日以降</span>';
+  return `<button class="btn sm" data-act="poRepNew" data-k="${esc(r.vid||String(i))}">報告する</button>`;
+}
+function poRepForm(p,self){
+  const k=VS.poRepKey; const reps=(p.reports||[]);
+  let h=reps.length?`<div class="list" style="margin-top:8px">${reps.slice().reverse().map(x=>`<div class="li" style="cursor:default;align-items:flex-start"><span class="pill ${x.ok?'g':'a'}" style="flex:none">${x.ok?'確認済み':'報告'}</span><span class="grow small">${esc(jd(x.date))}　${esc(x.byName||'')}　${poWhenS(x.at)}${x.text?`<br><span style="white-space:pre-wrap">${esc(x.text)}</span>`:''}${(x.files||[]).length?`<br>${x.files.map(f=>`<a href="#" data-file="${esc(f.id)}" data-blob="${esc(f.id)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('　')}`:''}</span></div>`).join('')}</div>`:'';
+  if(self&&k&&sheet?.id===p.id){ const r=(p.schedule||[]).find((r,i)=>(r.vid||String(i))===k);
+    h+=`<div class="callout" style="margin-top:10px;display:block"><b>完了報告（${esc(jd(r?.date))}${r?.title?'　'+esc(r.title):''}）</b>
+      <label class="fld" style="margin-top:6px"><span>作業の内容・気づいたこと</span><textarea class="inp" id="po-rep" rows="3" placeholder="例：予定どおり完了。床の一部にワックスはがれあり"></textarea></label>
+      <label class="fld"><span>写真・報告書（複数可）</span><input type="file" id="po-rep-f" multiple accept="image/*,application/pdf"></label>
+      <div style="display:flex;gap:6px;margin-top:6px"><button class="btn" data-act="poRepCancel">やめる</button><button class="btn pri" data-act="poRepSend" data-k="${esc(k)}">完了報告を送る</button></div></div>`; }
+  return h;
+}
+async function poRepSend(k){
+  const p=get('porders',sheet.id); if(!p) return;
+  const r=(p.schedule||[]).find((r,i)=>(r.vid||String(i))===k); if(!r) return;
+  const text=(ROOT.querySelector('#po-rep')?.value||'').trim(), fs=[...(ROOT.querySelector('#po-rep-f')?.files||[])];
+  if(!text&&!fs.length) return toast('内容か写真を入れてください');
+  const files=[];
+  if(fs.length){ if(!assets) return toast('このページではファイルを送れません'); toast('ファイルを送っています…');
+    for(const f of fs){ try{ const u=await assets.upload(f,'partner/'+meId()); files.push({id:u.id,name:f.name,size:u.sizeBytes,type:u.contentType}); }catch(e){ return toast('ファイルを送れませんでした（'+(e?.code||e?.message||'エラー')+'）'); } } }
+  const x={id:Math.random().toString(36).slice(2,10),key:k,vid:r.vid||'',date:r.date,text,files,at:new Date().toISOString(),by:meId(),byName:staffName(meId())};
+  const cur=get('porders',p.id);
+  await put('porders',p.id,{...cur,reports:[...(cur.reports||[]),x]});
+  VS.poRepKey=''; toast('完了報告を送りました。担当者が確認します'); renderOverlay();
+}
+/* 協力会社向けの予定（カレンダー・現場予定・ホーム）。本人あての発注データから作る */
+function poEvents(){
+  if(!isPartnerUser()) return [];
+  const out=[];
+  for(const p of myPorders()){ if(p.cancelled||p.stopped) continue;
+    (p.schedule||[]).forEach((r,i)=>{ if(!r.date) return; const sn=r.siteName||(p.sites?.[0]?.name)||p.site?.name||'';
+      out.push({id:`po~${p.id}`,virtual:true,po:p.id,date:r.date,start:r.start||'',end:r.end||'',title:r.title||p.title,type:'作業',staffIds:[meId()],siteLabel:sn,note:'',done:!!poRepOf(p,r,i)}); }); }
+  return out;
+}
+
+function poOfficeFoot(p){
+  const c=p.contact, need=!c||c.rev<(p.rev||1);
+  return `<span class="small muted" style="margin-right:auto">${c?`連絡：${poWhenS(c.at)}${need?'（この版はまだ）':''}`:'まだ連絡していません'}</span>${need?`<button class="btn pri" data-act="poContactS">協力会社へ連絡済みにする</button>`:''}`;
+}
+async function poReplyS(){ const p=get('porders',sheet.id); const t=(ROOT.querySelector('#po-reply-s')?.value||'').trim(); if(!p) return; if(!t) return toast('回答を入力してください');
+  await put('porders',p.id,{...p,thread:[...(p.thread||[]),{from:'s',by:meId(),byName:staffName(meId()),at:new Date().toISOString(),text:t}]}); toast('回答しました（協力会社の画面に表示されます）'); renderOverlay(); }
+async function poContactS(){ const p=get('porders',sheet.id); if(!p) return; const c={rev:p.rev||1,upd:p.upd||0,at:new Date().toISOString(),by:meId(),to:[staffName(p.partnerId)],via:['手動']};
+  await put('porders',p.id,{...p,contact:c,contacts:[...(p.contacts||[]),c]}); toast('連絡済みにしました'); renderOverlay(); }
+/* 協力会社のホーム：確認が必要な発注書 */
+function poPartnerHome(){
+  if(!isPartnerUser()) return '';
+  const ps=myPorders().filter(p=>poStateS(p).todo||poUnseen(p)).sort(by(p=>p.due||'9'));
+  const repTodo=myPorders().filter(p=>!p.cancelled&&!p.stopped).flatMap(p=>(p.schedule||[]).map((r,i)=>({p,r,i}))).filter(x=>x.r.date&&x.r.date<=today()&&!poRepOf(x.p,x.r,x.i));
+  let h='';
+  if(ps.length) h+=`<div class="panel" style="margin-bottom:14px;border-color:var(--warn)"><h2>確認が必要な発注書 <span class="num muted">${ps.length}</span><span class="sp"><button class="btn sm" data-act="go" data-r="porders">発注書の一覧</button></span></h2><div class="pbody"><div class="list">${ps.map(poCard).join('')}</div></div></div>`;
+  if(repTodo.length) h+=`<div class="panel" style="margin-bottom:14px"><h2>完了報告がまだの作業 <span class="num muted">${repTodo.length}</span></h2><div class="pbody"><div class="list">${repTodo.slice(0,10).map(x=>`<button class="li" data-act="openPo" data-id="${x.p.id}" style="width:100%;text-align:left;border:0;background:none;font:inherit;cursor:pointer"><span class="tm">${esc(jd(x.r.date))}</span><span class="grow"><b>${esc(x.r.title||x.p.title)}</b></span></button>`).join('')}</div></div></div>`;
+  return h;
+}
+/* =========================================================
+   勤怠の締め（タイムカード・シフト）
+   締めた月は、打刻・修正申請・休み希望・シフトを変更できない（管理者は解除できる）。
+   シフトは締めた時点のパターン（時間・休憩）を各マスに書き写すので、
+   あとでパターンを変えても締めた月の時間は変わらない。
+   タイムカードの実働・残業は打刻だけから計算している（シフトは使わない）。
+   ========================================================= */
+const roleS=()=>{ const m=me(); return m?.kind==='協力会社'?'partner':(m?.role||'staff'); };
+const closeOf=ym=>{ const c=get('meta','close_'+ym); return c&&c.closed?c:null; };
+const patOfCell=c=>c?.fz||get('patterns',c?.p);
+function lockedMonthOf(col,id,data){
+  if(!['punches','fixreqs','wishes','shifts'].includes(col)) return '';
+  if(col==='fixreqs'&&data&&data.status==='差戻し') return '';
+  const cur=id?get(col,id):null;
+  const ms=col==='shifts'?[data?.ym,cur?.ym]:[ymOf(data?.date||''),ymOf(cur?.date||'')];
+  return ms.find(m=>m&&closeOf(m))||'';
+}
+function put(col,id,data){
+  const m=lockedMonthOf(col,id,data);
+  if(m&&roleS()!=='admin'&&!closingNow){ toast(`${ymLabel(m)}は勤怠を締めたため変更できません（管理者に解除を依頼してください）`); return Promise.resolve(id); }
+  return put0(col,id,data);
+}
+function del(col,id){
+  const m=lockedMonthOf(col,id,null);
+  if(m&&roleS()!=='admin'){ toast(`${ymLabel(m)}は勤怠を締めたため変更できません`); return Promise.resolve(); }
+  return del0(col,id);
+}
+let closingNow=false;
+function closeBar(m){
+  const c=closeOf(m), r=roleS(), canClose=['admin','lead'].includes(r);
+  if(c) return `<div class="callout g" style="margin:8px 0"><span><b>${ymLabel(m)}は締め済み</b>（${esc(staffName(c.by))} ${esc(String(c.at||'').slice(0,10))}）。打刻・修正申請・休み希望・シフトは変更できません。シフトの時間は締めた時点のパターンで固定しています。</span>${r==='admin'?`<button class="btn sm" data-act="monthOpen" data-m="${m}">締めを解除</button>`:''}</div>`;
+  if(isSimple()||!canClose) return '';
+  if(m>=ymOf(today())&&m!==ymOf(addDays(today(),-1))) return '';
+  const pend=all('fixreqs').filter(f=>f.status==='申請中'&&ymOf(f.date)===m).length;
+  return `<div class="callout" style="margin:8px 0"><span>${ymLabel(m)}の勤怠はまだ締めていません。${pend?`<b>承認待ちの修正申請が${pend}件</b>あります。`:''}給与計算に渡す前に締めると、あとから打刻やシフトが変わらなくなります。</span><button class="btn sm pri" data-act="monthClose" data-m="${m}">${ymLabel(m)}を締める</button></div>`;
+}
+async function monthClose(m){
+  const pend=all('fixreqs').filter(f=>f.status==='申請中'&&ymOf(f.date)===m).length;
+  if(pend&&!confirmClose[m]){ confirmClose[m]=true; toast(`承認待ちの修正申請が${pend}件あります。もう一度押すとそのまま締めます`); return; }
+  closingNow=true;
+  try{
+    for(const d of all('shifts').filter(d=>d.ym===m)){
+      const cells=Object.fromEntries(Object.entries(d.cells||{}).map(([k,arr])=>[k,(arr||[]).map(c=>{ const p=get('patterns',c.p); return p&&!c.fz?{...c,fz:{code:p.code||'',start:p.start||'',end:p.end||'',breakMin:+p.breakMin||0,color:p.color||'',name:p.name||''}}:c; })]));
+      await put0('shifts',d.id,{...d,cells,closed:true});
+    }
+    await put0('meta','close_'+m,{kind:'close',ym:m,closed:true,at:new Date().toISOString(),by:meId()});
+  } finally { closingNow=false; }
+  toast(`${ymLabel(m)}の勤怠を締めました`);
+}
+const confirmClose={};
+async function monthOpen(m){
+  if(roleS()!=='admin') return toast('締めの解除は管理者だけができます');
+  const c=get('meta','close_'+m); if(!c) return;
+  await put0('meta','close_'+m,{...c,closed:false,reopenedAt:new Date().toISOString(),reopenedBy:meId()});
+  toast(`${ymLabel(m)}の締めを解除しました（シフトの時間は締めた時点のまま。パターンから直すときはマスを入れ直してください）`);
+}
+
+/* =========================================================
+   現場の人が開く作業予定（簡単な画面）
+   ========================================================= */
+function openFieldVisit(id){ const v=SHELL.visitInfo(id); if(!v) return toast('作業予定が見つかりません'); openSheet({kind:'fvisit',id}); }
+SHEETS.fvisit=()=>{
+  const v=SHELL.visitInfo(sheet.id); if(!v) return {title:'作業予定',body:'<div class="empty">見つかりません</div>'};
+  const mine=v.staffIds.includes(meId());
+  const row=(k,x)=>x?`<div style="display:grid;grid-template-columns:7em 1fr;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)"><span class="muted small">${k}</span><span style="white-space:pre-wrap">${x}</span></div>`:'';
+  const map=v.address?`　<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(v.address)}" target="_blank" rel="noopener">地図を開く</a>`:'';
+  const body=`<div class="sec"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="pill ${v.done?'g':v.status==='中止'?'r':'a'}">${esc(v.status)}</span><b>${esc(jd(v.date))} ${esc(v.start||v.end?timeRange(v.start,v.end):'時間未定')}</b></div></div>
+  <div class="sec">${row('現場',esc(v.site||'—'))}${row('お客様',esc(v.cust))}${row('住所',esc(v.address)+map)}${row('案件',esc(v.jobTitle))}${row('一緒に入る人',esc(v.staff.join('・')))}${row('鍵',esc(v.key))}${row('駐車場',esc(v.parking))}${row('搬入・入館',esc(v.entry))}${row('作業できる時間',esc(v.hours))}${row('現場の注意点',esc(v.siteNote))}</div>
+  <div class="sec"><label class="fld"><span>作業メモ・特記事項（事務所にも見えます）</span><textarea class="inp" id="fv-note" rows="3" ${mine?'':'disabled'}>${esc(v.reportNote)}</textarea></label>
+    <div class="fld"><span>写真・報告書</span>${v.attachments.length?`<div class="list">${v.attachments.map(a=>`<a class="li" href="#" data-file="${esc(a.id)}" data-blob="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.name)}</a>`).join('')}</div>`:'<div class="small muted">まだありません</div>'}
+    ${mine?`<input type="file" id="fv-file" accept="image/*,application/pdf" style="margin-top:6px">`:''}</div></div>`;
+  const foot=`<button class="btn" data-act="close">閉じる</button>${mine?`<button class="btn" data-act="fvSave">メモを保存</button>${v.done||v.status==='中止'?'':'<button class="btn pri" data-act="fvDone">作業を完了にする</button>'}`:''}`;
+  return {title:esc(v.title),body,foot};
+};
+/* 日報を書くとき、その日の自分の作業予定を一緒に完了にできる */
+function repVisitBox(r){
+  if(!r||r.staffId!==meId()) return '';
+  const vs=evAll().filter(e=>e.visit&&e.date===r.date&&(e.staffIds||[]).includes(r.staffId));
+  if(!vs.length) return '';
+  const on=new Set(r.vdone||[]);
+  return `<div class="fld"><span>この日の作業予定<span class="muted" style="font-weight:400"> — 終わったものに印を付けると、保存のときに作業予定も「完了」になります</span></span><div class="chips" style="display:flex;flex-wrap:wrap;gap:6px">${vs.map(e=>{ const vid=e.id.slice(3); return e.done?`<span class="pill g">完了済み　${esc(e.title)}</span>`:`<button type="button" class="btn sm ${on.has(vid)?'pri':''}" data-act="rvdone" data-id="${esc(vid)}">${on.has(vid)?'☑':'☐'} ${esc(timeRange(e.start,e.end)||'')} ${esc(e.title)}</button>`; }).join('')}</div></div>`;
+}
+docOn('change',e=>{ const t=e.target; if(t.id==='fv-file'&&t.files&&t.files[0]&&sheet?.kind==='fvisit'){ const f=t.files[0]; SHELL.visitAttach(sheet.id,f).then(()=>renderOverlay()); } });
+/* 承認の結果（自分の申請）をホームに出す */
+function fieldHomePanel(){
+  const n=SHELL.apResults?SHELL.apResults(meId()):0; if(!n) return '';
+  return `<div class="callout g" style="margin-bottom:12px"><span><b>申請の結果が${n}件</b>出ています（承認された発注書は担当者・協力会社へ送ってください）。</span><button class="btn sm pri" data-act="openAp">承認の画面を開く</button></div>`;
 }
 
 window.S_API={
@@ -2877,6 +3059,8 @@ window.S_API={
   openEvent(id){ const e=get('events',id); if(!e) return toast('予定が見つかりません'); openSheet({kind:'event',e:{note:'',siteId:'',jobId:'',customerId:'',...structuredClone(e)}}); },
   dispatchEvents:()=>all('events').filter(isDispatch),
   dataVer:()=>dataVer,
+  openFieldVisit:id=>openFieldVisit(id),
+  get:(c,id)=>get(c,id), list:c=>all(c), patMinOf:c=>patMin(patOfCell(c)), closed:ym=>!!closeOf(ym),
   ready:()=>loaded.size===COLS.length,
   makeSample:()=>makeSample(),
   demoItems:()=>COLS.flatMap(c=>all(c).filter(r=>r.demo).map(r=>[c,r.id])),
@@ -2917,7 +3101,7 @@ const SOURCES=['既存顧客','紹介','Web問合せ','電話','飛び込み','�
 const COLS=['customers','sites','jobs','quotes','orders','prices','templates','contracts','visits','staff','settings','porders','approvals'];
 const O_STATUS=['作成中','承認待ち','発行済','完了','中止'];
 const O_TONE={作成中:'',承認待ち:'a',発行済:'a',完了:'g',中止:'r'};
-const DEFAULT_SETTINGS={flowAuto:true,flowIntakeDays:3,flowDraftDays:3,flowWonDays:3,apQuote:true,apQuoteMax:300000,apQuoteGpr:20,apOrder:true,apOrderMax:100000,apStop:true,apPrice:true,costForSales:true,poDueMode:'early',poDueDays:2,poDueBefore:3,poEscHours:24,poEscTo:[],companyName:'株式会社オーアンドケー',companyAddr:'',companyTel:'',taxRate:10,quoteValidDays:30,followDays:7,archiveDays:30,fyStartMonth:10,fyBaseNo:'',
+const DEFAULT_SETTINGS={flowAuto:true,flowIntakeDays:3,flowDraftDays:3,flowWonDays:3,apEscHours:24,apQuote:true,apQuoteMax:300000,apQuoteGpr:20,apOrder:true,apOrderMax:100000,apStop:true,apPrice:true,costForSales:true,poDueMode:'early',poDueDays:2,poDueBefore:3,poEscHours:24,poEscTo:[],companyName:'株式会社オーアンドケー',companyAddr:'',companyTel:'',taxRate:10,quoteValidDays:30,followDays:7,archiveDays:30,fyStartMonth:10,fyBaseNo:'',
   kanryoUrl:'https://hanebuchi-jpg.github.io/inspection-report/kanryo.html'};
 
 /* ---------------------------------------------------------
@@ -2999,7 +3183,7 @@ function put(col,id,data){
   if(MODE!=='db') return Promise.resolve(id);
   return chain(col+'/'+id,()=>db.collection(col).doc(id).set(rec)).then(()=>id,e=>{onWriteErr(e);return id;});
 }
-function patch(col,id,changes){const cur=get(col,id);if(!cur)return Promise.resolve(id);const p=put(col,id,{...cur,...changes}); if(col==='visits'&&cur.orderId&&('date' in changes||'staffIds' in changes||'start' in changes||'end' in changes)) return p.then(r=>syncOrderFromVisit(id).then(()=>r)); return p;}
+function patch0(col,id,changes){const cur=get(col,id);if(!cur)return Promise.resolve(id);const p=put(col,id,{...cur,...changes}); if(col==='visits'&&cur.orderId&&('date' in changes||'staffIds' in changes||'start' in changes||'end' in changes)) return p.then(r=>syncOrderFromVisit(id).then(()=>r)); return p;}
 const O_FIELD={workDate:'作業日',supplierId:'発注先',row:'日程'};
 function orderRows(o){ if(Array.isArray(o.schedule)) return o.schedule; return o.workDate?[{id:'r1',date:o.workDate,start:'',end:'',staffId:o.supplierId||''}]:[]; }
 const lastDate=rows=>rows.map(r=>r.date).filter(Boolean).sort().slice(-1)[0]||'';
@@ -3304,9 +3488,9 @@ VIEWS.home={
     if(late.length) alerts.push(['r',late.length,'予定日を過ぎて未完了の作業','schedule','late']);
     if(unsT) alerts.push(['w',unsT,`今月（${+tm.slice(5)}月）の定期作業で日程が未定`,'schedule','uns']);
     alerts.push(['a',nmV.length,`来月（${+nm.slice(5)}月）の定期作業${unsN?`／うち日程未定 ${unsN}件`:''}`,'schedule','next']);
-    if(fol.length) alerts.push(['w',fol.length,`見積提出後 ${S().followDays}日以上フォローしていない案件`,'jobs','follow']);
+    if(false&&fol.length) alerts.push(['w',fol.length,`見積提出後 ${S().followDays}日以上フォローしていない案件`,'jobs','follow']);
     if(rec.length) alerts.push(['g',rec.length,'完了したスポット案件で、定期契約をまだ提案していない','jobs','rec']);
-    const dn=all('jobs').filter(jobAllDone).length; if(dn) alerts.push(['g',dn,'作業がすべて終わった案件（完了処理待ち）','jobs','done']);
+    const dn=all('jobs').filter(jobAllDone).length; if(false&&dn) alerts.push(['g',dn,'作業がすべて終わった案件（完了処理待ち）','jobs','done']);
     const todays=vs.filter(v=>v.date===t).sort(by(v=>v.start||''));
     const week=[];for(let i=1;i<7;i++){const d=addDays(t,i);const l=vs.filter(v=>v.date===d);if(l.length)week.push([d,l]);}
     return `
@@ -3345,7 +3529,7 @@ VIEWS.jobs={
      <span class="toolbar" id="tools" style="margin:0"></span>
    </div>`,
   tools:()=>`${pickerBtn('job')}${jobMonthSel()}<select class="inp ${VS.jobType?'on':''}" id="jobType" style="width:auto" aria-label="種別">${opt('','種別：すべて',VS.jobType)}${opt('スポット','種別：スポット',VS.jobType)}${opt('定期','種別：定期',VS.jobType)}</select>${VS.jobView==='archive'?`<select class="inp ${VS.arcRes?'on':''}" id="arcRes" style="width:auto" aria-label="結果">${opt('','結果：すべて',VS.arcRes)}${opt('完了','結果：完了',VS.arcRes)}${opt('失注','結果：失注',VS.arcRes)}</select>`:''}
-     <div class="seg" role="group" aria-label="表示">${[['board','ボード','ボード'],['check','要確認','要確認'],['follow','要フォロー','要フォロー'],['rec','定期未提案','定期化'],['list','一覧','一覧'],['archive','過去の案件','過去']].map(([k,l,sh])=>`<button data-act="jobview" data-v="${k}" aria-pressed="${VS.jobView===k}"><span class="lg">${l}</span><span class="sm">${sh}</span></button>`).join('')}</div>`,
+     <div class="seg" role="group" aria-label="表示">${[['board','ボード','ボード'],['check','要確認','要確認'],['follow','要フォロー','要フォロー'],['rec','定期未提案','定期化'],['list','一覧','一覧'],['people','担当者別','担当'],['archive','過去の案件','過去']].map(([k,l,sh])=>`<button data-act="jobview" data-v="${k}" aria-pressed="${VS.jobView===k}"><span class="lg">${l}</span><span class="sm">${sh}</span></button>`).join('')}</div>`,
   body(){
     const q=VS.jobQ.trim();
     const os=VS.jobOwners;
@@ -3359,6 +3543,7 @@ VIEWS.jobs={
       return `<p class="small muted" style="margin:0 0 10px">完了したスポット案件のうち、その現場に有効な定期契約がないものです。案件を開いて「定期契約にする」で契約を登録できます。</p>`+jobTable(js);
     }
     if(VS.jobView==='check') return flowCheckTable(js);
+    if(VS.jobView==='people') return peopleTable(all('jobs'));
     if(VS.jobView==='archive') return archiveTable(js.filter(isArchived).filter(j=>!VS.arcRes||j.stage===VS.arcRes));
     js=js.filter(j=>!isArchived(j));
     if(VS.jobView==='list') return jobTable(js.sort(by(j=>j.updatedAt||'',-1)));
@@ -3651,6 +3836,7 @@ const MTABS={
       <label class="fld wide"><span><input type="checkbox" id="set_apOrder" ${s.apOrder?'checked':''}> 発注書の発行に承認を使う</span></label>
       <label class="fld"><span>承認なしで発行できる発注金額の上限（税込・円）</span><input class="inp num" id="set_apOrderMax" inputmode="numeric" value="${esc(s.apOrderMax)}"></label>
       <label class="fld wide"><span><input type="checkbox" id="set_apStop" ${s.apStop?'checked':''}> 発注の中止は承認を使う</span></label>
+      <label class="fld"><span>承認が止まったら（時間）　これを過ぎると責任者・管理者・代理の人も承認できます。0で使わない</span><input class="inp num" id="set_apEscHours" inputmode="numeric" value="${esc(s.apEscHours??24)}"></label>
       <label class="fld wide"><span><input type="checkbox" id="set_apPrice" ${s.apPrice?'checked':''}> 定期契約の単価改定は承認を使う（承認されるまで金額に反映しない）</span></label>
     </div><p class="small muted" style="margin:8px 0 0">承認が必要になるのは「3 営業・事務」以下の人の操作です。承認するのは、その人に設定した承認者（不在中は代理）、未設定なら責任者・管理者です。人ごとの設定は「担当者・協力会社」で変更できます。上限を0にすると、すべて承認が必要になります。</p></section>
     <section class="sec"><h3>協力会社への発注（確認・了承）</h3><div class="form">
@@ -4262,6 +4448,7 @@ docOn('click',async e=>{
     case 'multi-group': { const vs=all('visits').filter(visibleVisit).filter(staffShown).filter(v=>isOpenVisit(v)&&!v.date&&(v.month||'未設定')===el.dataset.m); const allIn=vs.every(v=>VS.multi.has(v.id)); vs.forEach(v=>allIn?VS.multi.delete(v.id):VS.multi.add(v.id)); render(); break; }
     case 'bulk': openSheet({kind:'bulk',live:false}); break;
     case 'bulk-save': await bulkSave(); break;
+    case 'people-owner': VS.jobOwners=[el.dataset.id||'__none']; savePrefs(); VS.jobView='board'; render(); toast(`${el.dataset.id?staffName(el.dataset.id):'担当なし'}の案件を表示しています（「表示する営業担当」で戻せます）`); break;
     case 'jobview': { const wasA=VS.jobView==='archive', isA=el.dataset.v==='archive'; if(wasA!==isA) VS.jobMonth=''; VS.jobView=el.dataset.v; render(); break; }
     case 'schedview': VS.schedView=el.dataset.v; VS.placing=VS.placing; savePrefs(); render(); break;
     case 'picker': { if(VS.picker&&VS.picker.k===el.dataset.k){VS.picker=null;} else { const r=el.getBoundingClientRect(); VS.picker={k:el.dataset.k,r:{bottom:r.bottom,left:r.left}}; } render(); break; }
@@ -4280,7 +4467,7 @@ docOn('click',async e=>{
     case 'site-view': openSheet({kind:'siteView',id}); break;
     case 'jobmon': VS.jobMonth=ymAdd(VS.jobMonth||ymOf(today()),+el.dataset.d); render(); break;
     case 'custview': VS.custView=el.dataset.v; render(); break;
-    case 'new-job': openSheet({kind:'newJob',live:false,draft:{customerId:el.dataset.cust||'',siteId:el.dataset.site||'',type:'スポット',ownerId:''}}); break;
+    case 'new-job': openSheet({kind:'newJob',live:false,draft:{customerId:el.dataset.cust||'',siteId:el.dataset.site||'',type:'スポット',ownerId:isOfficeMe()?SHELL.meId():''}}); break;
     case 'newjob-save': await saveNewJob(); break;
     case 'new-visit': openSheet({kind:'newVisit',live:false,draft:{jobId:el.dataset.job||'',date:today(),title:el.dataset.job?get('jobs',el.dataset.job)?.title:''}}); break;
     case 'newvisit-save': { const st=val('nv_staff'); const nid=await put('visits',null,{title:val('nv_title'),jobId:val('nv_jobId'),date:val('nv_date'),month:ymOf(val('nv_date')),start:val('nv_start'),end:val('nv_end'),staffIds:st?[st]:[],status:'予定'}); openSheet({kind:'visit',id:nid}); toast('作業予定を追加しました'); break; }
@@ -4346,7 +4533,7 @@ docOn('click',async e=>{
     case 'staff-save': { readDraftForm(); const d=sheet.draft; if(roleOf(meStaff())!=='admin'&&get('staff',d.id)){ const o0=get('staff',d.id); if(val('st_role')!==(o0.role||'')||val('st_kind')!==(o0.kind||'社員')) return toast('段階・区分は管理者だけが変更できます'); } if(!val('st_name')) return toast('名前を入力してください'); await put('staff',d.id,{...d,name:val('st_name'),kind:val('st_kind'),company:val('st_company'),tel:val('st_tel'),role:val('st_role'),...(d.kind!=='協力会社'&&val('st_kind')!=='協力会社'?{approverId:val('st_approverId')||'',subApproverId:val('st_subApproverId')||'',away:!!ROOT.querySelector('#st_away')?.checked,extra:[...ROOT.querySelectorAll('[data-extra]:checked')].map(x=>x.value)}:{}),...(val('st_role')!==(get('staff',d.id)?.role||'')&&DEFAULT_MODE[val('st_role')]?{mode:DEFAULT_MODE[val('st_role')]}:{}),email:roleOf(meStaff())==='admin'?(val('st_email')||'').trim():(d.email||''),loginId:d.loginId||'',inactive:val('st_inactive')==='1'}); closeSheet(); toast('保存しました'); break; }
     case 'template': openSheet({kind:'template',isNew:!id,live:false,draft:id?JSON.parse(JSON.stringify(get('templates',id))):{id:uid(),name:'',lines:[{name:'',qty:1,unit:'式',price:0,cost:0}]}}); break;
     case 'template-save': { readDraftForm(); const d=sheet.draft; if(!d.name) return toast('テンプレート名を入力してください'); d.lines=(d.lines||[]).filter(l=>l.name); await put('templates',d.id,d); closeSheet(); toast('保存しました'); break; }
-    case 'save-settings': { const ch={}; ['companyName','companyTel','companyAddr','kanryoUrl'].forEach(k=>ch[k]=val('set_'+k)); ['taxRate','quoteValidDays','followDays','archiveDays','fyStartMonth','fyBaseNo','poDueDays','poDueBefore','poEscHours'].forEach(k=>ch[k]=num(val('set_'+k))); ch.poDueMode=val('set_poDueMode')||'early'; ['apQuoteMax','apQuoteGpr','apOrderMax','flowIntakeDays','flowDraftDays','flowWonDays'].forEach(k=>ch[k]=num(val('set_'+k))); ch.flowAuto=!!ROOT.querySelector('#set_flowAuto')?.checked; ['costForSales','apQuote','apOrder','apStop','apPrice'].forEach(k=>ch[k]=!!ROOT.querySelector('#set_'+k)?.checked); ch.poEscTo=[...ROOT.querySelectorAll('[data-esc]:checked')].map(x=>x.value); await put('settings','main',{...(D.settings.get('main')||{}),...ch}); toast('設定を保存しました'); break; }
+    case 'save-settings': { const ch={}; ['companyName','companyTel','companyAddr','kanryoUrl'].forEach(k=>ch[k]=val('set_'+k)); ['taxRate','quoteValidDays','followDays','archiveDays','fyStartMonth','fyBaseNo','poDueDays','poDueBefore','poEscHours'].forEach(k=>ch[k]=num(val('set_'+k))); ch.poDueMode=val('set_poDueMode')||'early'; ['apQuoteMax','apQuoteGpr','apOrderMax','apEscHours','flowIntakeDays','flowDraftDays','flowWonDays'].forEach(k=>ch[k]=num(val('set_'+k))); ch.flowAuto=!!ROOT.querySelector('#set_flowAuto')?.checked; ['costForSales','apQuote','apOrder','apStop','apPrice'].forEach(k=>ch[k]=!!ROOT.querySelector('#set_'+k)?.checked); ch.poEscTo=[...ROOT.querySelectorAll('[data-esc]:checked')].map(x=>x.value); await put('settings','main',{...(D.settings.get('main')||{}),...ch}); toast('設定を保存しました'); break; }
     case 'import': if(!can('import')) return toast('権限がありません'); openSheet({kind:'import',live:false,year:new Date().getFullYear()}); break;
     case 'import-run': readImportForm(); await runImport(sheet); break;
     case 'backup': { const out={exportedAt:new Date().toISOString()}; COLS.forEach(c=>out[c]=all(c)); await saveFile(`OK業務管理_バックアップ_${today()}.json`,JSON.stringify(out,null,1),'application/json'); break; }
@@ -4358,7 +4545,7 @@ docOn('click',async e=>{
     case 'ask-del': { const box=$('#delBox'); box.innerHTML=`<div class="confirm"><span>削除すると元に戻せません。</span><button class="btn danger sm" data-act="do-del" data-col="${el.dataset.col}" data-id="${id}">削除する</button><button class="btn sm" data-act="cancel-del">やめる</button></div>`; break; }
     case 'cancel-del': refreshSheet(); break;
     case 'do-del': { const col=el.dataset.col; if(col==='customers'&&(all('contracts').some(c=>c.customerId===id)||all('sites').some(x=>x.customerId===id)||all('jobs').some(j=>j.customerId===id))) return toast('現場・定期契約・案件がある顧客は削除できません。先にそれらを削除してください');
-      if(col==='sites'&&(all('contracts').some(c=>c.siteId===id)||all('jobs').some(j=>j.siteId===id))) return toast('定期契約や案件がある現場は削除できません。先にそれらを削除してください'); if(col==='orders'){ await delMany(all('visits').filter(v=>v.orderId===id&&v.status!=='完了').map(v=>({col:'visits',id:v.id}))); } if(col==='contracts'){ const vs=all('visits').filter(v=>v.contractId===id&&v.status!=='完了'); await delMany(vs.map(v=>({col:'visits',id:v.id}))); } if(col==='jobs'){ await delMany([...jobQuotes(id).map(q=>({col:'quotes',id:q.id})),...jobOrders(id).map(o=>({col:'orders',id:o.id})),...all('visits').filter(v=>v.jobId===id).map(v=>({col:'visits',id:v.id}))]); } await del(col,id); closeSheet(); toast('削除しました'); break; }
+      if(col==='sites'&&(all('contracts').some(c=>c.siteId===id)||all('jobs').some(j=>j.siteId===id))) return toast('定期契約や案件がある現場は削除できません。先にそれらを削除してください'); if(col==='orders'){ await delMany(all('visits').filter(v=>v.orderId===id&&v.status!=='完了').map(v=>({col:'visits',id:v.id}))); } if(col==='contracts'){ const vs=all('visits').filter(v=>v.contractId===id&&v.status!=='完了'); await delMany(vs.map(v=>({col:'visits',id:v.id}))); } if(col==='jobs'){ await delMany([...jobQuotes(id).map(q=>({col:'quotes',id:q.id})),...jobOrders(id).map(o=>({col:'orders',id:o.id})),...all('visits').filter(v=>v.jobId===id).map(v=>({col:'visits',id:v.id}))]); } if(col==='visits') await noteSkip([get('visits',id)]); await del(col,id); closeSheet(); toast('削除しました'); break; }
   }
 });
 
@@ -4488,6 +4675,7 @@ async function saveOrder(){
   o.schedule=(o.schedule||[]).filter(r=>r.date).map(r=>({id:r.id||uid(),date:r.date,start:r.start||'',end:r.end||'',staffId:r.staffId||o.supplierId})).sort(by(r=>r.date+(r.start||'')));
   o.workDate=lastDate(o.schedule);
   await put('orders',o.id,o);
+  await syncPartnerOrders();
   if(apO) await requestAp('order',o.id,o.title||'発注書',{amount:qcalc(o).total,note:'発注先：'+staffName(o.supplierId)});
   if(o.status==='中止') for(const v of all('visits').filter(v=>v.orderId===o.id&&v.status!=='完了'&&v.status!=='中止')) await patch('visits',v.id,{status:'中止'});
   const j=get('jobs',o.jobId);
@@ -4517,7 +4705,7 @@ async function saveContract(){
   else toast('定期契約を保存しました');
   openSheet({kind:'contract',live:false,staffChanged,draft:JSON.parse(JSON.stringify(get('contracts',c.id)))});
 }
-function planVisits(cs,from,n){
+function planVisits0(cs,from,n){
   const have=new Set(all('visits').filter(v=>v.contractId).map(v=>v.contractId+'|'+vMonth(v)));
   const out=[];
   cs.forEach(c=>{ if(!c||c.cycle?.kind==='flat') return; cycleMonths(c,from,n).forEach(m=>{ if(have.has(c.id+'|'+m)) return; out.push({col:'visits',id:`g-${c.id}-${m}`,data:{contractId:c.id,month:m,date:'',start:'',end:'',staffIds:c.staffIds||[],status:'予定',qty:c.qty??1,...(c.demo?{demo:true}:{})}}); }); });
@@ -4685,7 +4873,7 @@ const poDueOf=o=>o.status==='中止'?(o.stopDue||poAutoDue(o)):(o.ackDue||poAuto
 function partnerSnapshot(o){
   const j=get('jobs',o.jobId)||{}, s=get('sites',j.siteId)||{}, c=qcalc(o), st=S();
   return {orderId:o.id,partnerId:o.supplierId,no:o.no||'',title:o.title||j.title||'',issuedAt:o.issuedAt||'',
-    schedule:orderRows(o).map(r=>({date:r.date||'',start:r.start||'',end:r.end||'',staffId:r.staffId||o.supplierId})),
+    schedule:orderRows(o).map((r,i)=>({date:r.date||'',start:r.start||'',end:r.end||'',staffId:r.staffId||o.supplierId,vid:orderVisit(o,r.id,i)?.id||''})),
     lines:(o.lines||[]).filter(l=>l.name||num(l.price)).map(l=>({name:l.name||'',qty:l.qty??'',unit:l.unit||'',price:num(l.price)})),
     sub:c.sub,tax:c.tax,total:c.total,note:o.note||'',
     customer:get('customers',j.customerId)?.name||'',
@@ -4696,11 +4884,34 @@ function partnerSnapshot(o){
     from:{name:st.companyName||'',tel:st.companyTel||''}};
 }
 const hashOf=x=>{ const s=JSON.stringify(x); let h=0; for(let i=0;i<s.length;i++){ h=(h*31+s.charCodeAt(i))|0; } return (h>>>0).toString(36); };
-function poSecs(sn){ const {address,name,...rest}=sn.site; return {sch:hashOf(sn.schedule),lines:hashOf([sn.lines,sn.sub,sn.tax,sn.total]),addr:hashOf([name,address]),site:hashOf(rest),note:hashOf([sn.note,sn.customer,sn.title]),last:hashOf(sn.last),due:hashOf(sn.due),stop:hashOf(sn.stopped)}; }
-let poQ=false, poRunning=false;
+function poSecs(sn){ const {address,name,...rest}=sn.site||{}; const ss=sn.sites||[];
+  return {sch:hashOf(sn.schedule),lines:hashOf([sn.lines,sn.sub,sn.tax,sn.total]),addr:hashOf([name,address,ss.map(x=>[x.name,x.address])]),site:hashOf([rest,ss.map(({name,address,...x})=>x)]),note:hashOf([sn.note,sn.customer,sn.title]),last:hashOf([sn.last,sn.lasts]),due:hashOf(sn.due),stop:hashOf(sn.stopped)}; }
+/* 定期作業（契約）を協力会社に出している分：協力会社×月ごとに1件の作業依頼として書き出す */
+const siteCard=s=>({id:s.id||'',name:siteLabel(s)||'',storeNo:s.storeNo||'',address:s.address||'',keyRequired:!!s.keyRequired,key:s.pKey||'',parking:s.pParking||'',entry:s.pEntry||'',hours:s.pHours||'',contact:s.pContact||'',note:s.pNote||''});
+function contractGroups(){
+  const t=today(), from=addDays(t,-40), to=addDays(t,70), g=new Map();
+  for(const v of all('visits')){
+    if(!v.contractId||!v.date||v.status==='中止'||v.date<from||v.date>to) continue;
+    for(const sid of v.staffIds||[]){ if(get('staff',sid)?.kind!=='協力会社') continue; const k=`ct_${sid}_${ymOf(v.date)}`; if(!g.has(k)) g.set(k,{sid,ym:ymOf(v.date),vs:[]}); g.get(k).vs.push(v); }
+  }
+  return g;
+}
+function contractSnapshot(k,{sid,ym,vs},cur){
+  const st=S(), rate=num(st.taxRate)/100; vs=vs.slice().sort(by(v=>v.date+(v.start||'')));
+  const siteIds=[...new Set(vs.map(poSiteIdOfVisit).filter(Boolean))];
+  const lines=vs.map(v=>({name:`${jd(v.date)} ${visitTitle(v)}`,qty:1,unit:'回',price:Math.round(visitCost(v))}));
+  const sub=lines.reduce((a,l)=>a+l.price,0), tax=Math.floor(sub*rate), issuedAt=cur?.issuedAt||today();
+  const f=vs[0]?.date||'', dd=num(st.poDueDays)||2, db=num(st.poDueBefore)||3, a=addDays(issuedAt,dd), b=f?addDays(f,-db):'';
+  const due=(st.poDueMode==='issue'||!b)?a:st.poDueMode==='before'?b:(a<b?a:b);
+  return {kind:'contract',orderId:'',partnerId:sid,no:`定期 ${ym}`,title:`${ymLabel(ym)}の定期作業（${vs.length}回）`,issuedAt,ym,
+    schedule:vs.map(v=>({date:v.date,start:v.start||'',end:v.end||'',staffId:sid,vid:v.id,title:visitTitle(v),siteName:siteName(poSiteIdOfVisit(v))})),
+    lines,sub,tax,total:sub+tax,note:'',customer:'',site:null,sites:siteIds.map(id=>siteCard(get('sites',id)||{})),
+    last:null,lasts:Object.fromEntries(siteIds.map(id=>[id,sharedReportFor(id)])),due,stopped:null,from:{name:st.companyName||'',tel:st.companyTel||''}};
+}
+let poQ=false, poRunning=false, poAgain=false;
 function schedulePartnerSync(){ if(poQ||MODE!=='db'||readOnly) return; poQ=true; setTimeout(()=>{ poQ=false; syncPartnerOrders(); },400); }
 async function syncPartnerOrders(){
-  if(poRunning||loaded.size!==COLS.length) return;
+  if(loaded.size!==COLS.length) return; if(poRunning){ poAgain=true; return; }
   if(!['admin','lead','manager'].includes(roleOf(get('staff',SHELL.meId())))) return; // 事務所の人の画面だけで書き出す
   poRunning=true;
   try{
@@ -4721,22 +4932,42 @@ async function syncPartnerOrders(){
       await put('porders',id,rec);
       if(o.reackMode) await put('orders',o.id,{...get('orders',o.id),reackMode:''});
     }
-    for(const p of all('porders')) if(!want.has(p.id)&&!p.cancelled) await put('porders',p.id,{...p,cancelled:true});
-  } finally { poRunning=false; }
+    // 定期作業
+    const cg=contractGroups(), t0=today();
+    for(const [k,gr] of cg){
+      const cur=get('porders',k), snap=contractSnapshot(k,gr,cur), secs=poSecs(snap), h=hashOf(secs), done=gr.vs.every(v=>v.status==='完了');
+      if(cur&&cur.h===h&&!cur.cancelled&&!!cur.done===done) continue;
+      const rec={...(cur||{}),...snap,h,secs,done,cancelled:false,demo:gr.vs.some(v=>v.demo)};
+      if(!cur){ rec.rev=1; rec.upd=0; rec.change=null; }
+      else if(cur.h!==h||cur.cancelled){ const diff=Object.keys(secs).filter(x=>(cur.secs||{})[x]!==secs[x]); const need=cur.cancelled||diff.some(x=>PO_MAJOR.includes(x));
+        if(need) rec.rev=(cur.rev||1)+1; else rec.upd=(cur.upd||0)+1;
+        rec.change={kind:need?'reack':'notice',labels:diff.map(x=>PO_SEC_L[x]),at:new Date().toISOString(),by:viewerId||'',rev:rec.rev,upd:rec.upd||0}; }
+      await put('porders',k,rec);
+    }
+    const winFrom=ymOf(addDays(t0,-40)), winTo=ymOf(addDays(t0,70));
+    for(const p of all('porders')){
+      if(p.cancelled) continue;
+      if(p.kind==='contract'){ if(!cg.has(p.id)&&p.ym>=winFrom&&p.ym<=winTo&&!p.done) await put('porders',p.id,{...p,cancelled:true}); continue; }
+      if(!want.has(p.id)) await put('porders',p.id,{...p,cancelled:true});
+    }
+  } finally { poRunning=false; if(poAgain){ poAgain=false; setTimeout(syncPartnerOrders,30); } }
 }
 const poState=p=>SHELL.poState(p);
 const poWhen=iso=>{ if(!iso) return ''; const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 function poPill(oid){ const st=poState(get('porders',oid)); return st?` <span class="pill ${st.k}" title="協力会社の確認">${esc(st.l)}</span>`:''; }
 /* 誰が対応するか：質問は案件の営業担当 → 遅ければ上長（設定） */
 function poOwner(p){ const o=get('orders',p.id), j=get('jobs',o?.jobId); return j?.ownerId||''; }
+const poOwnersOf=p=>{ const o=poOwner(p); if(o) return [o]; return employees().filter(x=>!x.inactive&&['admin','lead','manager'].includes(roleOf(x))).map(x=>x.id); };
 function poIssues(){
   const st=S(), escH=num(st.poEscHours)||24, escTo=st.poEscTo||[], now=Date.now(), out=[];
   for(const p of all('porders')){
     const s=poState(p); if(!s||s.key==='x'||s.key==='done') continue;
     const owner=poOwner(p), q=SHELL.poOpenQ(p);
-    if(q){ const esc=now-new Date(q.at).getTime()>escH*3600e3; out.push({p,kind:'q',esc,to:esc?[owner,...escTo]:[owner],label:`質問の回答待ち${esc?'（上長に回付）':''}：${p.title}`}); }
-    if(s.over) out.push({p,kind:'over',to:[owner,...escTo],label:`了承期限切れ（${s.l.replace('（期限切れ）','')}）：${p.title}`});
-    if((!p.contact||p.contact.rev<(p.rev||1))&&!p.done) out.push({p,kind:'unsent',to:[owner],label:`協力会社へ未連絡：${p.title}`});
+    const owners=poOwnersOf(p);
+    if(q){ const esc=now-new Date(q.at).getTime()>escH*3600e3; out.push({p,kind:'q',esc,to:esc?[...owners,...escTo]:owners,label:`質問の回答待ち${esc?'（上長に回付）':''}：${p.title}`}); }
+    const rp=(p.reports||[]).filter(x=>!x.ok).length; if(rp) out.push({p,kind:'rep',to:owners,label:`協力会社から完了報告（${rp}件）：${p.title}`});
+    if(s.over) out.push({p,kind:'over',to:[...owners,...escTo],label:`了承期限切れ（${s.l.replace('（期限切れ）','')}）：${p.title}`});
+    if(p.kind==='contract'&&(!p.contact||p.contact.rev<(p.rev||1))&&!p.done) out.push({p,kind:'unsent',to:owners,label:`協力会社へ未連絡：${p.title}`});
   }
   return out;
 }
@@ -4745,7 +4976,8 @@ function poHomeAlerts(){
   const n=k=>is.filter(x=>x.kind===k).length, esc=is.filter(x=>x.kind==='q'&&x.esc).length;
   if(n('over')) a.push(['r',n('over'),'協力会社の了承期限切れ','po','']);
   if(n('q')) a.push(['w',n('q'),`協力会社からの質問の回答待ち${esc?`（うち上長回付 ${esc}件）`:''}`,'po','']);
-  if(n('unsent')) a.push(['a',n('unsent'),'協力会社へまだ連絡していない発注書','po','']);
+  if(n('unsent')) a.push(['a',n('unsent'),'協力会社へまだ連絡していない定期作業の依頼','po','']);
+  if(n('rep')) a.push(['w',n('rep'),'協力会社からの完了報告（確認待ち）','po','']);
   return a;
 }
 function poMsg(o,p,kind){
@@ -4810,10 +5042,10 @@ function approverFor(rid){
   return a&&!a.away&&!a.inactive?a.id:'';
 }
 function approverLabel(rid){ const a=approverFor(rid); if(a) return staffName(a); const s=get('staff',rid)||{}; return s.approverId?'責任者（承認者が不在・代理なし）':'責任者・管理者'; }
-function canApproveFor(rid,me){ me=me||SHELL.meId(); const m=get('staff',me); if(!m||me===rid) return false; return canApproveRole(m,rid); }
-function canApproveRole(m,rid){
+function canApproveFor(rid,me,ap){ me=me||SHELL.meId(); const m=get('staff',me); if(!m||me===rid) return false; return canApproveRole(m,rid,ap); }
+function canApproveRole(m,rid,ap){
   const r=roleOf(m); if(r==='admin') return true;
-  const a=approverFor(rid); if(a) return a===m.id;
+  const a=approverFor(rid); if(a){ if(a===m.id) return true; if(!(ap&&apOverdue(ap))) return false; const s=get('staff',rid)||{}; return r==='lead'||(m.extra||[]).includes('approve')||s.subApproverId===m.id; }
   return r==='lead'||(m.extra||[]).includes('approve');
 }
 function needAp(kind,o={}){
@@ -4835,7 +5067,7 @@ async function requestAp(kind,refId,title,info={}){
 }
 function apNote(kind,ref){
   const a=apOf(kind,ref); if(!a||a.status==='取下げ') return '';
-  if(a.status==='申請中') return `<div class="callout w"><span><b>承認待ち</b>：${esc(AP_L[kind])}　申請 ${esc(staffName(a.requestedBy))} ${esc(poWhen(a.requestedAt))}　承認者：${esc(approverLabel(a.requestedBy))}${a.note?`<br>${esc(a.note)}`:''}</span>${canApproveFor(a.requestedBy)?`<button class="btn sm pri" data-act="ap-list">承認する</button>`:''}</div>`;
+  if(a.status==='申請中') return `<div class="callout w"><span><b>承認待ち</b>：${esc(AP_L[kind])}　申請 ${esc(staffName(a.requestedBy))} ${esc(poWhen(a.requestedAt))}　承認者：${esc(approverLabel(a.requestedBy))}${a.note?`<br>${esc(a.note)}`:''}</span>${canApproveFor(a.requestedBy,null,a)?`<button class="btn sm pri" data-act="ap-list">承認する</button>`:''}</div>`;
   if(a.status==='差戻し') return `<div class="callout w"><span><b>差し戻し</b>：${esc(staffName(a.decidedBy))} ${esc(poWhen(a.decidedAt))}${a.comment?`「${esc(a.comment)}」`:''}</span></div>`;
   return `<div class="callout g"><span>承認済み：${esc(staffName(a.decidedBy))} ${esc(poWhen(a.decidedAt))}${a.comment?`「${esc(a.comment)}」`:''}</span></div>`;
 }
@@ -4848,7 +5080,7 @@ async function doStopOrder(oid,reason,silent){
 }
 async function decideAp(id,ok,comment){
   const a=get('approvals',id); if(!a||a.status!=='申請中') return;
-  if(!canApproveFor(a.requestedBy)) return toast('この申請を承認する権限がありません');
+  if(!canApproveFor(a.requestedBy,null,a)) return toast('この申請を承認する権限がありません');
   if(a.kind==='quote'){ const q=get('quotes',a.refId); if(q){ await put('quotes',q.id,{...q,status:ok?'提出済':'作成中',issuedAt:ok?(q.issuedAt||today()):q.issuedAt}); const j=get('jobs',q.jobId); if(ok&&j&&['依頼受付','現地調査'].includes(j.stage)) await patch('jobs',j.id,{stage:'見積'}); } }
   if(a.kind==='order'){ const o=get('orders',a.refId); if(o) await put('orders',o.id,{...o,status:ok?'発行済':'作成中',issuedAt:ok?today():''}); }
   if(a.kind==='stop'){ if(ok) await doStopOrder(a.refId,a.payload?.reason||'',true); else { const o=get('orders',a.refId); if(o) await put('orders',o.id,{...o,stopPending:null}); } }
@@ -4856,9 +5088,12 @@ async function decideAp(id,ok,comment){
   await put('approvals',id,{...a,status:ok?'承認':'差戻し',decidedBy:SHELL.meId(),decidedAt:new Date().toISOString(),comment:comment||''});
   toast(ok?'承認しました':'差し戻しました');
 }
-function apMine(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='申請中'&&canApproveFor(a.requestedBy,me)); }
+function apMine(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='申請中'&&canApproveFor(a.requestedBy,me,a)); }
 function apReturned(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='差戻し'&&a.requestedBy===me&&!a.seen); }
-function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); return a; }
+function apApproved(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='承認'&&a.requestedBy===me&&!a.seen); }
+function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（発注書の送付など次の操作へ）','ap','']); return a; }
+/* 承認が止まっていたら：設定の時間を過ぎた申請は、責任者・管理者・代理の人も承認できる */
+const apOverdue=a=>{ const h=num(S().apEscHours); return h>0&&a.status==='申請中'&&Date.now()-new Date(a.requestedAt).getTime()>h*3600e3; };
 SHEETS.approvals=()=>{
   const me=SHELL.meId(), mine=apMine(me), own=all('approvals').filter(a=>a.requestedBy===me&&a.status!=='取下げ').sort(by(a=>a.requestedAt||'',-1)).slice(0,15);
   const open=a=>a.kind==='quote'?`<button class="btn sm" data-act="ap-open" data-id="${a.id}">見積を開く</button>`:a.kind==='price'?`<button class="btn sm" data-act="contract" data-id="${a.refId}">契約を開く</button>`:`<button class="btn sm" data-act="order" data-id="${a.refId}">発注書を開く</button>`;
@@ -4867,8 +5102,8 @@ SHEETS.approvals=()=>{
   <section class="sec"><h3>あなたの承認待ち <span class="num muted">${mine.length}</span></h3>${mine.length?mine.map(a=>`<div class="panel" style="padding:10px;margin-bottom:8px"><div><span class="pill w">${esc(AP_L[a.kind])}</span> <b>${esc(a.title)}</b></div>
     <div class="small muted" style="margin:4px 0">申請：${esc(staffName(a.requestedBy))}　${esc(poWhen(a.requestedAt))}</div><div class="small">${info(a)}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input class="inp" id="apc_${a.id}" placeholder="コメント（差し戻しの理由など・任意）" style="flex:1 1 200px">${open(a)}<button class="btn sm" data-act="ap-ng" data-id="${a.id}">差し戻す</button><button class="btn sm pri" data-act="ap-ok" data-id="${a.id}">承認する</button></div></div>`).join(''):'<p class="empty">承認待ちはありません。</p>'}</section>
-  <section class="sec"><h3>自分の申請</h3>${own.length?`<div class="list">${own.map(a=>`<div class="li" style="cursor:default"><span class="pill ${a.status==='承認'?'g':a.status==='差戻し'?'r':'w'}">${esc(a.status)}</span><div class="grow">${esc(AP_L[a.kind])}：${esc(a.title)}<div class="small muted">${esc(poWhen(a.requestedAt))}　承認者：${esc(a.status==='申請中'?approverLabel(a.requestedBy):staffName(a.decidedBy))}${a.comment?`　「${esc(a.comment)}」`:''}</div></div>${open(a)}</div>`).join('')}</div>`:'<p class="empty">まだありません。</p>'}</section>`,
-  foot:`<button class="btn" data-act="close-sheet">閉じる</button>`, after(){ apReturned().forEach(a=>put('approvals',a.id,{...a,seen:true})); }};
+  <section class="sec"><h3>自分の申請</h3>${own.length?`<div class="list">${own.map(a=>`<div class="li" style="cursor:default"><span class="pill ${a.status==='承認'?'g':a.status==='差戻し'?'r':'w'}">${esc(a.status)}</span><div class="grow">${esc(AP_L[a.kind])}：${esc(a.title)}<div class="small muted">${esc(poWhen(a.requestedAt))}　承認者：${esc(a.status==='申請中'?approverLabel(a.requestedBy):staffName(a.decidedBy))}${a.comment?`　「${esc(a.comment)}」`:''}</div></div>${open(a)}${a.kind==='order'&&a.status==='承認'&&get('orders',a.refId)&&orderUnsent(get('orders',a.refId))?`<button class="btn sm pri" data-act="osend" data-id="${a.refId}">担当者に送る</button>`:''}</div>`).join('')}</div>`:'<p class="empty">まだありません。</p>'}</section>`,
+  foot:`<button class="btn" data-act="close-sheet">閉じる</button>`, after(){ [...apReturned(),...apApproved()].forEach(a=>put('approvals',a.id,{...a,seen:true})); }};
 };
 
 /* =========================================================
@@ -4901,7 +5136,8 @@ async function moveStage(jid,to,why,auto=true){
 let flowLastCheck=0;
 async function flowDailyCheck(){ // 作業日が来たら「施工」へ
   if(Date.now()-flowLastCheck<60e3||loaded.size!==COLS.length) return; flowLastCheck=Date.now();
-  if(!['admin','lead','manager'].includes(roleOf(get('staff',SHELL.meId())))||!flowAuto()) return;
+  if(!['admin','lead','manager'].includes(roleOf(get('staff',SHELL.meId())))) return;
+  await fixDaily(); if(!flowAuto()) return;
   const t=today();
   for(const j of all('jobs').filter(j=>j.stage==='受注')){
     if(all('visits').some(v=>v.jobId===j.id&&v.status!=='中止'&&v.date&&v.date<=t)) await moveStage(j.id,'施工','作業日になった');
@@ -5009,11 +5245,102 @@ SHEETS.osend=({id})=>{
     foot:`<button class="btn" data-act="osend-later" data-id="${id}">あとで</button><button class="btn" data-act="os-copy">文面をコピー</button><button class="btn pri" data-act="osend-int" data-id="${id}">送る</button>`};
 };
 /* 現場の人：新しい作業の連絡 */
-function noticesFor(me){ me=me||SHELL.meId(); return all('visits').filter(v=>v.notice&&!v.notice.seen&&(v.staffIds||[]).includes(me)).sort(by(v=>v.date||'')); }
-async function ackNotice(vid){ const v=get('visits',vid); if(!v||!v.notice) return; await patch('visits',vid,{notice:{...v.notice,seen:nowIso(),seenBy:SHELL.meId()}}); toast('確認しました'); }
+const nSeen=(n,me)=>n.seenBy&&typeof n.seenBy==='object'?!!n.seenBy[me]:!!n.seen; // 連絡を見たかは人ごとに記録
+function noticesFor(me){ me=me||SHELL.meId(); return all('visits').filter(v=>v.notice&&!nSeen(v.notice,me)&&!['中止'].includes(v.status)&&(v.staffIds||[]).includes(me)).sort(by(v=>v.date||'')); }
+async function ackNotice(vid){ const v=get('visits',vid); if(!v||!v.notice) return; const me=SHELL.meId(), sb=v.notice.seenBy&&typeof v.notice.seenBy==='object'?v.notice.seenBy:{}; await patch('visits',vid,{notice:{...v.notice,seenBy:{...sb,[me]:nowIso()}}}); toast('確認しました'); }
 /* 案件の画面：段階の履歴 */
 function stageLogHtml(j){ const l=(j.stageLog||[]).slice(-6).reverse(); if(!l.length) return '';
   return `<details class="small" style="margin-top:6px"><summary class="muted">段階の履歴</summary>${l.map(x=>`<div>${esc(poWhen(x.at))}　${esc(x.from)} → <b>${esc(x.to)}</b>　${esc(x.why||'')}${x.by?'　'+esc(staffName(x.by)):''}</div>`).join('')}</details>`; }
+/* =========================================================
+   ひと月の流れの見直し（連携・忘れやすい所の対策）
+   ========================================================= */
+const isOfficeMe=()=>['admin','lead','manager'].includes(roleOf(meStaff()));
+/* 作業予定の日程・担当が変わったら、担当者のホームに連絡を出す（社内の人あて） */
+function patch(col,id,changes){
+  const cur=get(col,id); const p=patch0(col,id,changes);
+  if(col==='visits'&&cur&&!('notice' in changes)) return p.then(r=>visitChangeNotice(cur,id,changes).then(()=>r));
+  return p;
+}
+async function visitChangeNotice(old,id,ch){
+  if(!isOfficeMe()) return;
+  const v=get('visits',id); if(!v||['完了','中止'].includes(v.status)) return;
+  const t=today(); if(!((v.date&&v.date>=t)||(old.date&&old.date>=t))) return;
+  const sameIds=(a,b)=>JSON.stringify([...(a||[])].sort())===JSON.stringify([...(b||[])].sort());
+  const diff=[];
+  if((old.date||'')!==(v.date||'')) diff.push(`日付 ${old.date?jd(old.date):'未定'} → ${v.date?jd(v.date):'未定'}`);
+  if((old.start||'')!==(v.start||'')||(old.end||'')!==(v.end||'')) diff.push(`時間 ${old.start||old.end?`${old.start||''}〜${old.end||''}`:'未定'} → ${v.start||v.end?`${v.start||''}〜${v.end||''}`:'未定'}`);
+  if(!sameIds(old.staffIds,v.staffIds)) diff.push(`担当 ${(old.staffIds||[]).map(staffName).join('・')||'未定'} → ${(v.staffIds||[]).map(staffName).join('・')||'未定'}`);
+  if(!diff.length) return;
+  const to=(v.staffIds||[]).filter(s=>s!==SHELL.meId()&&get('staff',s)?.kind!=='協力会社');
+  if(!to.length) return;
+  const added=to.filter(s=>!(old.staffIds||[]).includes(s));
+  await put('visits',id,{...v,notice:{at:nowIso(),by:SHELL.meId(),byName:staffName(SHELL.meId()),text:(added.length===to.length?'作業に入ってもらいます。':'作業予定が変わりました。')+diff.join('／'),kind:'change',seenBy:{}}});
+}
+/* 日に一度の点検：完了した定期作業の単価の記録（現場の人が完了にした分） */
+async function fixDaily(){
+  for(const v of all('visits').filter(v=>v.status==='完了'&&!v.snap&&v.contractId)){ const sn=snapOf(v); if(sn) await put('visits',v.id,{...v,snap:sn}); }
+}
+/* 協力会社の完了報告を確認して、作業予定を完了にする */
+async function poRepOk(pid,key){
+  if(!isOfficeMe()) return toast('確認できるのは社内の担当者です');
+  const p=get('porders',pid); if(!p) return; const x=(p.reports||[]).find(r=>r.key===key&&!r.ok); if(!x) return;
+  const r=(p.schedule||[]).find(r=>r.vid===x.vid);
+  let v=x.vid?get('visits',x.vid):null;
+  if(!v&&p.kind!=='contract'){ const o=get('orders',p.id); if(o){ const rows=orderRows(o); const i=rows.findIndex(r=>r.date===x.date); if(i>=0) v=orderVisit(o,rows[i].id,i); } }
+  await put('porders',pid,{...p,reports:(p.reports||[]).map(r=>r.id===x.id?{...r,ok:nowIso(),okBy:SHELL.meId()}:r)});
+  if(v){ const at=(x.files||[]).map(f=>({...f,from:'協力会社'}));
+    await patch('visits',v.id,{status:'完了',completedAt:today(),date:v.date||x.date,month:ymOf(v.date||x.date),snap:v.snap||snapOf(v),reportNote:[v.reportNote,x.text?`【協力会社の報告】${x.text}`:''].filter(Boolean).join('\n'),attachments:[...(v.attachments||[]),...at]});
+    toast('確認しました。作業予定を完了にしました'); const j=get('jobs',v.jobId); if(j&&jobAllDone(j)) openSheet({kind:'jdone',id:j.id});
+  } else toast('確認しました（対応する作業予定が見つからないため、完了は手で付けてください）');
+  await syncPartnerOrders();
+}
+/* 現場の人向けの作業予定（日報から完了・現場の簡易画面） */
+function visitInfo(id){
+  const v=get('visits',id); if(!v) return null; const c=get('contracts',v.contractId), j=get('jobs',v.jobId);
+  const sid=c?.siteId||j?.siteId||v.siteId||'', s=get('sites',sid)||{}, cid=c?.customerId||j?.customerId||v.customerId||'';
+  return {id:v.id,title:visitTitle(v),date:v.date||'',start:v.start||'',end:v.end||'',status:v.status||'予定',done:v.status==='完了',
+    site:siteLabel(s)||'',address:s.address||'',cust:custName(cid),siteNote:[s.note,s.pNote].filter(Boolean).join('\n'),key:s.keyRequired?('鍵：必要'+(s.pKey?'　'+s.pKey:'')):'',parking:s.pParking||'',entry:s.pEntry||'',hours:s.pHours||'',
+    staff:(v.staffIds||[]).map(staffName),staffIds:v.staffIds||[],reportNote:v.reportNote||'',attachments:(v.attachments||[]).map(a=>({id:a.id,name:a.name})),jobTitle:j?.title||''};
+}
+async function visitDoneField(id,note){
+  const v=get('visits',id); if(!v) return; if(v.status==='完了') return;
+  const ch={status:'完了',completedAt:today(),date:v.date||today(),month:ymOf(v.date||today())}; const sn=snapOf({...v,...ch}); if(sn) ch.snap=sn;
+  if(note!=null) ch.reportNote=note;
+  await patch('visits',id,ch);
+}
+async function visitAttachField(id,f){
+  if(!assets) return toast('添付する権限がありません');
+  try{ const r=await assets.upload(f); const v=get('visits',id); await patch('visits',id,{attachments:[...(v.attachments||[]),{id:r.id,name:f.name,size:r.sizeBytes,type:r.contentType}]}); toast('添付しました'); }
+  catch(e){ toast('添付できませんでした（'+(e?.code||e?.message||'エラー')+'）'); }
+}
+/* 定期作業：別の月へ動かした・削除した予定を作り直さない */
+function planVisits(cs,from,n){
+  const vs=all('visits').filter(v=>v.contractId);
+  const have=new Set(vs.flatMap(v=>[v.contractId+'|'+vMonth(v),v.contractId+'|'+(v.month||'')]));
+  const ids=new Set(vs.map(v=>v.id));
+  const out=[];
+  cs.forEach(c=>{ if(!c||c.cycle?.kind==='flat') return; const skip=new Set(c.skipMonths||[]); cycleMonths(c,from,n).forEach(m=>{ const id=`g-${c.id}-${m}`; if(have.has(c.id+'|'+m)||ids.has(id)||skip.has(m)) return; out.push({col:'visits',id,data:{contractId:c.id,month:m,date:'',start:'',end:'',staffIds:c.staffIds||[],status:'予定',qty:c.qty??1,...(c.demo?{demo:true}:{})}}); }); });
+  return out;
+}
+async function noteSkip(vs){ // 定期の作業予定を消したら、その月は自動で作り直さない
+  const by=new Map(); for(const v of vs){ if(!v?.contractId) continue; const m=v.month||vMonth(v); if(!m) continue; if(!by.has(v.contractId)) by.set(v.contractId,new Set()); by.get(v.contractId).add(m); }
+  for(const [cid,ms] of by){ const c=get('contracts',cid); if(c) await put('contracts',cid,{...c,skipMonths:[...new Set([...(c.skipMonths||[]),...ms])].sort().slice(-36)}); }
+}
+/* 責任者向け：担当者ごとの状況 */
+function peopleTable(js){
+  const ppl=employees().filter(s=>!s.inactive&&['admin','lead','manager'].includes(roleOf(s)));
+  const open=js.filter(j=>!isArchived(j)&&!['完了','失注'].includes(j.stage));
+  const rows=[...ppl.map(s=>s.id),''].map(id=>{
+    const mine=open.filter(j=>(j.ownerId||'')===id);
+    const stale=flowStale(mine).length;
+    const qw=mine.filter(j=>jobQuotes(j.id).some(q=>q.status==='提出済')).length;
+    const ap=all('approvals').filter(a=>a.status==='申請中'&&a.requestedBy===id).length;
+    const uns=mine.reduce((a,j)=>a+jobOrders(j.id).filter(o=>o.status==='発行済'&&orderUnsent(o)).length,0);
+    return {id,name:id?staffName(id):'（担当なし）',n:mine.length,stale,qw,ap,uns};
+  }).filter(r=>r.id||r.n);
+  return `<div class="callout" style="margin-bottom:10px">担当者ごとの進行中の案件です。「止まっている」は設定の日数を過ぎても次に進んでいない案件です。名前を押すとその人の案件だけ表示します。</div>
+  <div class="scroll"><table class="t"><thead><tr><th>担当</th><th class="r">進行中</th><th class="r">止まっている</th><th class="r">見積の返事待ち</th><th class="r">承認待ちの申請</th><th class="r">未送付の発注書</th></tr></thead><tbody>${rows.map(r=>`<tr class="click" data-act="people-owner" data-id="${esc(r.id)}"><td><b>${esc(r.name)}</b></td><td class="r num">${r.n}</td><td class="r num">${r.stale?`<span class="pill w">${r.stale}</span>`:'—'}</td><td class="r num">${r.qw||'—'}</td><td class="r num">${r.ap||'—'}</td><td class="r num">${r.uns?`<span class="pill r">${r.uns}</span>`:'—'}</td></tr>`).join('')}</tbody></table></div>`;
+}
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
@@ -5041,6 +5368,13 @@ window.G_API={
     else if(col==='sites'){ if(id) openSheet({kind:'site',live:false,draft:{...get('sites',id)}}); else openSheet({kind:'site',isNew:true,live:false,draft:{id:uid(),customerId:''}}); }
     else if(col==='jobs'){ if(id) openSheet({kind:'job',id}); else openSheet({kind:'newJob',live:false,draft:{customerId:'',siteId:'',type:'スポット',ownerId:''}}); }
   },
+  isOffice:()=>isOfficeMe(),
+  apResults:me=>apApproved(me).length+apReturned(me).length,
+  poRepOk:(p,k)=>poRepOk(p,k),
+  visitInfo:id=>visitInfo(id),
+  visitDone:(id,note)=>visitDoneField(id,note),
+  visitAttach:(id,f)=>visitAttachField(id,f),
+  visitPatch:(id,ch)=>patch('visits',id,ch),
   rerender:()=>requestRender(),
   toast:m=>toast(m),
 };
