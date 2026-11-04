@@ -117,6 +117,34 @@ body.sb-nonadmin #S [data-chg="me"]{display:none}
 #G .flow .btn{padding:1px 8px;font-size:11px;font-weight:400}
 #G .sheet .flow{border-top:0;font-size:13px;padding:6px 8px;background:var(--surface-2);border-radius:8px}
 #G .toast .btn{background:var(--bg);color:var(--fg)}
+/* ===== 共用端末（打刻専用） ===== */
+#kiosk{position:fixed;inset:0;z-index:9999;background:var(--bg,#f6f5f2);overflow:auto;font-size:18px}
+#kiosk[hidden]{display:none!important}
+body.kiosk-on .app,body.kiosk-on #shell-tab{display:none}
+#kiosk .kq{max-width:960px;margin:0 auto;padding:20px 16px 80px}
+#kiosk .kq-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:14px;font-size:22px}
+#kiosk .kq-clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:30px}
+#kiosk .kq-msg{background:#e7f3ea;border:1px solid #9cc9a6;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-weight:700}
+#kiosk .kq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+#kiosk .kq-person{display:flex;flex-direction:column;gap:4px;align-items:flex-start;padding:16px;border-radius:12px;border:1px solid #d8d4cc;background:#fff;font:inherit;cursor:pointer;text-align:left}
+#kiosk .kq-person b{font-size:20px}
+#kiosk .kq-person small{font-size:14px;color:#6b665e}
+#kiosk .kq-person.work{border-color:#2f7d4a;box-shadow:inset 4px 0 0 #2f7d4a}
+#kiosk .kq-person.done{opacity:.6}
+#kiosk .kq-pad{max-width:420px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+#kiosk .kq-who{font-size:22px;text-align:center}
+#kiosk .kq-pin{height:56px;border:1px solid #d8d4cc;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;letter-spacing:8px}
+#kiosk .kq-pin span{font-size:16px;letter-spacing:0;color:#8a857c}
+#kiosk .kq-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+#kiosk .kq-keys button{height:64px;font-size:26px;border-radius:12px;border:1px solid #d8d4cc;background:#fff;cursor:pointer}
+#kiosk .kq-acts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#kiosk .kq-acts button{height:72px;font-size:24px;font-weight:700;border-radius:12px;border:0;color:#fff;cursor:pointer}
+#kiosk .kq-in{background:#2f7d4a}#kiosk .kq-out{background:#9a4b2b}
+#kiosk .kq-acts button:disabled{background:#c9c5bd;cursor:default}
+#kiosk .kq-back{background:none;border:0;color:#6b665e;text-decoration:underline;font:inherit;cursor:pointer}
+#kiosk .kq-empty{color:#6b665e}
+#kiosk .kq-foot{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 16px;background:rgba(246,245,242,.95);border-top:1px solid #d8d4cc;font-size:13px;color:#6b665e}
+#kiosk .kq-foot button{margin-left:auto;background:none;border:1px solid #d8d4cc;border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}
 
 /* ===== 業務 ===== */
 #G{--bg:#f1f3f6; --surface:#ffffff; --surface-2:#e8ebf1; --line:#d3d8e2; --fg:#1a2130; --muted:#5a6476;
@@ -845,9 +873,9 @@ const SHELL=(()=>{
       }; },
     }; }};
   }
-  const sbAssets={ async upload(f){
+  const sbAssets={ async upload(f,prefix){
     const ext=(String(f.name).match(/\.[A-Za-z0-9]{1,8}$/)||[''])[0].toLowerCase();
-    const path=`${new Date().toISOString().slice(0,7)}/${(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}${ext}`;
+    const path=`${prefix?prefix+'/':''}${new Date().toISOString().slice(0,7)}/${(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}${ext}`;
     const {error}=await SB.storage.from('attachments').upload(path,f,{contentType:f.type||undefined,upsert:false});
     if(error) throw sbMapErr(error);
     return {id:path,sizeBytes:f.size,contentType:f.type||''};
@@ -866,22 +894,33 @@ const SHELL=(()=>{
   function sbHide(){ const el=document.getElementById('sb-login'); if(el) el.hidden=true; }
   function sbLoginForm(msg){
     sbScreen(`<h1>ログイン</h1>${msg?`<p class="sbl-msg">${esc(msg)}</p>`:''}
-      <label>メールアドレス<input id="sbl-email" type="email" autocomplete="username" inputmode="email"></label>
+      <label>メールアドレス または 社員ID<input id="sbl-email" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="例：yamada@oandk.ne.jp　／　1023"></label>
       <label>パスワード<input id="sbl-pw" type="password" autocomplete="current-password"></label>
       <button class="sbl-pri" data-sbl="login">ログイン</button>
       <div class="sbl-sub"><button data-sbl="magic">パスワードなしで、メールのリンクでログイン</button><button data-sbl="forgot">パスワードを忘れた・初めて設定する</button></div>
-      <p class="sbl-note">アカウントは管理者が登録します。ログインできないときは管理者に連絡してください。</p>`);
+      <p class="sbl-note">アカウントは管理者・責任者が登録します。社員IDでログインする人のパスワードの再発行は、管理者・責任者に頼んでください。</p>`);
   }
   function sbSetPwForm(){
-    sbScreen(`<h1>パスワードの設定</h1><p class="sbl-msg">${esc(sbUser?.email||'')} のパスワードを決めてください（8文字以上）。</p>
+    sbScreen(`<h1>パスワードの設定</h1><p class="sbl-msg">${esc(sbLoginLabel())} の${sbUser?.user_metadata?.must_change?'最初のパスワード（管理者・責任者から聞いたもの）を、自分だけのパスワードに変えてください':'パスワードを決めてください'}（8文字以上）。</p>
       <label>新しいパスワード<input id="sbl-np1" type="password" autocomplete="new-password"></label>
       <label>もう一度<input id="sbl-np2" type="password" autocomplete="new-password"></label>
       <button class="sbl-pri" data-sbl="setpw">設定してはじめる</button>`);
   }
+  const SB_ID_DOMAIN='id.oandk.ne.jp';
+  const sbLoginEmail=v=>{ v=String(v||'').trim(); return v.includes('@')?v:(/^[A-Za-z0-9]{1,20}$/.test(v)?`${v.toLowerCase()}@${SB_ID_DOMAIN}`:v); };
+  const sbIsIdMail=e=>String(e||'').toLowerCase().endsWith('@'+SB_ID_DOMAIN);
+  function sbLoginLabel(){ const e=sbUser?.email||''; return sbIsIdMail(e)?'社員ID '+e.split('@')[0].toUpperCase():e; }
+  async function sbFn(action,body={}){ // 社員IDのログイン発行・共用端末の打刻（サーバー処理）
+    const {data,error}=await SB.functions.invoke('staff-login',{body:{action,...body}});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); if(j?.error) m=j.error; }catch(_){} throw new Error(m); }
+    return data;
+  }
   async function sbAfterLogin(){
+    if(sbUser?.user_metadata?.must_change){ sbSetPwForm(); return; }
     const [{data:sid},{data:role}]=await Promise.all([SB.rpc('my_staff_id'),SB.rpc('my_role')]);
     if(!sid){ sbScreen(`<h1>担当者に登録されていません</h1><p class="sbl-msg">${esc(sbUser?.email||'')} は、まだ担当者マスタに登録されていないか、無効になっています。管理者に連絡してください。</p><button class="sbl-pri" data-sbl="logout">ログアウト</button>`); return; }
     sbStaffId=sid; sbRole=role||'staff';
+    if(sbRole==='kiosk'){ sbHide(); kioskOpen({live:true,list:()=>sbFn('kioskList'),punch:(staffId,pin,act)=>sbFn('kioskPunch',{staffId,pin,act}),logout:()=>SB.auth.signOut()}); return; }
     document.body.classList.toggle('sb-admin',sbRole==='admin');
     document.body.classList.toggle('sb-nonadmin',sbRole!=='admin');
     sbHide(); sbReadyResolve();
@@ -900,15 +939,74 @@ const SHELL=(()=>{
   document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.closest&&e.target.closest('#sb-login input')){ const b=document.querySelector('#sb-login .sbl-pri'); if(b){ e.preventDefault(); b.click(); } } });
   document.addEventListener('click',async e=>{
     const f=e.target.closest('a[data-file]'); if(f&&SB){ e.preventDefault(); sbOpenFile(f.dataset.file); return; }
+    if(f&&!SB&&f.dataset.blob){ e.preventDefault(); window.open('/_blob/'+f.dataset.blob,'_blank','noopener'); return; }
     const b=e.target.closest('[data-sbl]'); if(!b||!SB) return; e.preventDefault();
     const v=id=>(document.getElementById(id)?.value||'').trim(); const redirectTo=location.origin+location.pathname;
     const a=b.dataset.sbl;
-    if(a==='login'){ const {data,error}=await SB.auth.signInWithPassword({email:v('sbl-email'),password:document.getElementById('sbl-pw').value}); if(error) return sbLoginForm('ログインできませんでした。メールアドレスとパスワードを確認してください。'); sbUser=data.user; sbAfterLogin(); }
+    if(a==='login'){ const {data,error}=await SB.auth.signInWithPassword({email:sbLoginEmail(v('sbl-email')),password:document.getElementById('sbl-pw').value}); if(error) return sbLoginForm('ログインできませんでした。メールアドレス（または社員ID）とパスワードを確認してください。'); sbUser=data.user; sbAfterLogin(); }
+    if((a==='magic'||a==='forgot')&&v('sbl-email')&&!v('sbl-email').includes('@')) return sbLoginForm('社員IDでログインする人は、メールでの再設定は使えません。管理者・責任者にパスワードの再発行を頼んでください。');
     if(a==='magic'){ const email=v('sbl-email'); if(!email) return sbLoginForm('メールアドレスを入れてください。'); const {error}=await SB.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo:redirectTo}}); sbLoginForm(error?'送信できませんでした（登録されていないメールアドレスの可能性があります）。':'ログイン用のリンクをメールで送りました。メールのリンクを開いてください。'); }
     if(a==='forgot'){ const email=v('sbl-email'); if(!email) return sbLoginForm('メールアドレスを入れてから押してください。'); const {error}=await SB.auth.resetPasswordForEmail(email,{redirectTo}); sbLoginForm(error?'送信できませんでした。':'パスワード設定用のリンクをメールで送りました。'); }
-    if(a==='setpw'){ const p1=document.getElementById('sbl-np1').value, p2=document.getElementById('sbl-np2').value; if(p1.length<8) return sbToast('8文字以上にしてください'); if(p1!==p2) return sbToast('2つのパスワードが一致しません'); const {error}=await SB.auth.updateUser({password:p1}); if(error) return sbToast('設定できませんでした（'+error.message+'）'); history.replaceState(null,'',location.pathname); sbAfterLogin(); }
+    if(a==='setpw'){ const p1=document.getElementById('sbl-np1').value, p2=document.getElementById('sbl-np2').value; if(p1.length<8) return sbToast('8文字以上にしてください'); if(p1!==p2) return sbToast('2つのパスワードが一致しません'); const {data:ud,error}=await SB.auth.updateUser({password:p1,data:{must_change:false}}); if(ud?.user) sbUser=ud.user; if(error) return sbToast('設定できませんでした（'+error.message+'）'); history.replaceState(null,'',location.pathname); sbAfterLogin(); }
     if(a==='logout'){ await SB.auth.signOut(); }
   });
+
+  /* ---------- 共用端末（打刻専用）：名前を選んで暗証番号で出勤・退勤 ---------- */
+  let KQ=null;
+  function kioskOpen(api){
+    KQ={api,people:[],sel:'',pin:'',msg:'',busy:false,date:''};
+    let el=document.getElementById('kiosk'); if(!el){ el=document.createElement('div'); el.id='kiosk'; document.body.appendChild(el); }
+    el.hidden=false; document.body.classList.add('kiosk-on');
+    el.onclick=kioskClick; kioskLoad(); clearInterval(KQ.t); KQ.t=setInterval(()=>{ if(!KQ.sel) kioskLoad(); else kioskRender(); },30000);
+  }
+  async function kioskLoad(){ try{ const r=await KQ.api.list(); KQ.people=r.people||[]; KQ.date=r.date||''; }catch(e){ KQ.msg='読み込めませんでした（'+e.message+'）'; } kioskRender(); }
+  function kioskRender(){
+    const el=document.getElementById('kiosk'); if(!el||!KQ) return;
+    const d=new Date(), hm=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const st=p=>p.out?['done','退勤済み '+p.out]:p.in?['work','勤務中（'+p.in+'〜）']:['before','未出勤'];
+    const p=KQ.people.find(x=>x.id===KQ.sel);
+    let h=`<div class="kq-head"><b>出退勤</b><span>${d.getMonth()+1}月${d.getDate()}日　<span class="kq-clock">${hm}</span></span></div>`;
+    if(KQ.msg) h+=`<div class="kq-msg">${esc(KQ.msg)}</div>`;
+    if(!p){
+      h+=KQ.people.length?`<div class="kq-grid">${KQ.people.map(x=>{ const [k,l]=st(x); return `<button class="kq-person ${k}" data-k="sel" data-id="${esc(x.id)}"><b>${esc(x.name)}</b><small>${esc(l)}</small></button>`; }).join('')}</div>`:`<p class="kq-empty">この端末で打刻できる人がいません。管理者・責任者が「担当者」で暗証番号を設定すると表示されます。</p>`;
+    } else {
+      const [k,l]=st(p);
+      h+=`<div class="kq-pad"><div class="kq-who"><b>${esc(p.name)}</b> さん　<small>${esc(l)}</small></div>
+        <div class="kq-pin">${'●'.repeat(KQ.pin.length)||'<span>暗証番号</span>'}</div>
+        <div class="kq-keys">${[1,2,3,4,5,6,7,8,9,'消',0,'戻'].map(x=>`<button data-k="key" data-v="${x}">${x}</button>`).join('')}</div>
+        <div class="kq-acts"><button class="kq-in" data-k="in" ${k!=='before'||KQ.busy?'disabled':''}>出勤</button><button class="kq-out" data-k="out" ${k!=='work'||KQ.busy?'disabled':''}>退勤</button></div>
+        <button class="kq-back" data-k="back">名前の一覧にもどる</button></div>`;
+    }
+    h+=`<div class="kq-foot">${KQ.api.live?'':'<span>試作：暗証番号は確認しません（本番ではサーバーで確認します）</span>'}<button data-k="quit">${KQ.api.live?'この端末をログアウト':'試作を閉じる'}</button></div>`;
+    el.innerHTML=`<div class="kq">${h}</div>`;
+  }
+  async function kioskClick(e){
+    const b=e.target.closest('[data-k]'); if(!b||!KQ) return; const k=b.dataset.k;
+    if(k==='sel'){ KQ.sel=b.dataset.id; KQ.pin=''; KQ.msg=''; }
+    if(k==='back'){ KQ.sel=''; KQ.pin=''; KQ.msg=''; }
+    if(k==='key'){ const v=b.dataset.v; if(v==='消') KQ.pin=''; else if(v==='戻') KQ.pin=KQ.pin.slice(0,-1); else if(KQ.pin.length<8) KQ.pin+=v; }
+    if(k==='in'||k==='out'){
+      if(KQ.pin.length<4){ KQ.msg='暗証番号（4桁以上）を押してください'; return kioskRender(); }
+      KQ.busy=true; kioskRender();
+      try{ const r=await KQ.api.punch(KQ.sel,KQ.pin,k); KQ.msg=`${r.name}さん　${k==='in'?'出勤':'退勤'} ${r.hm}　を記録しました`; KQ.sel=''; }
+      catch(er){ KQ.msg=er.message; }
+      KQ.pin=''; KQ.busy=false; await kioskLoad(); clearTimeout(KQ.mt); KQ.mt=setTimeout(()=>{ if(KQ){ KQ.msg=''; kioskRender(); } },6000); return;
+    }
+    if(k==='quit'){ clearInterval(KQ.t); const api=KQ.api; KQ=null; document.getElementById('kiosk').hidden=true; document.body.classList.remove('kiosk-on'); if(api.logout) api.logout(); return; }
+    kioskRender();
+  }
+  function kioskDemo(){ // 試作：手元のデータで共用端末の画面を試す
+    const today=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+    const hmNow=()=>{ const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+    kioskOpen({live:false,
+      list:async()=>{ const t=today(); return {date:t,people:S_API.list('staff').filter(s=>!s.inactive&&s.kind!=='協力会社'&&s.role!=='kiosk'&&['full','simple','time',undefined,''].includes(s.mode)).map(s=>{ const p=S_API.get('punches',`${s.id}_${t}`)||{}; return {id:s.id,name:s.name,in:p.in||'',out:p.out||''}; })}; },
+      punch:async(sid,pin,act)=>{ const t=today(), id=`${sid}_${t}`, p=S_API.get('punches',id), s=S_API.get('staff',sid), hm=hmNow();
+        if(act==='in'){ if(p?.in) throw new Error(`${s.name}さんは${p.in}に出勤済みです`); await S_API.put('punches',id,{staffId:sid,date:t,in:hm,out:'',breakMin:60,note:'',edits:[],via:'共用端末'}); }
+        else { if(!p?.in) throw new Error('まだ出勤していません'); if(p.out) throw new Error(`${p.out}に退勤済みです`); const {id:_i,...r}=p; await S_API.put('punches',id,{...r,out:hm,via:'共用端末'}); }
+        return {name:s.name,hm}; },
+    });
+  }
+  const loginApi={ get live(){ return !!SB; }, call:(a,b)=>SB?sbFn(a,b):Promise.reject(new Error('本番（ログインあり）の画面で使えます')), kioskDemo:()=>kioskDemo() };
   function use(n){
     if(cache[n]) return cache[n];
     if(SB){
@@ -1191,7 +1289,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -1202,7 +1300,7 @@ const ROOT=document.getElementById("S");
 const byId=x=>ROOT.querySelector("#"+CSS.escape(x));
 const docOn=(t,f,o)=>document.addEventListener(t,e=>{ if(!ROOT.hidden) return f(e); },o);
 const MASTER_C=new Set(['staff','customers','sites','jobs']);
-const ROLE_L={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営業・事務',staff:'4 現場スタッフ',part:'5 パート・アルバイト',partner:'協力会社'}; const roleLbl=r=>ROLE_L[r]||r||'社員';
+const ROLE_L={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営業・事務',staff:'4 現場スタッフ',part:'5 パート・アルバイト',partner:'協力会社',kiosk:'共用端末（打刻専用）'}; const roleLbl=r=>ROLE_L[r]||r||'社員';
 "use strict";
 /* =========================================================
    総合管理アプリ（試作）
@@ -1278,7 +1376,7 @@ function del0(col,id){
 }
 
 /* ---------- lookups ---------- */
-const staffList=()=>all('staff').filter(s=>!s.inactive).sort(by(s=>`${s.kind==='協力会社'?1:0}-${pad(s.order||0)}-${s.name}`));
+const staffList=()=>all('staff').filter(s=>!s.inactive&&s.role!=='kiosk').sort(by(s=>`${s.kind==='協力会社'?1:0}-${pad(s.order||0)}-${s.name}`));
 const employees=()=>staffList().filter(s=>s.kind!=='協力会社');
 const partners=()=>staffList().filter(s=>s.kind==='協力会社');
 const staffName=id=>get('staff',id)?.name||'（未設定）';
@@ -1970,6 +2068,7 @@ SHEETS.staff=()=>{
     <label class="fld"><span>区分</span><select class="inp" data-mf="kind">${['社員','協力会社'].map(k=>`<option ${(s.kind||'社員')===k?'selected':''}>${k}</option>`).join('')}</select></label>
     <label class="fld"><span>役割</span><select class="inp" data-mf="role"><option value="">（未設定）</option>${Object.entries(ROLE_L).map(([k,l])=>`<option value="${k}" ${s.role===k?'selected':''}>${l}</option>`).join('')}${s.role&&!ROLE_L[s.role]?`<option value="${esc(s.role)}" selected>${esc(s.role)}（旧）</option>`:''}</select></label>
     <label class="fld"><span>表示色</span><select class="inp" data-mf="color">${PCOL.map((c,i)=>`<option value="${i}" ${(+s.color||0)===i?'selected':''}>色${i+1}</option>`).join('')}</select></label>
+    <label class="fld"><span>社員ID（英数字。ログインにも使えます）</span><input class="inp" data-mf="empNo" value="${esc(s.empNo||'')}" placeholder="例：1023、OK1023" autocapitalize="off"></label>
     <label class="fld wide"><span>略称・呼び名（報告の自動タグ用、カンマ区切り）</span><input class="inp" data-mf="aliases" value="${esc(s.aliases||'')}"></label></div>
     <div class="fld"><span>利用モード</span><div class="chips">${Object.entries(MODES).map(([k,l])=>`<button type="button" data-act="staffMode" data-v="${k}" aria-pressed="${(s.mode||'full')===k}">${l}</button>`).join('')}</div>
     <div class="hint">${esc(MODE_DESC[s.mode||'full'])}</div></div>
@@ -2587,7 +2686,7 @@ docOn('click',async ev=>{
 
     case 'editStaff': openSheet({kind:'staff',s:el.dataset.id?structuredClone(get('staff',el.dataset.id)):{name:'',kind:'社員',mode:'full',color:staffList().length%8,order:staffList().length}}); break;
     case 'staffMode': sheet.s.mode=el.dataset.v; renderOverlay(); break;
-    case 'staffSave': { const s=sheet.s; if(!s.name?.trim()) return toast('名前を入れてください'); const {id,...rest}=s; const nid=await put('staff',id,rest); if(!P.me){P.me=nid;savePrefs();} closeSheet(); toast('保存しました'); break; }
+    case 'staffSave': { const s=sheet.s; if(!s.name?.trim()) return toast('名前を入れてください'); s.empNo=String(s.empNo||'').trim(); if(s.empNo&&!/^[A-Za-z0-9]{1,20}$/.test(s.empNo)) return toast('社員IDは英数字（20文字まで）で入れてください'); if(s.empNo&&all('staff').some(x=>x.id!==s.id&&String(x.empNo||'').toLowerCase()===s.empNo.toLowerCase())) return toast(`社員ID「${s.empNo}」は他の人が使っています`); const {id,...rest}=s; const nid=await put('staff',id,rest); if(!P.me){P.me=nid;savePrefs();} closeSheet(); toast('保存しました'); break; }
     case 'staffDel': await put('staff',sheet.s.id,{...sheet.s,inactive:true}); closeSheet(); toast('無効にしました'); break;
     case 'editMaster': { const col=el.dataset.col; if(['customers','sites','jobs'].includes(col)){ SHELL.openMaster(col,el.dataset.id||''); break; } openSheet({kind:'master',col,m:el.dataset.id?structuredClone(get(col,el.dataset.id)):{}}); break; }
     case 'masterSave': { const {col,m}=sheet; if(!(m.name||m.title||'').trim()) return toast('名前を入れてください'); const {id,...rest}=m; await put(col,id,rest); closeSheet(); toast('保存しました'); break; }
@@ -3108,7 +3207,7 @@ const DEFAULT_SETTINGS={flowAuto:true,flowIntakeDays:3,flowDraftDays:3,flowWonDa
    権限設計（今回は無効。AUTH_ENABLED を true にし、担当者マスタの
    「ログインID」と「役割」を紐づけると有効になる）
    --------------------------------------------------------- */
-const ROLES={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営業・事務',staff:'4 現場スタッフ',part:'5 パート・アルバイト',partner:'協力会社'};
+const ROLES={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営業・事務',staff:'4 現場スタッフ',part:'5 パート・アルバイト',partner:'協力会社',kiosk:'共用端末（打刻専用）'};
 const PERMS={
   'job.edit':['admin','lead','manager'],
   'quote.edit':['admin','lead','manager'],
@@ -3246,7 +3345,7 @@ const custName=id=>get('customers',id)?.name||'（顧客未設定）';
 function siteLabel(s){ if(!s) return ''; return s.facility&&s.facility!==s.name? `${s.facility}　${s.name}`: s.name; }
 const siteName=id=>siteLabel(get('sites',id));
 const staffName=id=>get('staff',id)?.name||'';
-const staffList=()=>all('staff').filter(s=>!s.inactive).sort(by(s=>`${s.kind==='協力会社'?1:0}-${pad(s.order||0)}-${s.name}`));
+const staffList=()=>all('staff').filter(s=>!s.inactive&&s.role!=='kiosk').sort(by(s=>`${s.kind==='協力会社'?1:0}-${pad(s.order||0)}-${s.name}`));
 const employees=()=>staffList().filter(s=>s.kind!=='協力会社');
 const salesStaff=()=>{ const r=employees().filter(s=>['admin','lead','manager'].includes(s.role)); return r.length?r:employees(); };
 const partners=()=>staffList().filter(s=>s.kind==='協力会社');
@@ -3807,11 +3906,11 @@ const MTABS={
   staff(){
     const ss=all('staff').sort(by(s=>(s.kind==='協力会社'?1:0)+s.name));
     return `<div class="toolbar"><button class="btn pri" data-act="staff" data-id="">＋ 担当者・協力会社</button><span class="small muted">日程ボードの行になります。協力会社は会社単位でも、作業員単位でも登録できます。</span></div>
-    <div class="panel scroll"><table class="t"><thead><tr><th>名前</th><th>区分</th><th>役割（権限用）</th><th>連絡先</th></tr></thead><tbody>${ss.map(s=>`<tr class="click" data-act="staff" data-id="${s.id}" style="${s.inactive?'opacity:.5':''}"><td>${esc(s.name)}${exMark(s)}</td><td>${esc(s.kind||'社員')}</td><td>${esc(ROLES[s.role]||'')}</td><td class="small">${esc(s.tel||'')}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">未登録</td></tr>'}</tbody></table></div>`;
+    <div class="panel scroll"><table class="t"><thead><tr><th>名前</th><th>区分</th><th>役割（権限用）</th><th>社員ID</th><th>ログイン</th><th>連絡先</th></tr></thead><tbody>${ss.map(s=>`<tr class="click" data-act="staff" data-id="${s.id}" style="${s.inactive?'opacity:.5':''}"><td>${esc(s.name)}${exMark(s)}</td><td>${esc(s.kind||'社員')}</td><td>${esc(ROLES[s.role]||'')}</td><td class="num">${esc(s.empNo||'')}</td><td class="small">${esc(loginMarks(s))}</td><td class="small">${esc(s.tel||'')}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">未登録</td></tr>'}</tbody></table></div>`;
   },
   settings(){
     const s=S();
-    return `<section class="sec"><h3>会社情報（見積書に表示）</h3><div class="form">
+    return `${loginSettingsSec()}<section class="sec"><h3>会社情報（見積書に表示）</h3><div class="form">
       <label class="fld"><span>会社名</span><input class="inp" id="set_companyName" value="${esc(s.companyName)}"></label>
       <label class="fld"><span>電話</span><input class="inp" id="set_companyTel" value="${esc(s.companyTel)}"></label>
       <label class="fld wide"><span>住所</span><input class="inp" id="set_companyAddr" value="${esc(s.companyAddr)}"></label>
@@ -4208,13 +4307,13 @@ SHEETS.price=(st)=>{const p=st.draft;return {title:st.isNew?'品目を追加':'�
   </div></section>${st.isNew?'':`<div id="delBox"><button class="btn danger sm" data-act="ask-del" data-col="prices" data-id="${p.id}">この品目を削除</button></div>`}`,
   foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="price-save">保存</button>`};};
 SHEETS.staff=(st)=>{const s=st.draft;return {title:st.isNew?'担当者・協力会社を追加':'担当者・協力会社',body:`<section class="sec"><div class="form">
-  ${fld('名前',`<input class="inp" id="st_name" value="${esc(s.name)}">`)}${fld('区分',`<select class="inp" id="st_kind">${opt('社員','社員',s.kind)}${opt('協力会社','協力会社',s.kind)}</select>`)}
+  ${fld('名前',`<input class="inp" id="st_name" value="${esc(s.name)}">`)}${fld('社員ID（英数字。ログインにも使えます）',`<input class="inp" id="st_empNo" value="${esc(s.empNo)}" placeholder="例：1023、OK1023" autocapitalize="off">`)}${fld('区分',`<select class="inp" id="st_kind">${opt('社員','社員',s.kind)}${opt('協力会社','協力会社',s.kind)}</select>`)}
   ${fld('会社名（協力会社）',`<input class="inp" id="st_company" value="${esc(s.company)}">`)}${fld('電話',`<input class="inp" id="st_tel" value="${esc(s.tel)}">`)}
   ${fld('段階（1〜3は営業担当の一覧に出ます。変えると利用モードも初期値に変わります）',`<select class="inp" id="st_role">${opt('','（未設定）',s.role)}${Object.entries(ROLES).map(([k,l])=>opt(k,l,s.role)).join('')}</select>`)}
   ${fld('ログイン用メール（管理者だけが設定できます）',`<input class="inp" id="st_email" type="email" value="${esc(s.email)}" ${roleOf(meStaff())==='admin'?'':'disabled'} placeholder="例：yamada@oandk.ne.jp">`)}
   ${s.kind!=='協力会社'?fld('承認者（未設定なら責任者・管理者）',`<select class="inp" id="st_approverId">${staffOpts(s.approverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('承認者が不在のときの代理',`<select class="inp" id="st_subApproverId">${staffOpts(s.subApproverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('不在中（この人に来る承認を代理へ回す）',`<label class="pill" style="cursor:pointer;padding:6px 12px;font-weight:400"><input type="checkbox" id="st_away" ${s.away?'checked':''}> 不在中</label>`)+`<div class="fld wide"><span>追加の権限（段階に関係なく、この人だけに足す）</span><div style="display:flex;flex-wrap:wrap;gap:6px">${Object.entries(EXTRA_L).map(([k,l])=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-extra value="${k}" ${(s.extra||[]).includes(k)?'checked':''}> ${l}</label>`).join('')}</div></div>`:''}
   ${fld('状態',`<select class="inp" id="st_inactive">${opt('0','有効',s.inactive?'1':'0')}${opt('1','無効（退職・取引終了）',s.inactive?'1':'0')}</select>`)}
-  </div></section>${s.kind==='協力会社'?`<section class="sec"><h3>連絡先（発注の連絡を送る人・複数可）<span class="sp"><button class="btn sm" data-act="cn-add">＋ 連絡先</button></span></h3>
+  </div></section>${loginBox(s,st)}${s.kind==='協力会社'?`<section class="sec"><h3>連絡先（発注の連絡を送る人・複数可）<span class="sp"><button class="btn sm" data-act="cn-add">＋ 連絡先</button></span></h3>
     ${(s.contacts||[]).length?`<div class="scroll"><table class="t lines"><thead><tr><th>名前</th><th>メール</th><th>LINE</th><th>通常送る</th><th></th></tr></thead><tbody>${(s.contacts||[]).map((c,i)=>`<tr><td><input data-cn="${i}" data-k="name" value="${esc(c.name)}" placeholder="例：山本（現場責任者）"></td><td><input data-cn="${i}" data-k="email" value="${esc(c.email)}" placeholder="example@…"></td><td style="text-align:center"><input type="checkbox" data-cn="${i}" data-k="line" ${c.line?'checked':''}></td><td style="text-align:center"><input type="checkbox" data-cn="${i}" data-k="notify" ${c.notify!==false?'checked':''}></td><td class="x"><button class="btn ghost sm" data-act="cn-del" data-i="${i}" aria-label="削除">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="small muted" style="margin:0">まだありません。発注を出したときの連絡先を登録しておくと、送り先を選ぶだけで連絡できます。</p>'}</section>`:''}`,foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="staff-save">保存</button>`};};
 SHEETS.template=(st)=>{const t=st.draft;const c=qcalc(t);return {title:st.isNew?'テンプレートを追加':'見積テンプレート',body:`
   ${fld('テンプレート名',`<input class="inp" id="t_name" value="${esc(t.name)}" placeholder="例：店舗床面 定期洗浄ワックス">`,true)}
@@ -4449,6 +4548,13 @@ docOn('click',async e=>{
     case 'bulk': openSheet({kind:'bulk',live:false}); break;
     case 'bulk-save': await bulkSave(); break;
     case 'people-owner': VS.jobOwners=[el.dataset.id||'__none']; savePrefs(); VS.jobView='board'; render(); toast(`${el.dataset.id?staffName(el.dataset.id):'担当なし'}の案件を表示しています（「表示する営業担当」で戻せます）`); break;
+    case 'login-issue': { const t=get('staff',id); if(!t) break; readDraftForm(); if(!String(t.empNo||'').trim()) return toast('先に社員ID（英数字）を入れて「保存」してください'); const pw=(ROOT.querySelector('#lg_pw')?.value||'').trim(); if(pw&&pw.length<8) return toast('パスワードは8文字以上にしてください');
+      if(await loginCall('issue',{staffId:id,password:pw},r=>`社員ID「${r.loginId}」でログインできるようにしました（${pw?'個別のパスワード':'共通の初期パスワード'}）`)) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,...get('staff',id)}; refreshSheet(); } },800); break; }
+    case 'login-revoke': { if(!el.dataset.ok){ el.dataset.ok='1'; el.textContent='もう一度押すと止めます'; break; } if(await loginCall('revoke',{staffId:id},()=>'社員IDのログインを止めました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ const {loginEmail,loginUid,...r}=sheet.draft; sheet.draft={...r,...get('staff',id)}; refreshSheet(); } },800); break; }
+    case 'pin-set': { const pin=(ROOT.querySelector('#lg_pin')?.value||'').trim(); if(!/^\d{4,8}$/.test(pin)) return toast('暗証番号は数字4〜8桁にしてください'); if(await loginCall('setPin',{staffId:id,pin},()=>'暗証番号を設定しました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,pinSet:true}; refreshSheet(); } },800); break; }
+    case 'pin-clear': if(await loginCall('setPin',{staffId:id,pin:''},()=>'暗証番号を消しました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,pinSet:false}; refreshSheet(); } },800); break;
+    case 'defpw-save': { const pw=(ROOT.querySelector('#set_defpw')?.value||'').trim(); if(pw.length<8) return toast('初期パスワードは8文字以上にしてください'); if(await loginCall('setDefault',{password:pw},()=>'共通の初期パスワードを保存しました')){ ROOT.querySelector('#set_defpw').value=''; defpwAt=0; defpwState(); } break; }
+    case 'kiosk-demo': SHELL.loginApi.kioskDemo(); break;
     case 'jobview': { const wasA=VS.jobView==='archive', isA=el.dataset.v==='archive'; if(wasA!==isA) VS.jobMonth=''; VS.jobView=el.dataset.v; render(); break; }
     case 'schedview': VS.schedView=el.dataset.v; VS.placing=VS.placing; savePrefs(); render(); break;
     case 'picker': { if(VS.picker&&VS.picker.k===el.dataset.k){VS.picker=null;} else { const r=el.getBoundingClientRect(); VS.picker={k:el.dataset.k,r:{bottom:r.bottom,left:r.left}}; } render(); break; }
@@ -4530,7 +4636,7 @@ docOn('click',async e=>{
     case 'price': openSheet({kind:'price',isNew:!id,live:false,draft:id?{...get('prices',id)}:{id:uid(),folder:'',name:'',unit:'式',price:'',cost:''}}); break;
     case 'price-save': { if(!can('master.edit')) return toast('権限がありません'); const d=sheet.draft; if(!val('p_name')) return toast('品目を入力してください'); await put('prices',d.id,{...d,folder:val('p_folder'),name:val('p_name'),unit:val('p_unit'),price:num(val('p_price')),cost:num(val('p_cost'))}); closeSheet(); toast('保存しました'); break; }
     case 'staff': openSheet({kind:'staff',isNew:!id,live:false,draft:id?{...get('staff',id)}:{id:uid(),name:'',kind:'社員'}}); break;
-    case 'staff-save': { readDraftForm(); const d=sheet.draft; if(roleOf(meStaff())!=='admin'&&get('staff',d.id)){ const o0=get('staff',d.id); if(val('st_role')!==(o0.role||'')||val('st_kind')!==(o0.kind||'社員')) return toast('段階・区分は管理者だけが変更できます'); } if(!val('st_name')) return toast('名前を入力してください'); await put('staff',d.id,{...d,name:val('st_name'),kind:val('st_kind'),company:val('st_company'),tel:val('st_tel'),role:val('st_role'),...(d.kind!=='協力会社'&&val('st_kind')!=='協力会社'?{approverId:val('st_approverId')||'',subApproverId:val('st_subApproverId')||'',away:!!ROOT.querySelector('#st_away')?.checked,extra:[...ROOT.querySelectorAll('[data-extra]:checked')].map(x=>x.value)}:{}),...(val('st_role')!==(get('staff',d.id)?.role||'')&&DEFAULT_MODE[val('st_role')]?{mode:DEFAULT_MODE[val('st_role')]}:{}),email:roleOf(meStaff())==='admin'?(val('st_email')||'').trim():(d.email||''),loginId:d.loginId||'',inactive:val('st_inactive')==='1'}); closeSheet(); toast('保存しました'); break; }
+    case 'staff-save': { readDraftForm(); const d=sheet.draft; if(roleOf(meStaff())!=='admin'&&get('staff',d.id)){ const o0=get('staff',d.id); if(val('st_role')!==(o0.role||'')||val('st_kind')!==(o0.kind||'社員')) return toast('段階・区分は管理者だけが変更できます'); } if(!val('st_name')) return toast('名前を入力してください'); { const er=empNoCheck(d.id,(val('st_empNo')||'').trim()); if(er) return toast(er); } const empCh=d.loginEmail&&String(d.empNo||'').toLowerCase()!==(val('st_empNo')||'').trim().toLowerCase(); await put('staff',d.id,{...d,name:val('st_name'),kind:val('st_kind'),company:val('st_company'),tel:val('st_tel'),role:val('st_role'),...(d.kind!=='協力会社'&&val('st_kind')!=='協力会社'?{approverId:val('st_approverId')||'',subApproverId:val('st_subApproverId')||'',away:!!ROOT.querySelector('#st_away')?.checked,extra:[...ROOT.querySelectorAll('[data-extra]:checked')].map(x=>x.value)}:{}),...(val('st_role')!==(get('staff',d.id)?.role||'')&&DEFAULT_MODE[val('st_role')]?{mode:DEFAULT_MODE[val('st_role')]}:{}),email:roleOf(meStaff())==='admin'?(val('st_email')||'').trim():(d.email||''),loginId:d.loginId||'',empNo:(val('st_empNo')||'').trim(),inactive:val('st_inactive')==='1'}); closeSheet(); toast(empCh?'保存しました。社員IDを変えたので、ログインを「再発行」してください（それまでは前のIDでログインします）':'保存しました'); break; }
     case 'template': openSheet({kind:'template',isNew:!id,live:false,draft:id?JSON.parse(JSON.stringify(get('templates',id))):{id:uid(),name:'',lines:[{name:'',qty:1,unit:'式',price:0,cost:0}]}}); break;
     case 'template-save': { readDraftForm(); const d=sheet.draft; if(!d.name) return toast('テンプレート名を入力してください'); d.lines=(d.lines||[]).filter(l=>l.name); await put('templates',d.id,d); closeSheet(); toast('保存しました'); break; }
     case 'save-settings': { const ch={}; ['companyName','companyTel','companyAddr','kanryoUrl'].forEach(k=>ch[k]=val('set_'+k)); ['taxRate','quoteValidDays','followDays','archiveDays','fyStartMonth','fyBaseNo','poDueDays','poDueBefore','poEscHours'].forEach(k=>ch[k]=num(val('set_'+k))); ch.poDueMode=val('set_poDueMode')||'early'; ['apQuoteMax','apQuoteGpr','apOrderMax','apEscHours','flowIntakeDays','flowDraftDays','flowWonDays'].forEach(k=>ch[k]=num(val('set_'+k))); ch.flowAuto=!!ROOT.querySelector('#set_flowAuto')?.checked; ['costForSales','apQuote','apOrder','apStop','apPrice'].forEach(k=>ch[k]=!!ROOT.querySelector('#set_'+k)?.checked); ch.poEscTo=[...ROOT.querySelectorAll('[data-esc]:checked')].map(x=>x.value); await put('settings','main',{...(D.settings.get('main')||{}),...ch}); toast('設定を保存しました'); break; }
@@ -5031,8 +5137,8 @@ function poOrderExtras(o,st){
    人ごとに「追加の権限」「承認者」「不在時の代理」を設定できる。
    試作では「利用者」の切り替えで本人を決める。本番はログインした人になる。
    ========================================================= */
-const LV={admin:1,lead:2,manager:3,staff:4,part:5,partner:9};
-const DEFAULT_MODE={admin:'full',lead:'full',manager:'full',staff:'simple',part:'time',partner:'report'};
+const LV={admin:1,lead:2,manager:3,staff:4,part:5,kiosk:8,partner:9};
+const DEFAULT_MODE={admin:'full',lead:'full',manager:'full',staff:'simple',part:'time',partner:'report',kiosk:'time'};
 const EXTRA_L={'cost.view':'原価・粗利を見る','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','master.edit':'マスタ・設定の編集'};
 const roleOf=s=>s?.kind==='協力会社'?'partner':(s?.role&&LV[s.role]?s.role:'staff');
 const meStaff=()=>get('staff',SHELL.meId());
@@ -5341,6 +5447,57 @@ function peopleTable(js){
   return `<div class="callout" style="margin-bottom:10px">担当者ごとの進行中の案件です。「止まっている」は設定の日数を過ぎても次に進んでいない案件です。名前を押すとその人の案件だけ表示します。</div>
   <div class="scroll"><table class="t"><thead><tr><th>担当</th><th class="r">進行中</th><th class="r">止まっている</th><th class="r">見積の返事待ち</th><th class="r">承認待ちの申請</th><th class="r">未送付の発注書</th></tr></thead><tbody>${rows.map(r=>`<tr class="click" data-act="people-owner" data-id="${esc(r.id)}"><td><b>${esc(r.name)}</b></td><td class="r num">${r.n}</td><td class="r num">${r.stale?`<span class="pill w">${r.stale}</span>`:'—'}</td><td class="r num">${r.qw||'—'}</td><td class="r num">${r.ap||'—'}</td><td class="r num">${r.uns?`<span class="pill r">${r.uns}</span>`:'—'}</td></tr>`).join('')}</tbody></table></div>`;
 }
+/* =========================================================
+   社員ID・ログイン（メール／社員ID）・共用端末の暗証番号
+   発行・再発行・停止・暗証番号は 管理者と責任者（責任者は管理者の分を扱えない）
+   ========================================================= */
+const ID_RE=/^[A-Za-z0-9]{1,20}$/;
+const canLoginAdmin=t=>{ const r=roleOf(meStaff()); return r==='admin'||(r==='lead'&&roleOf(t)!=='admin'&&(t?.kind!=='協力会社')); };
+const loginMarks=s=>[s.email?'メール':'',s.loginEmail?'ID':'',s.pinSet?'暗証番号':''].filter(Boolean).join('・')||'—';
+function loginBox(s,st){
+  if(st.isNew) return `<section class="sec"><h3>ログイン</h3><p class="small muted">保存したあとで、社員IDでのログインを発行できます。</p></section>`;
+  const live=SHELL.loginApi.live, can=canLoginAdmin(s), last=(s.loginLog||[]).slice(-1)[0];
+  const kiosk=s.role==='kiosk';
+  let h=`<section class="sec"><h3>ログイン</h3><div class="small" style="display:grid;gap:4px">
+    <div>メール：${s.email?esc(s.email):'<span class="muted">なし</span>'}</div>
+    <div>社員ID：${s.loginEmail?`<b>${esc(String(s.loginEmail).split('@')[0].toUpperCase())}</b> でログインできます`:'<span class="muted">IDでのログインは未発行</span>'}${last?`<span class="muted">（${esc(last.kind)} ${esc(poWhen(last.at))} ${esc(last.byName||'')}${last.custom?'・個別パスワード':''}）</span>`:''}</div>
+    ${s.email||s.loginEmail?'':'<div class="callout w" style="margin:4px 0 0"><span>メールも社員IDのログインもないため、この人はログインできません（共用端末の打刻は暗証番号があれば使えます）。</span></div>'}
+  </div>`;
+  if(!can) return h+`<p class="small muted" style="margin-top:6px">ログインの発行・パスワードの再発行は、管理者・責任者ができます。</p></section>`;
+  h+=`<div class="form" style="margin-top:8px">
+    ${fld('パスワード（空欄なら共通の初期パスワード）',`<input class="inp" id="lg_pw" type="text" autocomplete="off" placeholder="個別に決めるときだけ入力（8文字以上）">`)}
+    <div class="fld"><span>&nbsp;</span><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm pri" data-act="login-issue" data-id="${s.id}">${s.loginEmail?'パスワードを再発行':'社員IDのログインを発行'}</button>${s.loginEmail?`<button class="btn sm" data-act="login-revoke" data-id="${s.id}">IDのログインを止める</button>`:''}</div></div>
+  </div>
+  <p class="small muted">発行・再発行すると、本人は最初のログインで自分のパスワードに変えるよう求められます。社員IDを変えたときは、もう一度発行してください。${live?'':'（ログインの発行は本番＝ログインのある画面で使えます）'}</p>`;
+  if(!kiosk&&s.kind!=='協力会社') h+=`<h3 style="margin-top:12px">共用端末の暗証番号</h3><div class="small">${s.pinSet?'<span class="pill g">設定済み</span>':'<span class="muted">未設定（共用端末の名前一覧に出ません）</span>'}</div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input class="inp" id="lg_pin" inputmode="numeric" maxlength="8" placeholder="数字4〜8桁" style="width:10em"><button class="btn sm" data-act="pin-set" data-id="${s.id}">暗証番号を設定</button>${s.pinSet?`<button class="btn sm" data-act="pin-clear" data-id="${s.id}">消す</button>`:''}</div>`;
+  if(kiosk) h+=`<div class="callout" style="margin-top:8px"><span>この利用者は<b>共用端末</b>です。発行した社員IDでタブレット等にログインすると、出退勤の画面だけが出ます。「担当している現場」を決めると、その現場の人だけが一覧に出ます（「利用者・勤怠設定」で設定）。</span></div>`;
+  return h+`</section>`;
+}
+async function loginCall(action,body,okMsg){
+  if(!SHELL.loginApi.live){ toast('ログインの発行は本番（ログインのある画面）で使えます'); return false; }
+  try{ toast('処理しています…'); const r=await SHELL.loginApi.call(action,body); toast(okMsg(r)); return true; }
+  catch(e){ toast(e.message||'できませんでした'); return false; }
+}
+function empNoCheck(id,empNo){
+  if(!empNo) return '';
+  if(!ID_RE.test(empNo)) return '社員IDは英数字（20文字まで）で入れてください';
+  if(all('staff').some(s=>s.id!==id&&String(s.empNo||'').toLowerCase()===empNo.toLowerCase())) return `社員ID「${empNo}」は${staffName(all('staff').find(s=>s.id!==id&&String(s.empNo||'').toLowerCase()===empNo.toLowerCase()).id)}さんが使っています`;
+  return '';
+}
+function loginSettingsSec(){
+  const r=roleOf(meStaff()); if(r!=='admin'&&r!=='lead') return '';
+  setTimeout(defpwState,0);
+  return `<section class="sec"><h3>ログイン（社員ID・共用端末）</h3><div class="form">
+    ${fld('共通の初期パスワード（社員IDのログインを発行するときに使う。8文字以上）',`<div style="display:flex;gap:6px"><input class="inp" id="set_defpw" type="text" autocomplete="off" placeholder="${SHELL.loginApi.live?'変えるときだけ入力（今の値は表示しません）':'本番の画面で設定します'}"><button class="btn sm" data-act="defpw-save">保存</button></div><span class="small muted" id="defpw_state"></span>`,true)}
+  </div>
+  <p class="small muted">本人は最初のログインで自分のパスワードに変えます。パスワードを忘れた人は、担当者の画面で「パスワードを再発行」してください（管理者・責任者）。</p>
+  <p class="small">共用端末：利用者を「段階＝共用端末（打刻専用）」で登録し、社員IDのログインを発行します。その社員IDでログインした端末は、名前を選んで暗証番号で出勤・退勤するだけの画面になります。<button class="btn sm" data-act="kiosk-demo">共用端末の画面を試す（試作）</button></p></section>`;
+}
+let defpwKnown=null, defpwAt=0;
+async function defpwState(){ const el=ROOT.querySelector('#defpw_state'); if(!el||!SHELL.loginApi.live) return;
+  if(Date.now()-defpwAt>60e3){ defpwAt=Date.now(); try{ defpwKnown=(await SHELL.loginApi.call('info')).defaultSet; }catch(e){ defpwKnown=null; } }
+  const e2=ROOT.querySelector('#defpw_state'); if(e2) e2.textContent=defpwKnown==null?'':defpwKnown?'設定済みです':'まだ設定されていません'; }
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
