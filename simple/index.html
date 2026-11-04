@@ -239,7 +239,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <div class="btnrow">
         <button class="btn pri" id="btnZip">写真をまとめて保存</button>
         <button class="btn" id="btnPhotoShare" hidden>写真アプリへまとめて保存</button>
-        <button class="btn warn" id="btnClear">写真をすべて消す</button>
+        <button class="btn warn" id="btnClear">写真と備考をすべて消す</button>
       </div>
       <div id="clearArea"></div>
     </div>
@@ -593,14 +593,14 @@ $("#btnZip").onclick=async()=>{
 $("#btnClear").onclick=()=>{
   const a=$("#clearArea");a.innerHTML="";
   const box=document.createElement("div");box.className="inline-confirm";
-  const s=document.createElement("strong");s.textContent="撮った写真 "+shotCount()+"枚をすべて消します。";
-  const p=document.createElement("p");p.className="hint";p.textContent="元に戻せません。必要な写真は先に保存してください。現場名や設定は残ります。";
+  const s=document.createElement("strong");s.textContent="撮った写真 "+shotCount()+"枚と、各箇所の備考をすべて消します。";
+  const p=document.createElement("p");p.className="hint";p.textContent="元に戻せません。必要な写真と報告書は先に保存してください。現場名や設定は残ります。";
   const row=document.createElement("div");row.className="btnrow";
   const go=document.createElement("button");go.className="btn warn";go.textContent="消す";
   const no=document.createElement("button");no.className="btn";no.textContent="やめる";
   row.append(go,no);box.append(s,p,row);a.appendChild(box);
   no.onclick=()=>a.innerHTML="";
-  go.onclick=async()=>{for(const k of [...keys])await delPhoto(k.replace(/\|t$/,""));a.innerHTML="";renderSlots();toast("写真をすべて消しました")};
+  go.onclick=async()=>{for(const k of [...keys])await delPhoto(k.replace(/\|t$/,""));D.notes={};persist();a.innerHTML="";renderSlots();toast("写真と備考をすべて消しました")};
 };
 
 /* ---------- 写真の確認（拡大表示） ---------- */
