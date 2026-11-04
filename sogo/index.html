@@ -2165,7 +2165,8 @@ function wishBadge(w){ return w?`<span class="wish ${w.kind==='on'?'on':'off'}">
 function restOf(s,date){
   const w=wishOf(s?.id,date);
   if(w&&w.kind!=='on') return {kind:w.kind,label:WISH[w.kind].t,note:w.note||''};
-  const days=s?.cond?.days; if(days?.length&&!days.includes(wdOf(date))) return {kind:'x',label:'固定休',note:'出勤できない曜日',auto:true};
+  if(fixesOf(s?.id,date).length) return null;
+  const days=planDaysAll(s,date); if(days?.length&&!days.includes(wdOf(date))) return {kind:'x',label:'固定休',note:'出勤できない曜日',auto:true};
   return null;
 }
 function needOf(area,patId,wd){ const n=area?.needs||{}; const row=n['w'+wd]; const hasRow=row&&Object.values(row).some(v=>v!==''&&v!=null); const v=(hasRow?row:n.def||{})[patId]; return +v||0; }
@@ -2230,7 +2231,7 @@ VIEWS.shift=()=>{
     <select class="inp auto" data-chg="shSite" aria-label="現場">${siteOpts}</select>
     <span style="display:inline-flex;gap:4px;align-items:center"><button class="btn sm" data-act="sMonth" data-n="-1" aria-label="前月">‹</button><b style="min-width:84px;text-align:center">${ymLabel(m)}</b><button class="btn sm" data-act="sMonth" data-n="1" aria-label="翌月">›</button></span>
     <div class="seg">${[['site','現場別'],['person','人別（全現場）']].map(([k,l])=>`<button data-act="shView" data-v="${k}" aria-pressed="${(VS.shView||'site')===k}">${l}</button>`).join('')}</div>
-    <span style="margin-left:auto;display:inline-flex;gap:8px;flex-wrap:wrap">${site&&VS.shView!=='person'?`<button class="btn" data-act="autoAsk">自動作成</button><button class="btn ${shiftPublished(ym,site.id)?'':'pri'}" data-act="shiftPub">${shiftPublished(ym,site.id)?'公開を取り消す':'確定して公開'}</button>`:''}<button class="btn" data-act="go" data-r="shiftset">シフト設定</button></span>
+    <span style="margin-left:auto;display:inline-flex;gap:8px;flex-wrap:wrap">${site&&VS.shView!=='person'&&canPlan()?`<button class="btn" data-act="planIn" title="週の型と出勤指定だけをこの月のシフトに入れます">週の型・指定を入れる</button>`:''}${site&&VS.shView!=='person'?`<button class="btn" data-act="autoAsk">自動作成</button><button class="btn ${shiftPublished(ym,site.id)?'':'pri'}" data-act="shiftPub">${shiftPublished(ym,site.id)?'公開を取り消す':'確定して公開'}</button>`:''}<button class="btn" data-act="go" data-r="shiftset">シフト設定</button></span>
   </div>`;
   if(VS.shView==='person') return h+personGrid(m);
   if(!site) return h+`<div class="panel"><div class="pbody empty">現場がありません。</div></div>`;
@@ -2284,7 +2285,7 @@ function personGrid(m){
   let h=fBar([fSearch('pg_q'),fSel('pg_site',siteOptsF(),'現場',siteDef()),fTgl('pg_multi','掛け持ち・複数現場の人だけ'),fTgl('pg_has','シフトがある人だけ'),`<div class="seg">${[['m','1か月'],['h1','前半'],['h2','後半'],['w','1週間']].map(([k,l])=>`<button data-act="shRng" data-v="${k}" aria-pressed="${F('sh_rng','m')===k}">${l}</button>`).join('')}</div>`],rows.length,all_.length,['pg_q','pg_site','pg_multi','pg_has']);
   h+=`<div class="small muted" style="margin-bottom:8px">全現場のシフトを人ごとに表示します。複数の現場をまわる人の確認用です。</div><div class="scroll"><table class="stbl"><thead><tr><th class="nm">名前</th>${days.map(d=>{const w=wdOf(d);return `<th class="${w===0?'sun':w===6?'sat':''} ${d===today()?'tdy':''}"><span class="num">${+d.slice(8)}</span><br><small>${WD[w]}</small></th>`;}).join('')}<th>日数</th><th>時間</th></tr></thead><tbody>`;
   rows.forEach(s=>{ let n=0,min=0;
-    h+=`<tr><td class="nm"><span class="dot" style="background:${pc(s)}"></span> ${esc(s.name)}<small>${(s.shiftSites||[]).map(x=>esc(siteShort(get('sites',x)))).join('・')}</small></td>`;
+    h+=`<tr><td class="nm"><span class="dot" style="background:${pc(s)}"></span> <button class="linklike" data-act="openPlan" data-id="${s.id}" title="週の型・出勤指定" style="background:none;border:0;padding:0;font:inherit;font-weight:700;cursor:pointer;text-decoration:underline dotted">${esc(s.name)}</button><small>${(s.shiftSites||[]).map(x=>esc(siteShort(get('sites',x)))).join('・')}</small></td>`;
     days.forEach(d=>{ const it=evAll().filter(e=>e.shift&&e.date===d&&(e.staffIds||[]).includes(s.id)).sort(by(e=>e.start||'')); const w=wishOf(s.id,d); const cf=it.length>1?dayConflict(s.id,d):{lv:0,msg:[]};
       if(it.length){n++; it.forEach(e=>min+=patMin((e.fz||get('patterns',e.patternId))));}
       const rr=restOf(s,d); h+=`<td class="${rr?(rr.auto?'w-x auto':WISH[rr.kind]?.c||''):''} ${(rr&&it.length)||cf.lv===2?'conf':cf.lv===1?'warn':''}" title="${esc([...it.map(e=>`${e.title} ${e.start}〜${e.end}`),...cf.msg,w?wishLabel(w):''].filter(Boolean).join(' / '))}">${it.map(e=>{const p=(e.fz||get('patterns',e.patternId));return `<span class="pc2" style="--pcol:${p?.color||PAL[0]}"><b>${esc(p?.code||'')}</b> ${esc(siteShort(get('sites',e.siteId)).slice(0,3))}</span>`;}).join('')}${(()=>{const r=restOf(s,d); return r?`<span class="rest">${esc(r.label)}</span>`:'';})()}</td>`; });
@@ -2346,9 +2347,9 @@ function refocus(sid,day,next){ requestAnimationFrame(()=>requestAnimationFrame(
 
 /* ---------- 自動作成（シフト自動作成 v9 の考え方を移植） ---------- */
 function parsePattern(t){ const m=String(t||'').match(/(\d+)\s*(?:勤|-|－)\s*(\d+)/); return m?{on:+m[1],off:+m[2]}:null; }
-function runAuto(siteId,ym,areaScope,mode){
+function runAuto0(siteId,ym,areaScope,mode,cells0){
   const days=daysOfMonth(ym); const N=days.length; const site=get('sites',siteId);
-  const d0=shiftDoc(siteId,ym); const cells=structuredClone(d0.cells||{});
+  const d0=shiftDoc(siteId,ym); const cells=cells0||structuredClone(d0.cells||{});
   const areas=areaScope?[get('areas',areaScope)]:scopeList(siteId);
   const inScope=c=>!areaScope||c.a===areaScope;
   if(mode==='rebuild') for(const k of Object.keys(cells)) cells[k]=(cells[k]||[]).filter(c=>c.l||!inScope(c));
@@ -2368,7 +2369,7 @@ function runAuto(siteId,ym,areaScope,mode){
     const ok=(s,p)=>{ const c=s.cond||{}; const w=wishOf(s.id,date);
       if(!(s.skills||{})[p.id]) return false;
       if(w&&w.kind!=='on') return false;
-      if(c.days?.length&&!c.days.includes(wd)) return false;
+      { const sd=siteDaysOf(s,siteId,date); if(sd&&!sd.includes(wd)) return false; }
       const mine=cellsAt(s.id,date); if(mine.some(x=>x.p===p.id)) return false;
       const ex=ext[s.id+'|'+date]||[]; const dayCount=mine.length+ex.filter(e=>e.shift).length;
       if(dayCount>=(+c.multi||1)) return false;
@@ -2439,6 +2440,7 @@ VIEWS.shiftset=()=>{
     const cfg=shiftCfg();
     h+=`<div class="panel"><h2>全体の設定</h2><div class="pbody" style="display:flex;flex-direction:column;gap:12px">
       <label class="fld" style="max-width:320px"><span>現場間の移動に必要な時間（分）</span><input class="inp" type="number" min="0" step="5" data-cfg="travelMin" value="${cfg.travelMin}"></label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-cfgb="showPlan" ${cfg.showPlan===false?'':'checked'}> 週の型・出勤指定を本人のホームに表示する（人ごとに見せない設定もできます）</label>
       <div class="hint">同じ日に別の現場へ移動する人で、前の勤務の終わりから次の勤務の始まりまでがこれより短いと黄色で警告し、自動作成でも入れません。</div></div></div>`;
   } else if(tab==='bz'&&BIZLIB){ h+=BIZLIB.view(site); }
   return h;
@@ -2470,7 +2472,7 @@ SHEETS.cond=()=>{ const s=sheet.s; const site=get('sites',sheet.siteId); const c
   <details class="more" ${P.openDetail||c.wMax||c.mMax||c.mMin||c.consec||c.pattern||c.prio||c.multi>1?'open':''}><summary>詳細 <span class="s muted">上限・連勤・勤務パターン・優先度（空欄＝制限なし）</span></summary><div class="in"><div class="form">
     ${[['wMax','週の最大出勤日数'],['mMax','月の最大出勤日数'],['mMin','月の最小出勤日数'],['consec','最大連続出勤日数'],['multi','1日の最大掛け持ち数'],['prio','優先度（1〜9、小さいほど優先）']].map(([k,l])=>`<label class="fld"><span>${l}</span><input class="inp" type="number" min="0" data-cd="${k}" value="${c[k]??''}"></label>`).join('')}
     <label class="fld"><span>勤務パターン（例：2勤1休）</span><input class="inp" data-cd="pattern" value="${esc(c.pattern||'')}" placeholder="2勤1休"></label></div></div></details>`;
-  const foot=`<button class="btn danger l" data-act="condRemove">この現場から外す</button><button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="condSave">保存</button>`;
+  const foot=`<button class="btn l" data-act="openPlan" data-id="${s.id}">週の型・出勤指定</button><button class="btn danger l" data-act="condRemove">この現場から外す</button><button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="condSave">保存</button>`;
   return {title:'スタッフ条件',body,foot}; };
 
 /* ---------- BizLib連携（移行期間のみ。廃止時はこのブロックと bizlib コレクションを削除し、BIZLIB=null にする） ---------- */
@@ -2651,6 +2653,16 @@ docOn('click',async ev=>{
     case 'sMonth': VS.sMonth=ymAdd(VS.sMonth,+el.dataset.n); render(); break;
     case 'shiftPub': { const m=VS.sMonth; const id=`pub_${VS.shSite}_${m}`; const cur=get('meta',id)||{}; const pub=!shiftPublished(m,VS.shSite); await put('meta',id,{...cur,published:pub,publishedAt:pub?new Date().toISOString():''}); if(!pub&&get('meta','shift_'+m)?.published) await put('meta','shift_'+m,{published:false}); toast(pub?`${ymLabel(m)}のシフトを公開しました（スタッフの「自分の予定」に表示されます）`:'公開を取り消しました'); break; }
     case 'shView': VS.shView=el.dataset.v; render(); break;
+    case 'openPlan': openPlan(el.dataset.id); break;
+    case 'planIn': { if(!canPlan()) break; const r=runAuto(VS.shSite,VS.sMonth,VS.shArea,'plan'); await put('shifts',shiftDocId(VS.shSite,VS.sMonth),{siteId:VS.shSite,ym:VS.sMonth,cells:r.cells}); toast(`週の型・出勤指定を${r.added}件入れました${r.plan.warn.length?`（希望休との重なり ${r.plan.warn.length}件）`:''}${r.plan.miss.length?`（勤務パターンが決められない ${r.plan.miss.length}件）`:''}`); break; }
+    case 'pwAdd': sheet.week.push({id:Math.random().toString(36).slice(2,9),wd:1,siteId:planSites(get('staff',sheet.sid))[0]?.id||'',areaId:'',patId:'',rule:{kind:'all'},from:'',to:''}); renderOverlay(); break;
+    case 'pwDel': sheet.week.splice(+el.dataset.i,1); renderOverlay(); break;
+    case 'pwSave': await planSaveWeek(); break;
+    case 'pfMonth': sheet.fx.ym=ymAdd(sheet.fx.ym,+el.dataset.n); renderOverlay(); break;
+    case 'pfDay': { const d=el.dataset.d, a=sheet.fx.dates; sheet.fx.dates=a.includes(d)?a.filter(x=>x!==d):[...a,d].sort(); renderOverlay(); break; }
+    case 'pfKind': sheet.fx.kind=el.dataset.v; renderOverlay(); break;
+    case 'pfAdd': await planAddFix(); break;
+    case 'pfDel': { if(!canPlan()) break; await del('wishes',el.dataset.id); toast('削除しました'); renderOverlay(); break; }
     case 'shArea': VS.shArea=el.dataset.v; render(); break;
     case 'shCell': openCell(VS.shSite,VS.sMonth,el.dataset.staff,el.dataset.day); break;
     case 'cellRm': sheet.arr.splice(+el.dataset.i,1); renderOverlay(); break;
@@ -2712,6 +2724,7 @@ docOn('change',ev=>{
     render(); return; }
   if(el.dataset.need){ const [aid,row,pid]=el.dataset.need.split('|'); let a=get('areas',aid)||(el.dataset.whole?{siteId:el.dataset.whole,name:'現場全体',order:0,needs:{},whole:true}:null); if(!a) return; const needs=structuredClone(a.needs||{}); needs[row]={...(needs[row]||{})}; if(el.value==='') delete needs[row][pid]; else needs[row][pid]=+el.value; const {id,...rest}=a; put('areas',aid,{...rest,needs}); return; }
   if(el.dataset.cfg){ put('meta','shiftcfg',{...shiftCfg(),[el.dataset.cfg]:+el.value||0}); return; }
+  if(el.dataset.cfgb){ put('meta','shiftcfg',{...shiftCfg(),[el.dataset.cfgb]:el.checked}); return; }
   if(el.dataset.bz&&BIZLIB){ const v=el.value.trim(); if(v) put('bizlib','pat_'+el.dataset.bz,{kind:'pattern',refId:el.dataset.bz,code:v}); else del('bizlib','pat_'+el.dataset.bz); return; }
   if(!sheet) return;
   if(el.dataset.pt){ sheet.p[el.dataset.pt]=el.type==='checkbox'?el.checked:el.value; renderOverlay(); }
@@ -2971,7 +2984,7 @@ async function poAsk(){
   await put('porders',p.id,{...p,thread:[...(p.thread||[]),{from:'p',by:meId(),byName:staffName(meId()),at:new Date().toISOString(),text}]});
   toast('質問を送りました。回答はこの画面に表示されます'); renderOverlay();
 }
-function poHomePanel(){ return poPartnerHome()+flowHomePanel()+apHomePanel()+poHomePanel0()+fieldHomePanel(); }
+function poHomePanel(){ return poPartnerHome()+flowHomePanel()+apHomePanel()+poHomePanel0()+fieldHomePanel()+planHomePanel(); }
 function flowHomePanel(){
   const ns=SHELL.noticesFor(meId()), fs=SHELL.flowMine(meId()); let h='';
   if(ns.length) h+=`<div class="panel" style="margin-bottom:14px;border-color:var(--accent)"><h2>新しい作業の連絡 <span class="num muted">${ns.length}</span></h2><div class="pbody"><div class="list">${ns.map(n=>`<div class="li" style="cursor:default;align-items:flex-start"><span class="grow"><b>${esc(n.title)}</b><br><span class="small muted">${esc(jd(n.date))} ${esc(n.start||n.end?timeRange(n.start,n.end):'')}　${esc(n.from)}より</span>${n.text?`<div class="small" style="white-space:pre-wrap;margin-top:4px">${esc(n.text)}</div>`:''}</span><button class="btn sm pri" data-act="ackNotice" data-id="${n.id}">確認しました</button></div>`).join('')}</div></div></div>`;
@@ -3148,6 +3161,140 @@ function fieldHomePanel(){
   const n=SHELL.apResults?SHELL.apResults(meId()):0; if(!n) return '';
   return `<div class="callout g" style="margin-bottom:12px"><span><b>申請の結果が${n}件</b>出ています（承認された発注書は担当者・協力会社へ送ってください）。</span><button class="btn sm pri" data-act="openAp">承認の画面を開く</button></div>`;
 }
+/* =========================================================
+   週の型（曜日×現場×勤務パターン）と出勤指定（日にち指定）
+   ・staff.week = [{id,wd,siteId,areaId,patId('':おまかせ),rule:{kind:'all'|'alt'|'nth',nth:[1,3],anchor},from,to}]
+   ・出勤指定 = wishes kind:'fix' {staffId,date,siteId,areaId,patId,by,at}（その日だけ休みは固定休 kind:'x'）
+   ・優先：出勤指定 ＞ 希望休（警告） ＞ 週の型。週の型は希望休・有給・固定休の日には入れない
+   ========================================================= */
+const canPlan=()=>['admin','lead','manager'].includes(roleS());
+const fixesOf=(sid,date)=>all('wishes').filter(w=>w.kind==='fix'&&w.staffId===sid&&(!date||w.date===date));
+const WEEK_RULE_L={all:'毎週',alt:'隔週',nth:'第n週'};
+function weekRuleHit(e,date){
+  if(e.from&&date<e.from) return false; if(e.to&&date>e.to) return false;
+  const r=e.rule||{kind:'all'};
+  if(r.kind==='alt'){ const a=weekMon(r.anchor||e.from||date); const diff=Math.round((parseD(weekMon(date))-parseD(a))/864e5/7); return ((diff%2)+2)%2===0; }
+  if(r.kind==='nth'){ const n=Math.ceil(+date.slice(8)/7); return (r.nth||[]).includes(n); }
+  return true;
+}
+const weekOn=(s,date,siteId)=>(s?.week||[]).filter(e=>e.wd===wdOf(date)&&(!siteId||e.siteId===siteId)&&weekRuleHit(e,date));
+/* この現場で入る曜日（週の型があればそれ、なければ共通の「出勤できる曜日」） */
+function siteDaysOf(s,siteId,date){
+  const es=(s?.week||[]).filter(e=>e.siteId===siteId&&(!e.from||date>=e.from)&&(!e.to||date<=e.to));
+  if(es.length) return [...new Set(es.map(e=>e.wd))];
+  const d=s?.cond?.days; return d?.length?d:null;
+}
+function planDaysAll(s,date){
+  const d=s?.cond?.days; if(d?.length) return d;
+  const es=(s?.week||[]).filter(e=>(!e.from||date>=e.from)&&(!e.to||date<=e.to));
+  return es.length?[...new Set(es.map(e=>e.wd))]:null;
+}
+const ruleLabel=e=>{ const r=e.rule||{kind:'all'}; return r.kind==='nth'?`第${(r.nth||[]).join('・')}週`:WEEK_RULE_L[r.kind]||'毎週'; };
+/* 勤務パターンの「おまかせ」：その日に人が足りないパターン → 入れるパターンの順 */
+function pickPat(s,siteId,areaId,cells,day,wd){
+  const sk=Object.keys(s.skills||{});
+  const ps=patsOf(siteId,areaId||undefined).filter(p=>sk.includes(p.id)&&(!areaId||!p.areaId||p.areaId===areaId));
+  const a=areaId?get('areas',areaId):(scopeList(siteId)[0]||null);
+  for(const p of ps){ const need=needOf(a,p.id,wd); const have=Object.entries(cells).filter(([k])=>k.endsWith('|'+day)).reduce((n,[,arr])=>n+arr.filter(c=>c.p===p.id).length,0); if(need>have) return p; }
+  return ps[0]||null;
+}
+/* 週の型・出勤指定をシフトに入れる（自動作成の最初に行う） */
+function planPlace(siteId,ym,areaScope,cells){
+  const days=daysOfMonth(ym); let n=0; const miss=[], warn=[];
+  const ppl=staffList().filter(s=>(s.week||[]).some(e=>e.siteId===siteId)||all('wishes').some(w=>w.kind==='fix'&&w.staffId===s.id&&w.siteId===siteId&&ymOf(w.date)===ym));
+  const put1=(s,day,p,areaId,src,lock)=>{ const k=`${s.id}|${day}`; const arr=cells[k]||[]; if(arr.some(c=>c.p===p.id)) return; if(areaScope&&(areaId||p.areaId||'')!==areaScope&&!(get('areas',areaScope)?.whole)) return; cells[k]=[...arr,{p:p.id,a:areaId||p.areaId||'',...(lock?{l:1}:{}),src}]; n++; };
+  for(const s of ppl) days.forEach((date,di)=>{ const day=di+1, wd=wdOf(date);
+    const fx=fixesOf(s.id,date), w=wishOf(s.id,date);
+    if(fx.length){
+      fx.filter(f=>f.siteId===siteId).forEach(f=>{ const p=(f.patId&&get('patterns',f.patId))||pickPat(s,siteId,f.areaId,cells,day,wd); if(!p){ miss.push(`${jd(date)} ${s.name}（出勤指定：入れる勤務パターンなし）`); return; } put1(s,day,p,f.areaId,'fix',true); if(w&&w.kind!=='on') warn.push(`${jd(date)} ${s.name}：出勤指定と${WISH[w.kind]?.t||'休み'}が重なっています`); });
+      return; }
+    if(w&&w.kind!=='on') return;
+    weekOn(s,date,siteId).forEach(e=>{ const p=(e.patId&&get('patterns',e.patId))||pickPat(s,siteId,e.areaId,cells,day,wd); if(!p){ miss.push(`${jd(date)} ${s.name}（週の型：入れる勤務パターンなし）`); return; } put1(s,day,p,e.areaId,'week',false); });
+  });
+  return {n,miss,warn};
+}
+function runAuto(siteId,ym,areaScope,mode){
+  const d0=shiftDoc(siteId,ym); const cells=structuredClone(d0.cells||{});
+  const inScope=c=>!areaScope||c.a===areaScope;
+  if(mode==='rebuild') for(const k of Object.keys(cells)) cells[k]=(cells[k]||[]).filter(c=>c.l||!inScope(c));
+  const pl=planPlace(siteId,ym,areaScope,cells);
+  if(mode==='plan') return {cells,added:pl.n,shorts:[],plan:pl};
+  const r=runAuto0(siteId,ym,areaScope,'fill',cells);
+  return {...r,added:r.added+pl.n,plan:pl};
+}
+/* ---------- 画面：週の型・出勤指定 ---------- */
+function openPlan(sid){ const s=get('staff',sid); if(!s) return; openSheet({kind:'plan',sid,week:structuredClone(s.week||[]),hide:!!s.planHide,fx:{siteId:(s.shiftSites||[])[0]||VS.shSite||'',areaId:'',patId:'',kind:'fix',dates:[],ym:VS.sMonth||ymOf(today())}}); }
+const planSites=s=>{ const ids=new Set([...(s.shiftSites||[]),...(s.mySites||[])]); return [...sitesOf().filter(x=>ids.has(x.id)),...sitesOf().filter(x=>!ids.has(x.id))]; };
+function patOpts(siteId,areaId,val){ return `<option value="">おまかせ</option>${patsOf(siteId,areaId||undefined).filter(p=>!areaId||!p.areaId||p.areaId===areaId).map(p=>`<option value="${p.id}" ${val===p.id?'selected':''}>${esc(p.code)}　${esc(patLabel(p))}${p.areaId?'（'+esc(get('areas',p.areaId)?.name||'')+'）':''}</option>`).join('')}`; }
+function siteSel(s,attr,val){ return `<select class="inp" ${attr}>${planSites(s).map(x=>`<option value="${x.id}" ${val===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`; }
+function areaSel(siteId,attr,val){ const as=areasOf(siteId); return as.length?`<select class="inp" ${attr}><option value="">（持ち場なし）</option>${as.map(a=>`<option value="${a.id}" ${val===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select>`:'<span class="small muted">—</span>'; }
+SHEETS.plan=()=>{
+  const s=get('staff',sheet.sid); if(!s) return {title:'勤務の予定',body:''}; const ed=canPlan(); const t=today();
+  const wk=sheet.week, fx=sheet.fx;
+  const wrow=(e,i)=>`<tr><td><select class="inp" data-pw="${i}|wd" ${ed?'':'disabled'}>${[1,2,3,4,5,6,0].map(d=>`<option value="${d}" ${e.wd===d?'selected':''}>${WD[d]}</option>`).join('')}</select></td>
+    <td>${siteSel(s,`data-pw="${i}|siteId" ${ed?'':'disabled'}`,e.siteId)}</td><td>${areaSel(e.siteId,`data-pw="${i}|areaId" ${ed?'':'disabled'}`,e.areaId)}</td>
+    <td><select class="inp" data-pw="${i}|patId" ${ed?'':'disabled'}>${patOpts(e.siteId,e.areaId,e.patId)}</select></td>
+    <td><select class="inp" data-pw="${i}|rule" ${ed?'':'disabled'}>${[['all','毎週'],['alt','隔週'],['n1','第1週'],['n2','第2週'],['n3','第3週'],['n4','第4週'],['n5','第5週'],['n13','第1・3週'],['n24','第2・4週']].map(([k,l])=>{ const r=e.rule||{kind:'all'}; const cur=r.kind==='nth'?'n'+(r.nth||[]).join(''):r.kind; return `<option value="${k}" ${cur===k?'selected':''}>${l}</option>`; }).join('')}</select></td>
+    <td><input class="inp" type="date" data-pw="${i}|from" value="${esc(e.from||'')}" ${ed?'':'disabled'} style="width:9.5em"> 〜 <input class="inp" type="date" data-pw="${i}|to" value="${esc(e.to||'')}" ${ed?'':'disabled'} style="width:9.5em"></td>
+    <td>${ed?`<button class="btn sm ghost" data-act="pwDel" data-i="${i}">削除</button>`:''}</td></tr>`;
+  const fxl=fixesOf(s.id).concat(all('wishes').filter(w=>w.kind==='x'&&w.staffId===s.id&&w.byPlan)).filter(w=>w.date>=addDays(t,-31)).sort(by(w=>w.date));
+  const m=fx.ym, days=daysOfMonth(m), sel=new Set(fx.dates);
+  const cal=`<div class="small" style="display:flex;align-items:center;gap:6px;margin:6px 0"><button class="btn sm" data-act="pfMonth" data-n="-1">‹</button><b>${ymLabel(m)}</b><button class="btn sm" data-act="pfMonth" data-n="1">›</button><span class="muted">日付を押して選ぶ（複数可）</span></div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;max-width:420px">${['月','火','水','木','金','土','日'].map(x=>`<div class="small muted" style="text-align:center">${x}</div>`).join('')}${'<div></div>'.repeat((wdOf(days[0])+6)%7)}${days.map(d=>{ const has=fixesOf(s.id,d).length, w=wishOf(s.id,d); return `<button type="button" class="btn sm" data-act="pfDay" data-d="${d}" aria-pressed="${sel.has(d)}" style="padding:4px 0;${sel.has(d)?'background:var(--accent,#2b6fd6);color:#fff':''}${has?';box-shadow:inset 0 -3px 0 #2f8f5b':''}${w&&w.kind!=='on'?';box-shadow:inset 0 -3px 0 #c06a12':''}">${+d.slice(8)}</button>`; }).join('')}</div>
+    <div class="small muted" style="margin-top:4px">下線：緑＝出勤指定あり／橙＝希望休・有給・固定休</div>`;
+  const body=`<div class="sec"><div class="callout">${esc(s.name)}さん　の勤務の予定（全現場）</div></div>
+  <div class="sec"><h3 style="margin:0 0 6px">週の型（いつもの曜日・現場）</h3>
+    <div class="scroll"><table class="t"><thead><tr><th>曜日</th><th>現場</th><th>持ち場</th><th>勤務パターン</th><th>週</th><th>期間（空欄＝ずっと）</th><th></th></tr></thead><tbody>${wk.length?wk.map(wrow).join(''):'<tr><td colspan="7" class="empty">週の型はまだありません</td></tr>'}</tbody></table></div>
+    ${ed?`<button class="btn sm" data-act="pwAdd" style="margin-top:6px">＋ 行を追加</button>`:''}
+    <div class="hint">シフトの自動作成で、週の型どおりに先に入れてから残りを埋めます。希望休・有給・固定休の日と、出勤指定がある日には入れません。週の型がある現場では、自動作成はその曜日だけこの人を使います。</div></div>
+  <div class="sec"><h3 style="margin:0 0 6px">出勤指定（日にち）</h3>
+    ${fxl.length?`<div class="list">${fxl.map(w=>`<div class="li" style="cursor:default"><span class="pill ${w.kind==='fix'?'g':'w'}" style="flex:none">${w.kind==='fix'?'出勤':'休み'}</span><span class="grow small">${esc(jd(w.date))}　${w.kind==='fix'?esc(get('sites',w.siteId)?.name||'')+(w.areaId?'・'+esc(get('areas',w.areaId)?.name||''):'')+'　'+(w.patId?esc(get('patterns',w.patId)?.code||''):'おまかせ'):'この日は休み（固定休）'}${w.kind==='fix'&&wishOf(s.id,w.date)&&wishOf(s.id,w.date).kind!=='on'?` <span class="pill w">${esc(WISH[wishOf(s.id,w.date).kind]?.t||'')}と重なり</span>`:''}</span>${ed?`<button class="btn sm ghost" data-act="pfDel" data-id="${w.id}">削除</button>`:''}</div>`).join('')}</div>`:'<div class="small muted">出勤指定はありません</div>'}
+    ${ed?`<div class="panel" style="padding:10px;margin-top:8px"><div class="chips"><button type="button" data-act="pfKind" data-v="fix" aria-pressed="${fx.kind==='fix'}">出勤を指定</button><button type="button" data-act="pfKind" data-v="x" aria-pressed="${fx.kind==='x'}">この日は休み</button></div>
+      ${fx.kind==='fix'?`<div class="form" style="margin-top:6px"><label class="fld"><span>現場</span>${siteSel(s,'data-pf="siteId"',fx.siteId)}</label><label class="fld"><span>持ち場</span>${areaSel(fx.siteId,'data-pf="areaId"',fx.areaId)}</label><label class="fld"><span>勤務パターン</span><select class="inp" data-pf="patId">${patOpts(fx.siteId,fx.areaId,fx.patId)}</select></label></div>`:''}
+      ${cal}<div style="margin-top:8px"><button class="btn sm pri" data-act="pfAdd">${fx.dates.length}日分を${fx.kind==='fix'?'出勤指定':'休み'}にする</button></div></div>`:''}
+    <div class="hint">出勤指定はシフトに鍵付きで入り、自動作成でも動きません。本人の希望休と重なったときは指定を残して警告します。</div></div>
+  <div class="sec">${ed?`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-act2="planHide" ${sheet.hide?'checked':''}> この人には週の型・出勤指定を見せない</label>`:''}<div class="small muted">本人への表示：${shiftCfg().showPlan===false?'全体の設定で「見せない」になっています（シフト設定 → その他）':sheet.hide?'この人には見せない':'本人のホームに表示します'}</div></div>`;
+  const foot=`<button class="btn" data-act="close">${ed?'キャンセル':'閉じる'}</button>${ed?'<button class="btn pri" data-act="pwSave">週の型を保存</button>':''}`;
+  return {title:'週の型・出勤指定',body,foot};
+};
+async function planSaveWeek(){
+  const s=get('staff',sheet.sid); if(!s||!canPlan()) return;
+  const week=sheet.week.filter(e=>e.siteId);
+  const sites=[...new Set([...(s.shiftSites||[]),...week.map(e=>e.siteId)])];
+  await put('staff',s.id,{...s,week,planHide:!!sheet.hide,shift:true,shiftSites:sites});
+  toast('週の型を保存しました。シフト表の「週の型・指定を入れる」または自動作成で反映されます'); closeSheet();
+}
+async function planAddFix(){
+  const s=get('staff',sheet.sid), fx=sheet.fx; if(!s||!canPlan()) return; if(!fx.dates.length) return toast('日付を選んでください');
+  if(fx.kind==='fix'&&!fx.siteId) return toast('現場を選んでください');
+  let warn=0;
+  for(const d of fx.dates){
+    if(fx.kind==='x'){ await put('wishes',wishId(s.id,d),{staffId:s.id,date:d,kind:'x',start:'',end:'',note:'管理者の指定',byPlan:true}); continue; }
+    const w=wishOf(s.id,d); if(w&&w.kind!=='on') warn++;
+    await put('wishes',`${s.id}_${d}_fx_${fx.siteId}`,{staffId:s.id,date:d,kind:'fix',siteId:fx.siteId,areaId:fx.areaId||'',patId:fx.patId||'',by:meId(),at:new Date().toISOString()});
+  }
+  if(fx.kind==='fix'&&!(s.shiftSites||[]).includes(fx.siteId)) await put('staff',s.id,{...s,shift:true,shiftSites:[...(s.shiftSites||[]),fx.siteId]});
+  toast(`${fx.dates.length}日分を${fx.kind==='fix'?'出勤指定':'休み'}にしました${warn?`（うち${warn}日は本人の希望休・有給と重なっています）`:''}`);
+  sheet.fx={...fx,dates:[]}; renderOverlay();
+}
+/* 本人のホーム：週の型と出勤指定 */
+function planHomePanel(){
+  const m=me(); if(!m||!isShiftStaff(m)||shiftCfg().showPlan===false||m.planHide) return '';
+  const t=today(), fx=fixesOf(m.id).filter(w=>w.date>=t&&w.date<=addDays(t,31)).sort(by(w=>w.date));
+  const wk=(m.week||[]).filter(e=>!e.to||e.to>=t).sort(by(e=>((e.wd+6)%7)+''));
+  if(!wk.length&&!fx.length) return '';
+  return `<div class="panel" style="margin-bottom:14px"><h2>勤務の予定（いつもの曜日・指定日）</h2><div class="pbody">
+    ${wk.length?`<div class="list">${wk.map(e=>`<div class="li" style="cursor:default"><b style="width:2em">${WD[e.wd]}</b><span class="grow small">${esc(get('sites',e.siteId)?.name||'')}${e.areaId?'・'+esc(get('areas',e.areaId)?.name||''):''}　${e.patId&&get('patterns',e.patId)?esc(get('patterns',e.patId).code)+' '+esc(patLabel(get('patterns',e.patId))):''}　<span class="muted">${esc(ruleLabel(e))}${e.from?'　'+esc(jd(e.from))+'から':''}${e.to?'　'+esc(jd(e.to))+'まで':''}</span></span></div>`).join('')}</div>`:''}
+    ${fx.length?`<div class="small" style="margin-top:8px"><b>指定日</b>　${fx.map(w=>`${esc(jd(w.date))} ${esc(siteShort(get('sites',w.siteId))||'')}${w.patId&&get('patterns',w.patId)?' '+esc(get('patterns',w.patId).code):''}`).join('、')}</div>`:''}
+    <div class="small muted" style="margin-top:6px">確定したシフトは「シフト」で確認してください。</div></div></div>`;
+}
+docOn('change',e=>{ const t=e.target; if(sheet?.kind!=='plan') return;
+  if(t.dataset.pw){ const [i,k]=t.dataset.pw.split('|'); const r=sheet.week[+i]; if(!r) return; let v=t.value;
+    if(k==='wd') v=+v;
+    if(k==='rule'){ v=v==='all'||v==='alt'?{kind:v,...(v==='alt'?{anchor:r.from||today()}:{})}:{kind:'nth',nth:v.slice(1).split('').map(Number)}; }
+    r[k]=v; if(k==='siteId'){ r.areaId=''; r.patId=''; } if(k==='areaId') r.patId=''; renderOverlay(); return; }
+  if(t.dataset.pf){ const k=t.dataset.pf; sheet.fx[k]=t.value; if(k==='siteId'){ sheet.fx.areaId=''; sheet.fx.patId=''; } if(k==='areaId') sheet.fx.patId=''; renderOverlay(); return; }
+  if(t.dataset.act2==='planHide'){ sheet.hide=t.checked; return; } });
 
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
