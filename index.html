@@ -2206,7 +2206,7 @@ const OM_CFG={key:"ok-houkoku-mail-v1",siteWord:"お客様",
   q("#omNewAddr").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();q("#omAddBtn").click()}});
   function openSend(g){
     G=g;const last=M.last[siteKey()];
-    sel=new Set(M[g].list.filter(a=>a.always||(Array.isArray(last)?last.includes(a.addr):g==="office")).map(a=>a.addr));
+    sel=new Set(M[g].list.filter(a=>a.always||g==="office"||(Array.isArray(last)&&last.includes(a.addr))).map(a=>a.addr));
     q("#omTitle").textContent=GN[g]+"メール";
     q("#omSubject").value=fill(M[g].subject);q("#omBody").value=fill(M[g].body);
     renderMode();renderList();show(q("#omSend"),true);

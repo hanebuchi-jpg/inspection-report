@@ -706,7 +706,7 @@ $('#msAddBtn').onclick=()=>{const a=addAddr(mailG,$('#msNewName'),$('#msNewAddr'
 $('#msNewAddr').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#msAddBtn').click()}});
 function openMail(g){
   mailG=g;const last=M.last[siteKey()];
-  mailSel=new Set(M[g].list.filter(a=>a.always||(Array.isArray(last)?last.includes(a.addr):g==='office')).map(a=>a.addr));
+  mailSel=new Set(M[g].list.filter(a=>a.always||g==='office'||(Array.isArray(last)&&last.includes(a.addr))).map(a=>a.addr));
   $('#msTitle').textContent=MAILDEF[g].name+'メール';
   $('#msSubject').value=fillTpl(M[g].subject);$('#msBody').value=fillTpl(M[g].body);
   renderMode();renderMsList();mdShow($('#ms'),true);
