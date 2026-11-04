@@ -907,7 +907,7 @@ const SHELL=(()=>{
       <button class="sbl-pri" data-sbl="setpw">設定してはじめる</button>`);
   }
   const SB_ID_DOMAIN='id.oandk.ne.jp';
-  const sbLoginEmail=v=>{ v=String(v||'').trim(); return v.includes('@')?v:(/^[A-Za-z0-9]{1,20}$/.test(v)?`${v.toLowerCase()}@${SB_ID_DOMAIN}`:v); };
+  const sbLoginEmail=v=>{ v=String(v||'').trim(); return v.includes('@')?v:(/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(v)?`${v.toLowerCase()}@${SB_ID_DOMAIN}`:v); };
   const sbIsIdMail=e=>String(e||'').toLowerCase().endsWith('@'+SB_ID_DOMAIN);
   function sbLoginLabel(){ const e=sbUser?.email||''; return sbIsIdMail(e)?'社員ID '+e.split('@')[0].toUpperCase():e; }
   async function sbFn(action,body={}){ // 社員IDのログイン発行・共用端末の打刻（サーバー処理）
@@ -2686,7 +2686,7 @@ docOn('click',async ev=>{
 
     case 'editStaff': openSheet({kind:'staff',s:el.dataset.id?structuredClone(get('staff',el.dataset.id)):{name:'',kind:'社員',mode:'full',color:staffList().length%8,order:staffList().length}}); break;
     case 'staffMode': sheet.s.mode=el.dataset.v; renderOverlay(); break;
-    case 'staffSave': { const s=sheet.s; if(!s.name?.trim()) return toast('名前を入れてください'); s.empNo=String(s.empNo||'').trim(); if(s.empNo&&!/^[A-Za-z0-9]{1,20}$/.test(s.empNo)) return toast('社員IDは英数字（20文字まで）で入れてください'); if(s.empNo&&all('staff').some(x=>x.id!==s.id&&String(x.empNo||'').toLowerCase()===s.empNo.toLowerCase())) return toast(`社員ID「${s.empNo}」は他の人が使っています`); const {id,...rest}=s; const nid=await put('staff',id,rest); if(!P.me){P.me=nid;savePrefs();} closeSheet(); toast('保存しました'); break; }
+    case 'staffSave': { const s=sheet.s; if(!s.name?.trim()) return toast('名前を入れてください'); s.empNo=String(s.empNo||'').trim(); if(s.empNo&&!/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(s.empNo)) return toast('社員IDは英数字（記号は - _ . のみ・30文字まで）で入れてください'); if(s.empNo&&all('staff').some(x=>x.id!==s.id&&String(x.empNo||'').toLowerCase()===s.empNo.toLowerCase())) return toast(`社員ID「${s.empNo}」は他の人が使っています`); const {id,...rest}=s; const nid=await put('staff',id,rest); if(!P.me){P.me=nid;savePrefs();} closeSheet(); toast('保存しました'); break; }
     case 'staffDel': await put('staff',sheet.s.id,{...sheet.s,inactive:true}); closeSheet(); toast('無効にしました'); break;
     case 'editMaster': { const col=el.dataset.col; if(['customers','sites','jobs'].includes(col)){ SHELL.openMaster(col,el.dataset.id||''); break; } openSheet({kind:'master',col,m:el.dataset.id?structuredClone(get(col,el.dataset.id)):{}}); break; }
     case 'masterSave': { const {col,m}=sheet; if(!(m.name||m.title||'').trim()) return toast('名前を入れてください'); const {id,...rest}=m; await put(col,id,rest); closeSheet(); toast('保存しました'); break; }
@@ -3955,7 +3955,7 @@ const MTABS={
   data(){
     const demo=COLS.reduce((a,c)=>a+all(c).filter(r=>r.demo).length,0)+SHELL.demoCountS();
     return `<section class="sec"><h3>契約台帳（Excel）の取り込み</h3><p class="small" style="margin:0 0 8px">別に作った契約台帳・契約マスタのExcelから、顧客・現場・定期契約をまとめて登録します。列の対応はシートを読んで自動で推測し、取り込む前に確認できます。月ごとの列（「9月」など）に日付や●があれば、その月の作業予定も作ります。</p><button class="btn pri" data-act="import">Excelを選んで取り込む</button></section>
-    <section class="sec"><h3>バックアップ</h3><p class="small" style="margin:0 0 8px">すべてのデータを1つのファイル（JSON）に保存します。月1回ほどの保存をおすすめします。</p><div class="toolbar" style="margin:0"><button class="btn" data-act="backup">バックアップを保存</button><button class="btn" data-act="export-csv">定期契約をCSVで保存</button></div></section>
+    <section class="sec"><h3>バックアップ</h3><p class="small" style="margin:0 0 8px">すべてのデータを1つのファイル（JSON）に保存します。月1回ほどの保存をおすすめします。</p><div class="toolbar" style="margin:0"><button class="btn" data-act="backup">バックアップを保存</button><button class="btn" data-act="export-csv">定期契約をCSVで保存</button></div></section>${impSec()}
     <section class="sec"><h3>サンプルデータ</h3><p class="small" style="margin:0 0 8px">48期予算表（定期清掃・日常清掃）と契約一覧表から作ったサンプルです（${demo}件）。担当者は仮の班名、原価は未入力です。本番の入力を始めるときは、まとめて削除するか、そのまま手直しして使ってください。</p>
       ${sheet&&sheet.kind==='x'?'':''}<div id="demoBox">${VS.confirmDemo?`<div class="confirm"><span>サンプルデータ ${demo}件を削除します。元に戻せません。</span><button class="btn danger" data-act="demo-del-yes">削除する</button><button class="btn" data-act="demo-del-no">やめる</button></div>`:`<div class="toolbar" style="margin:0"><button class="btn danger" data-act="demo-del" ${demo?'':'disabled'}>サンプルデータを削除</button></div>`}</div></section>`;
   },
@@ -4555,6 +4555,9 @@ docOn('click',async e=>{
     case 'pin-clear': if(await loginCall('setPin',{staffId:id,pin:''},()=>'暗証番号を消しました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,pinSet:false}; refreshSheet(); } },800); break;
     case 'defpw-save': { const pw=(ROOT.querySelector('#set_defpw')?.value||'').trim(); if(pw.length<8) return toast('初期パスワードは8文字以上にしてください'); if(await loginCall('setDefault',{password:pw},()=>'共通の初期パスワードを保存しました')){ ROOT.querySelector('#set_defpw').value=''; defpwAt=0; defpwState(); } break; }
     case 'kiosk-demo': SHELL.loginApi.kioskDemo(); break;
+    case 'imp-run': await impRun(); break;
+    case 'imp-cancel': impPending=null; render(); break;
+    case 'imp-del': await impDel(el.dataset.tag); break;
     case 'jobview': { const wasA=VS.jobView==='archive', isA=el.dataset.v==='archive'; if(wasA!==isA) VS.jobMonth=''; VS.jobView=el.dataset.v; render(); break; }
     case 'schedview': VS.schedView=el.dataset.v; VS.placing=VS.placing; savePrefs(); render(); break;
     case 'picker': { if(VS.picker&&VS.picker.k===el.dataset.k){VS.picker=null;} else { const r=el.getBoundingClientRect(); VS.picker={k:el.dataset.k,r:{bottom:r.bottom,left:r.left}}; } render(); break; }
@@ -5451,7 +5454,7 @@ function peopleTable(js){
    社員ID・ログイン（メール／社員ID）・共用端末の暗証番号
    発行・再発行・停止・暗証番号は 管理者と責任者（責任者は管理者の分を扱えない）
    ========================================================= */
-const ID_RE=/^[A-Za-z0-9]{1,20}$/;
+const ID_RE=/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/;
 const canLoginAdmin=t=>{ const r=roleOf(meStaff()); return r==='admin'||(r==='lead'&&roleOf(t)!=='admin'&&(t?.kind!=='協力会社')); };
 const loginMarks=s=>[s.email?'メール':'',s.loginEmail?'ID':'',s.pinSet?'暗証番号':''].filter(Boolean).join('・')||'—';
 function loginBox(s,st){
@@ -5481,7 +5484,7 @@ async function loginCall(action,body,okMsg){
 }
 function empNoCheck(id,empNo){
   if(!empNo) return '';
-  if(!ID_RE.test(empNo)) return '社員IDは英数字（20文字まで）で入れてください';
+  if(!ID_RE.test(empNo)) return '社員IDは英数字（記号は - _ . のみ・30文字まで）で入れてください';
   if(all('staff').some(s=>s.id!==id&&String(s.empNo||'').toLowerCase()===empNo.toLowerCase())) return `社員ID「${empNo}」は${staffName(all('staff').find(s=>s.id!==id&&String(s.empNo||'').toLowerCase()===empNo.toLowerCase()).id)}さんが使っています`;
   return '';
 }
@@ -5498,6 +5501,47 @@ let defpwKnown=null, defpwAt=0;
 async function defpwState(){ const el=ROOT.querySelector('#defpw_state'); if(!el||!SHELL.loginApi.live) return;
   if(Date.now()-defpwAt>60e3){ defpwAt=Date.now(); try{ defpwKnown=(await SHELL.loginApi.call('info')).defaultSet; }catch(e){ defpwKnown=null; } }
   const e2=ROOT.querySelector('#defpw_state'); if(e2) e2.textContent=defpwKnown==null?'':defpwKnown?'設定済みです':'まだ設定されていません'; }
+/* =========================================================
+   移行ファイル（JSON）の取り込み・取り込んだデータの削除（管理者のみ）
+   形式：[{col,id,data}] または バックアップのファイル（{customers:[...], ...}）
+   ========================================================= */
+let impPending=null;
+function impSec(){
+  if(roleOf(meStaff())!=='admin') return '';
+  const tags={}; COLS.forEach(c=>all(c).forEach(r=>{ if(r.imp) tags[r.imp]=(tags[r.imp]||0)+1; }));
+  const p=impPending;
+  return `<section class="sec"><h3>移行ファイルの取り込み（管理者のみ）</h3>
+    <p class="small" style="margin:0 0 8px">データ移行用のファイル（JSON）やバックアップを取り込みます。同じIDのデータは上書きします（担当者・顧客・現場は今ある項目を残して足します）。</p>
+    <div class="toolbar" style="margin:0"><input type="file" id="migFile" accept=".json,application/json"></div>
+    ${p?`<div class="callout w" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:6px"><b>「${esc(p.name)}」を取り込みますか？</b><span class="small">${Object.entries(p.count).map(([c,n])=>`${esc(COL_L[c]||c)} ${n}件`).join('　')}${p.skip?`　（このアプリで使わない種類 ${p.skip}件は取り込みません）`:''}</span><div class="toolbar" style="margin:0"><button class="btn" data-act="imp-cancel">やめる</button><button class="btn pri" data-act="imp-run">取り込む</button></div></div>`:''}
+    ${Object.keys(tags).length?`<div style="margin-top:10px">${Object.entries(tags).map(([t,n])=>`<div class="small" style="display:flex;gap:8px;align-items:center;margin-top:4px">取り込み「${esc(t)}」のデータ ${n}件 <button class="btn sm danger" data-act="imp-del" data-tag="${esc(t)}">${VS.impDelAsk===t?'もう一度押すと削除します':'まとめて削除'}</button></div>`).join('')}<p class="small muted">テスト用に取り込んだデータは、本番運用の前にここでまとめて消せます（あとから入力・変更したデータも、取り込んだ記録が付いたものは消えます）。</p></div>`:''}
+  </section>`;
+}
+const COL_L={customers:'顧客',sites:'現場',jobs:'案件',quotes:'見積',orders:'発注書',prices:'価格表',templates:'テンプレート',contracts:'定期契約',visits:'作業予定',staff:'担当者',settings:'設定',porders:'協力会社の発注',approvals:'承認'};
+async function impRead(f){
+  try{
+    const j=JSON.parse(await f.text()); let items=[];
+    if(Array.isArray(j)) items=j.filter(x=>x&&x.col&&x.id&&x.data&&typeof x.data==='object').map(x=>({col:x.col,id:String(x.id),data:x.data}));
+    else if(j&&typeof j==='object') Object.entries(j).forEach(([c,arr])=>{ if(Array.isArray(arr)) arr.forEach(r=>{ if(r&&r.id){ const {id,...d}=r; items.push({col:c,id:String(id),data:d}); } }); });
+    const ok=items.filter(x=>COLS.includes(x.col)), count={}; ok.forEach(x=>count[x.col]=(count[x.col]||0)+1);
+    if(!ok.length) return toast('取り込めるデータが見つかりませんでした');
+    impPending={name:f.name,items:ok,count,skip:items.length-ok.length}; render();
+  }catch(e){ toast('ファイルを読めませんでした（'+e.message+'）'); }
+}
+async function impRun(){
+  const p=impPending; if(!p) return; impPending=null; render();
+  const t0=Date.now(); toast(`${p.items.length}件を取り込んでいます…`);
+  await putMany(p.items,(d,n)=>{ if(d%100===0||d===n) toast(`取り込み中… ${d} / ${n}`); });
+  autoGenDone=false; setTimeout(()=>autoGen(),500);
+  toast(`${p.items.length}件を取り込みました（${Math.round((Date.now()-t0)/1000)}秒）`);
+}
+async function impDel(tag){
+  if(VS.impDelAsk!==tag){ VS.impDelAsk=tag; render(); return; }
+  VS.impDelAsk=''; const items=[]; COLS.forEach(c=>all(c).filter(r=>r.imp===tag&&!(c==='staff'&&r.id===SHELL.meId())).forEach(r=>items.push({col:c,id:r.id})));
+  const ks=new Set(items.filter(x=>x.col==='contracts').map(x=>x.id)); all('visits').filter(v=>ks.has(v.contractId)&&!v.imp).forEach(v=>items.push({col:'visits',id:v.id}));
+  toast(`${items.length}件を削除しています…`); await delMany(items,(d,n)=>{ if(d%100===0) toast(`削除中… ${d} / ${n}`); }); toast('削除しました（自分の担当者データは残しています）');
+}
+docOn('change',e=>{ const t=e.target; if(t.id==='migFile'&&t.files&&t.files[0]) impRead(t.files[0]); });
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
