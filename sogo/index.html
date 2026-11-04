@@ -1006,6 +1006,7 @@ const SHELL=(()=>{
         return {name:s.name,hm}; },
     });
   }
+  const loginStaffId=()=>sbStaffId||'';
   const sPut=(c,id,d)=>S_API.put(c,id,d), sList=c=>window.S_API?S_API.list(c):[], sDel=(c,id)=>S_API.del(c,id);
   const loginApi={ get live(){ return !!SB; }, call:(a,b)=>SB?sbFn(a,b):Promise.reject(new Error('本番（ログインあり）の画面で使えます')), kioskDemo:()=>kioskDemo() };
   function use(n){
@@ -1290,7 +1291,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {loginStaffId,sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -5515,7 +5516,7 @@ function impSec(){
     <p class="small" style="margin:0 0 8px">データ移行用のファイル（JSON）やバックアップを取り込みます。同じIDのデータは上書きします（担当者・顧客・現場は今ある項目を残して足します）。</p>
     <div class="toolbar" style="margin:0"><input type="file" id="migFile" accept=".json,application/json"></div>
     ${p?`<div class="callout w" style="margin-top:8px;flex-direction:column;align-items:stretch;gap:6px"><b>「${esc(p.name)}」を取り込みますか？</b><span class="small">${Object.entries(p.count).map(([c,n])=>`${esc(COL_L[c]||c)} ${n}件`).join('　')}${p.skip?`　（このアプリで使わない種類 ${p.skip}件は取り込みません）`:''}</span><div class="toolbar" style="margin:0"><button class="btn" data-act="imp-cancel">やめる</button><button class="btn pri" data-act="imp-run">取り込む</button></div></div>`:''}
-    ${Object.keys(tags).length?`<div style="margin-top:10px">${Object.entries(tags).map(([t,n])=>`<div class="small" style="display:flex;gap:8px;align-items:center;margin-top:4px">取り込み「${esc(t)}」のデータ ${n}件 <button class="btn sm danger" data-act="imp-del" data-tag="${esc(t)}">${VS.impDelAsk===t?'もう一度押すと削除します':'まとめて削除'}</button></div>`).join('')}<p class="small muted">テスト用に取り込んだデータは、本番運用の前にここでまとめて消せます（あとから入力・変更したデータも、取り込んだ記録が付いたものは消えます）。</p></div>`:''}
+    ${Object.keys(tags).length?`<div style="margin-top:10px">${Object.entries(tags).map(([t,n])=>`<div class="small" style="display:flex;gap:8px;align-items:center;margin-top:4px">取り込み「${esc(t)}」のデータ ${n}件 <button class="btn sm danger" data-act="imp-del" data-tag="${esc(t)}">${VS.impDelAsk===t?'もう一度押すと削除します':'まとめて削除'}</button></div>`).join('')}<p class="small muted">テスト用に取り込んだデータは、本番運用の前にここでまとめて消せます（あとから入力・変更したデータも、取り込んだ記録が付いたものは消えます。ログインできる人・管理者の担当者データは消しません）。</p></div>`:''}
   </section>`;
 }
 const S_COLS=['areas','patterns','shifts','wishes','punches','reports','events','fixreqs','meta','bizlib'];
@@ -5541,10 +5542,10 @@ async function impRun(){
 }
 async function impDel(tag){
   if(VS.impDelAsk!==tag){ VS.impDelAsk=tag; render(); return; }
-  VS.impDelAsk=''; const items=[]; COLS.forEach(c=>all(c).filter(r=>r.imp===tag&&!(c==='staff'&&r.id===SHELL.meId())).forEach(r=>items.push({col:c,id:r.id})));
+  VS.impDelAsk=''; const items=[]; COLS.forEach(c=>all(c).filter(r=>r.imp===tag&&!(c==='staff'&&(r.id===SHELL.meId()||r.id===SHELL.loginStaffId()||r.email||r.loginEmail||r.loginUid||['admin'].includes(r.role)))).forEach(r=>items.push({col:c,id:r.id})));
   const sItems=[]; S_COLS.forEach(c=>SHELL.sList(c).filter(r=>r.imp===tag).forEach(r=>sItems.push([c,r.id])));
   const ks=new Set(items.filter(x=>x.col==='contracts').map(x=>x.id)); all('visits').filter(v=>ks.has(v.contractId)&&!v.imp).forEach(v=>items.push({col:'visits',id:v.id}));
-  toast(`${items.length}件を削除しています…`); await delMany(items,(d,n)=>{ if(d%100===0) toast(`削除中… ${d} / ${n}`); }); for(const [c,id] of sItems) await SHELL.sDel(c,id); toast('削除しました（自分の担当者データは残しています）');
+  toast(`${items.length}件を削除しています…`); await delMany(items,(d,n)=>{ if(d%100===0) toast(`削除中… ${d} / ${n}`); }); for(const [c,id] of sItems) await SHELL.sDel(c,id); toast('削除しました（ログインできる人・管理者の担当者データは残しています）');
 }
 docOn('change',e=>{ const t=e.target; if(t.id==='migFile'&&t.files&&t.files[0]) impRead(t.files[0]); });
 
