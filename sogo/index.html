@@ -822,6 +822,7 @@ const SHELL=(()=>{
       ['G','contracts','定期契約',I.ctr,'定期'],
       ['G','customers','顧客・現場',I.cust],
       ['S','relations','顧客・担当別',I.rel],
+      ['G','approvals','承認',I.po,'承認'],
       ['G','analytics','分析',I.ana],
     ]],
     ['設定',[
@@ -1163,7 +1164,7 @@ const SHELL=(()=>{
   function badges(){
     const out={}; if(!window.G_API||!window.S_API) return out;
     const g=G_API.badges(), s=S_API.badges();
-    out['G:jobs']=g.jobs; out['G:schedule']=g.schedule; out['S:reports']=s.reports; out['S:time']=s.time; out['S:porders']=s.porders; out['G:home']=apCount(); { const me=S_API.meId(); const n=noticesFor(me).length+flowMine(me).length; if(n) out['S:home']=n; }
+    out['G:jobs']=g.jobs; out['G:schedule']=g.schedule; out['S:reports']=s.reports; out['S:time']=s.time; out['S:porders']=s.porders; out['G:approvals']=apCount(); { const me=S_API.meId(); const n=noticesFor(me).length+flowMine(me).length; if(n) out['S:home']=n; }
     return out;
   }
   function renderNav(){
@@ -4276,7 +4277,7 @@ SHEETS.job=({id})=>{
     ${m.byOrder?'<p class="small muted" style="margin:0 0 8px">原価は発行済みの発注書の金額です。</p>':''}<div class="money"><div><div class="l">売上（税抜）</div><div class="v num">${yen(m.sales)}</div></div>${can('cost.view')?`<div><div class="l">原価</div><div class="v num">${yen(m.cost)}</div></div><div><div class="l">粗利</div><div class="v num">${yen(m.gp)}</div></div><div><div class="l">粗利率</div><div class="v num">${m.sales?Math.round(m.gpr*100):0}%</div></div>`:''}</div>
     ${can('cost.view')?`<div class="form" style="margin-top:10px">${fld('見積外の原価（交通費・材料など）',`<input class="inp num" inputmode="numeric" data-jf="extraCost" value="${esc(j.extraCost)}">`)}</div>`:''}
   </section>
-  <section class="sec"><h3>作業日程・完了報告 <span class="num muted">${vs.length}</span><span class="sp"><button class="btn sm" data-act="new-visit" data-job="${id}">＋ 作業予定</button></span></h3>
+  <section class="sec"><h3>作業日程・完了報告 <span class="num muted">${vs.length}</span><span class="sp">${['依頼受付','現地調査'].includes(j.stage||'依頼受付')?`<button class="btn sm pri" data-act="new-survey" data-id="${id}">＋ 現地調査</button> `:''}<button class="btn sm" data-act="new-visit" data-job="${id}">＋ 作業予定</button></span></h3>
     ${vs.length?`<div class="list">${vs.map(visitLi).join('')}</div>`:'<p class="empty">作業予定はまだありません。</p>'}</section>
   <div class="small muted">${esc(j.no||'')}　作成 ${esc((j.createdAt||'').slice(0,10))}　更新 ${esc((j.updatedAt||'').slice(0,10))}</div>
   <div id="delBox"><button class="btn danger sm" data-act="ask-del" data-col="jobs" data-id="${id}">この案件を削除</button></div>`};
@@ -4488,7 +4489,7 @@ SHEETS.customer=({id})=>{
   return {title:esc(c.name)+exMark(c),body:`
   <section class="sec"><h3>顧客情報<span class="sp small muted">変更は自動で保存されます</span></h3><div class="form">
     ${fld('顧客名',`<input class="inp" data-cf="name" value="${esc(c.name)}">`)}${fld('フリガナ',`<input class="inp" data-cf="kana" value="${esc(c.kana)}">`)}
-    ${fld('電話',`<input class="inp" data-cf="tel" value="${esc(c.tel)}">`)}${fld('担当者（先方）',`<input class="inp" data-cf="contact" value="${esc(c.contact)}">`)}
+    ${fld('電話',`<input class="inp" data-cf="tel" value="${esc(c.tel)}">`)}${fld('メール（見積・報告の送り先）',`<input class="inp" type="email" data-cf="email" value="${esc(c.email)}">`)}${fld('担当者（先方）',`<input class="inp" data-cf="contact" value="${esc(c.contact)}">`)}
     ${fld('略称（日常報告の本文から自動でタグを付ける名前・カンマ区切り）',`<input class="inp" data-cf="aliases" value="${esc(c.aliases)}" placeholder="例：さくら、港南店">`,true)}${fld('住所',`<input class="inp" data-cf="address" value="${esc(c.address)}">`,true)}${fld('メモ',`<textarea class="inp" data-cf="note">${esc(c.note)}</textarea>`,true)}
   </div></section>
   <section class="sec"><h3>現場・店舗 <span class="num muted">${sites.length}</span><span class="sp"><button class="btn sm" data-act="new-site" data-cust="${id}">＋ 現場</button></span></h3>
@@ -4576,13 +4577,13 @@ SHEETS.newJob=(st)=>{const d=st.draft;return {title:'新規案件',body:`<sectio
   ${fld('受注予定金額',`<input class="inp num" id="nj_amount" inputmode="numeric">`)}
   ${fld('メモ',`<textarea class="inp" id="nj_memo"></textarea>`,true)}
   </div></section>`,foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="newjob-save">登録して開く</button>`};};
-SHEETS.newVisit=(st)=>{const d=st.draft;return {title:'作業予定を追加',body:`<section class="sec"><div class="form">
+SHEETS.newVisit=(st)=>{const d=st.draft;return {title:d.survey?'現地調査の予定を入れる':'作業予定を追加',body:`<section class="sec"><div class="form">
   ${fld('作業名',`<input class="inp" id="nv_title" value="${esc(d.title)}" placeholder="例：〇〇店 エアコン洗浄">`,true)}
   ${fld('案件（任意）',`<select class="inp" id="nv_jobId">${opt('','（なし）',d.jobId)}${all('jobs').filter(j=>j.stage!=='失注').sort(by(j=>j.updatedAt||'',-1)).map(j=>opt(j.id,j.title,d.jobId)).join('')}</select>`)}
   ${fld('作業日',`<input class="inp" type="date" id="nv_date" value="${esc(d.date)}">`)}
   ${fld('開始',`<input class="inp" type="time" id="nv_start">`)}${fld('終了',`<input class="inp" type="time" id="nv_end">`)}
-  ${fld('担当',`<select class="inp" id="nv_staff">${staffOpts('')}</select>`)}
-  </div></section>`,foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="newvisit-save">追加</button>`};};
+  ${fld('担当',`<select class="inp" id="nv_staff">${staffOpts(d.staffId||'')}</select>`)}
+  </div>${d.survey?'<p class="small muted" style="margin:8px 0 0">保存すると、案件が「現地調査」の段階に進みます。</p>':''}</section>`,foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="newvisit-save">追加</button>`};};
 
 SHEETS.day=({date})=>{ const l=all('visits').filter(visibleVisit).filter(staffShown).filter(v=>v.date===date).sort(by(v=>v.start||'')); return {title:`${jd(date)}の作業`,head:`<span class="pill">${l.length}件</span>`,body:l.length?`<div class="sec"><div class="list">${l.map(visitLi).join('')}</div></div>`:'<p class="empty">予定はありません。</p>'}; };
 SHEETS.bulk=()=>{ const ids=[...(VS.multi||[])]; const vs=ids.map(id=>get('visits',id)).filter(Boolean);
@@ -4793,6 +4794,9 @@ docOn('click',async e=>{
     case 'bulk': openSheet({kind:'bulk',live:false}); break;
     case 'bulk-save': await bulkSave(); break;
     case 'people-owner': VS.jobOwners=[el.dataset.id||'__none']; savePrefs(); VS.jobView='board'; render(); toast(`${el.dataset.id?staffName(el.dataset.id):'担当なし'}の案件を表示しています（「表示する営業担当」で戻せます）`); break;
+    case 'new-survey': openSurvey(id); break;
+    case 'qsend': openSheet({kind:'qsend',id}); break;
+    case 'qs-print': case 'qs-mail': case 'qs-file': case 'qs-sent': await qsAct(a,id); break;
     case 'login-issue': { const t=get('staff',id); if(!t) break; readDraftForm(); if(!String(t.empNo||'').trim()) return toast('先に社員ID（英数字）を入れて「保存」してください'); const pw=(ROOT.querySelector('#lg_pw')?.value||'').trim(); if(pw&&pw.length<8) return toast('パスワードは8文字以上にしてください');
       if(await loginCall('issue',{staffId:id,password:pw},r=>`社員ID「${r.loginId}」でログインできるようにしました（${pw?'個別のパスワード':'共通の初期パスワード'}）`)) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,...get('staff',id)}; refreshSheet(); } },800); break; }
     case 'login-revoke': { if(!el.dataset.ok){ el.dataset.ok='1'; el.textContent='もう一度押すと止めます'; break; } if(await loginCall('revoke',{staffId:id},()=>'社員IDのログインを止めました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ const {loginEmail,loginUid,...r}=sheet.draft; sheet.draft={...r,...get('staff',id)}; refreshSheet(); } },800); break; }
@@ -5445,7 +5449,7 @@ async function decideAp(id,ok,comment){
 function apMine(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='申請中'&&canApproveFor(a.requestedBy,me,a)); }
 function apReturned(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='差戻し'&&a.requestedBy===me&&!a.seen); }
 function apApproved(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='承認'&&a.requestedBy===me&&!a.seen); }
-function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（発注書の送付など次の操作へ）','ap','']); const u=['admin','lead','manager'].includes(roleOf(meStaff()))&&window.S_API?S_API.unregDue():0; if(u) a.push(['w',u,'登録をすすめる訪問先（日常報告に2回以上）','unreg','']); return a; }
+function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（見積・発注書の送付など次の操作へ）','ap','']); const u=['admin','lead','manager'].includes(roleOf(meStaff()))&&window.S_API?S_API.unregDue():0; if(u) a.push(['w',u,'登録をすすめる訪問先（日常報告に2回以上）','unreg','']); return a; }
 /* 承認が止まっていたら：設定の時間を過ぎた申請は、責任者・管理者・代理の人も承認できる */
 const apOverdue=a=>{ const h=num(S().apEscHours); return h>0&&a.status==='申請中'&&Date.now()-new Date(a.requestedAt).getTime()>h*3600e3; };
 SHEETS.approvals=()=>{
@@ -5456,7 +5460,7 @@ SHEETS.approvals=()=>{
   <section class="sec"><h3>あなたの承認待ち <span class="num muted">${mine.length}</span></h3>${mine.length?mine.map(a=>`<div class="panel" style="padding:10px;margin-bottom:8px"><div><span class="pill w">${esc(AP_L[a.kind])}</span> <b>${esc(a.title)}</b></div>
     <div class="small muted" style="margin:4px 0">申請：${esc(staffName(a.requestedBy))}　${esc(poWhen(a.requestedAt))}</div><div class="small">${info(a)}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input class="inp" id="apc_${a.id}" placeholder="コメント（差し戻しの理由など・任意）" style="flex:1 1 200px">${open(a)}<button class="btn sm" data-act="ap-ng" data-id="${a.id}">差し戻す</button><button class="btn sm pri" data-act="ap-ok" data-id="${a.id}">承認する</button></div></div>`).join(''):'<p class="empty">承認待ちはありません。</p>'}</section>
-  <section class="sec"><h3>自分の申請</h3>${own.length?`<div class="list">${own.map(a=>`<div class="li" style="cursor:default"><span class="pill ${a.status==='承認'?'g':a.status==='差戻し'?'r':'w'}">${esc(a.status)}</span><div class="grow">${esc(AP_L[a.kind])}：${esc(a.title)}<div class="small muted">${esc(poWhen(a.requestedAt))}　承認者：${esc(a.status==='申請中'?approverLabel(a.requestedBy):staffName(a.decidedBy))}${a.comment?`　「${esc(a.comment)}」`:''}</div></div>${open(a)}${a.kind==='order'&&a.status==='承認'&&get('orders',a.refId)&&orderUnsent(get('orders',a.refId))?`<button class="btn sm pri" data-act="osend" data-id="${a.refId}">担当者に送る</button>`:''}</div>`).join('')}</div>`:'<p class="empty">まだありません。</p>'}</section>`,
+  <section class="sec"><h3>自分の申請</h3>${own.length?`<div class="list">${own.map(a=>`<div class="li" style="cursor:default"><span class="pill ${a.status==='承認'?'g':a.status==='差戻し'?'r':'w'}">${esc(a.status)}</span><div class="grow">${esc(AP_L[a.kind])}：${esc(a.title)}<div class="small muted">${esc(poWhen(a.requestedAt))}　承認者：${esc(a.status==='申請中'?approverLabel(a.requestedBy):staffName(a.decidedBy))}${a.comment?`　「${esc(a.comment)}」`:''}</div></div>${open(a)}${a.kind==='order'&&a.status==='承認'&&get('orders',a.refId)&&orderUnsent(get('orders',a.refId))?`<button class="btn sm pri" data-act="osend" data-id="${a.refId}">担当者に送る</button>`:''}${a.kind==='quote'&&a.status==='承認'&&quoteUnsent(get('quotes',a.refId))?`<button class="btn sm pri" data-act="qsend" data-id="${a.refId}">お客様に送る</button>`:''}</div>`).join('')}</div>`:'<p class="empty">まだありません。</p>'}</section>`,
   foot:`<button class="btn" data-act="close-sheet">閉じる</button>`, after(){ [...apReturned(),...apApproved()].forEach(a=>put('approvals',a.id,{...a,seen:true})); }};
 };
 
@@ -5505,7 +5509,7 @@ async function flowAfterQuote(q,j){
   else if(['依頼受付','現地調査'].includes(j.stage)) await moveStage(j.id,'見積',q.status==='提出済'?'見積を提出した':'見積を作った');
   else toast('見積を保存しました');
   const jj=get('jobs',j.id);
-  if(q.status==='作成中') openSheet({kind:'qsubmit',id:q.id});
+  if(q.status==='作成中'||quoteUnsent(get('quotes',q.id))) openSheet({kind:'qsend',id:q.id});
   else if(q.status==='受注'&&!jobOrders(j.id).length&&!all('visits').some(v=>v.jobId===j.id)) openSheet({kind:'wonNext',id:jj.id});
   else openSheet({kind:'job',id:jj.id});
 }
@@ -5541,11 +5545,12 @@ function nextStep(j){
   if(stg==='依頼受付'||stg==='現地調査'){
     if(nextV) return {txt:`${stg==='現地調査'?'現地調査':'予定'} ${jd(nextV.date)}`,stale:false};
     if(q) return {txt:'見積を作成中',stale:false};
-    return {txt:stg==='現地調査'?'現地調査が済んだら見積を作る':'現地調査の予定か見積を入れる',stale:age>=intake,why:`${age}日動きなし`,btns:[['new-quote','見積を作る',j.id]]};
+    return {txt:stg==='現地調査'?'現地調査が済んだら見積を作る':'現地調査の予定か見積を入れる',stale:age>=intake,why:`${age}日動きなし`,btns:stg==='現地調査'?[['new-quote','見積を作る',j.id]]:[['new-survey','現地調査',j.id],['new-quote','見積を作る',j.id]]};
   }
   if(stg==='見積'){
     if(!q) return {txt:'見積を作る',stale:age>=draft,why:`${age}日動きなし`,btns:[['new-quote','見積を作る',j.id]]};
-    if(q.status==='作成中'){ const a=daysSince(q.updatedAt||q.createdAt); return {txt:'見積がまだ提出されていません',stale:a>=draft,why:`見積未提出 ${a}日`,btns:[['qa-submit','提出済にする',q.id]]}; }
+    if(q.status==='作成中'){ const a=daysSince(q.updatedAt||q.createdAt); return {txt:'見積がまだ提出されていません',stale:a>=draft,why:`見積未提出 ${a}日`,btns:[['qsend','お客様に送る',q.id]]}; }
+    if(quoteUnsent(q)) return {txt:'見積がまだお客様に送られていません',stale:true,why:'見積未送付',btns:[['qsend','送る',q.id]]};
     if(q.status==='承認待ち') return {txt:'見積の承認待ち',stale:false};
     if(q.status==='提出済'){ const a=daysSince(q.issuedAt||q.updatedAt), c=daysSince(j.lastContact||'2000-01-01'); return {txt:`結果待ち（提出から${a}日）`,stale:a>=fol&&c>=fol,why:`結果待ち ${a}日`,btns:[['qa-won','受注',q.id],['qa-lost','失注',j.id]]}; }
     if(q.status==='失注') return {txt:'見積が失注になっています',stale:true,why:'案件の失注が未入力',btns:[['qa-lost','失注にする',j.id]]};
@@ -5796,6 +5801,68 @@ let lpT=null;
 docOn('pointerdown',e=>{ if(e.pointerType!=='touch'||VS.route!=='schedule'||sheet) return; const el=e.target.closest('[data-act="chip"],[data-act="visit"]'); const id=el?.dataset.id; if(!id||String(id).startsWith('ev~')) return;
   clearTimeout(lpT); lpT=setTimeout(()=>{ VS.lpAt=Date.now(); if(!VS.multi){ VS.multi=new Set(); VS.placing=null; } VS.multi.add(id); try{ navigator.vibrate&&navigator.vibrate(30); }catch(_){} render(); toast('複数選択を始めました。続けてタップで追加できます'); },550); });
 ['pointerup','pointercancel','pointermove'].forEach(t=>docOn(t,e=>{ if(t==='pointermove'&&lpT&&(Math.abs(e.movementX)+Math.abs(e.movementY))<6) return; clearTimeout(lpT); lpT=null; }));
+/* =========================================================
+   見積をお客様に送る（印刷・PDF／メール）と、送ったかの記録
+   ・承認が必要な見積は、承認されてから送る
+   ・提出済のまま送っていない見積は「要確認」と確認リストに出す
+   ========================================================= */
+const QSEND_FROM='2026-11-05'; // これより前に提出済にした見積は送付済みとみなす
+const quoteUnsent=q=>!!q&&q.status==='提出済'&&!q.sent&&(q.issuedAt||'')>=QSEND_FROM;
+function quoteNeedsAp(q){ const qc=qcalc(q); return needAp('quote',{amount:qc.sub,gpr:qc.sub?qc.gpr:null,discount:(q.lines||[]).some(l=>num(l.price)<0)}); }
+function printHtml(title,inner){
+  const html=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;margin:24px;color:#111}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border-bottom:1px solid #ccc;padding:5px 6px;font-size:12px}h1{text-align:center;letter-spacing:.3em;font-size:22px}@media print{body{margin:0}}</style></head><body>${inner.replace('class="paper"','style="max-width:720px;margin:auto;font-size:12px;line-height:1.6"')}</body></html>`;
+  const f=document.createElement('iframe'); f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f);
+  const d=f.contentWindow.document; d.open(); d.write(html); d.close();
+  setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ toast('この画面では印刷を開けません。「ファイルに保存」してから開いて印刷してください'); } setTimeout(()=>f.remove(),60000); },300);
+}
+function quoteMailBody(q){
+  const j=get('jobs',q.jobId)||{}, s=S(), c=qcalc(q), me=staffName(SHELL.meId());
+  const exp=q.issuedAt?addDays(q.issuedAt,num(q.validDays??s.quoteValidDays)):'';
+  return `${custName(j.customerId)}\n${get('customers',j.customerId)?.contact?get('customers',j.customerId).contact+' 様\n':'ご担当者様\n'}\nいつもお世話になっております。${s.companyName||''}の${me}です。\n「${q.title||j.title||''}」のお見積書をお送りいたします。\n\n合計金額：${yen(c.total)}（税込）\n${exp?'有効期限：'+exp+'\n':''}\nご確認のほど、よろしくお願いいたします。\n\n${s.companyName||''}\n${me}${s.companyTel?'\nTEL '+s.companyTel:''}`;
+}
+SHEETS.qsend=(st)=>{
+  const q=get('quotes',st.id); if(!q) return {title:'見積',body:'<div class="empty">見つかりません</div>'};
+  const j=get('jobs',q.jobId)||{}, cu=get('customers',j.customerId)||{}, c=qcalc(q);
+  const ap=q.status==='作成中'&&quoteNeedsAp(q), wait=q.status==='承認待ち';
+  if(st.email==null) st.email=cu.email||'';
+  if(st.msg==null) st.msg=quoteMailBody(q);
+  const head=`<section class="sec"><p style="margin:0"><b>${esc(q.title||j.title||'')}</b>　${esc(custName(j.customerId))}　${yen(c.total)}（税込）</p>${q.sent?`<div class="callout g" style="margin-top:8px"><span>送付済み：${esc(poWhen(q.sent.at))}　${esc(staffName(q.sent.by))}　${esc((q.sent.via||[]).join('・'))}${q.sent.to?'　'+esc(q.sent.to):''}</span></div>`:''}</section>`;
+  if(wait) return {title:'見積の承認待ち',body:head+`<div class="callout w"><span>承認待ちです。承認されると、あなたのホームとダッシュボードに「承認された申請」が出ます。そこからこの画面を開いて、お客様に送ってください。</span></div>`,foot:`<button class="btn" data-act="close-sheet">閉じる</button>`};
+  if(ap) return {title:'この見積は承認が必要です',body:head+`<div class="callout w"><span>金額・値引き・粗利率の条件に当たるため、お客様に送る前に承認が必要です。承認されたら、この画面から印刷・メールで送れます。</span></div><section class="sec">${apNote('quote',q.id)}</section>`,
+    foot:`<button class="btn" data-act="qs-later" data-id="${q.id}">まだ（作成中のまま）</button><button class="btn" data-act="qs-print" data-id="${q.id}">中身を印刷して確認</button><button class="btn pri" data-act="qa-submit" data-id="${q.id}">承認を申請する</button>`};
+  const body=head+`<section class="sec"><h3>送り方</h3>
+    <div class="toolbar" style="margin:0 0 8px"><button class="btn" data-act="qs-print" data-id="${q.id}">印刷する・PDFにする</button><button class="btn" data-act="qs-mail" data-id="${q.id}">メールで送る</button><button class="btn" data-act="qs-file" data-id="${q.id}">ファイルに保存</button></div>
+    <p class="small muted" style="margin:0 0 8px">メールに見積書を付けるときは、先に「印刷する・PDFにする」で「PDFに保存」を選んでから、そのPDFをメールに添付してください。</p>
+    <div class="form">${fld('送り先メール',`<input class="inp" id="qs_email" type="email" value="${esc(st.email)}" placeholder="例：tanaka@example.co.jp">${cu.id&&st.email&&st.email!==(cu.email||'')?`<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="qs_save" checked> 顧客「${esc(cu.name)}」のメールとして保存する</label>`:''}`)}</div>
+    ${fld('メールの文面',`<textarea class="inp" id="qs_msg" rows="10">${esc(st.msg)}</textarea>`,true)}</section>
+    <section class="sec">${quotePaperHtml(q)}</section>`;
+  const foot=`<button class="btn" data-act="${q.status==='作成中'?'qs-later':'close-sheet'}" data-id="${q.id}">あとで</button><button class="btn pri" data-act="qs-sent" data-id="${q.id}">${q.sent?'もう一度送った':'お客様に送った'}${q.status==='作成中'?'（提出済にする）':''}</button>`;
+  return {title:q.sent?'見積を送る（送付済み）':'見積をお客様に送る',body,foot};
+};
+async function qsSaveEmail(){
+  const q=get('quotes',sheet.id), j=get('jobs',q?.jobId), cu=get('customers',j?.customerId); const em=(ROOT.querySelector('#qs_email')?.value||'').trim();
+  sheet.email=em; sheet.msg=ROOT.querySelector('#qs_msg')?.value??sheet.msg;
+  if(cu&&em&&em!==(cu.email||'')&&ROOT.querySelector('#qs_save')?.checked) await patch('customers',cu.id,{email:em});
+}
+async function qsAct(a,id){
+  const q=get('quotes',id); if(!q) return;
+  if(a==='qs-print'){ if(sheet?.kind==='qsend') await qsSaveEmail(); (sheet.svia=sheet.svia||new Set()).add('印刷・PDF'); printHtml(`御見積書 ${q.no||''}`,quotePaperHtml(q)); return; }
+  if(a==='qs-file'){ (sheet.svia=sheet.svia||new Set()).add('ファイル'); const html=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>御見積書 ${esc(q.no||'')}</title><style>body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;margin:24px}@media print{body{margin:0}}</style></head><body>${quotePaperHtml(q).replace('class="paper"','style="max-width:720px;margin:auto;font-size:12px;line-height:1.6"')}</body></html>`; await saveFile(`見積書_${q.no||'draft'}.html`,html,'text/html'); return; }
+  if(a==='qs-mail'){ await qsSaveEmail(); if(!sheet.email) toast('送り先メールが空です（メールの画面で入れてもかまいません）'); (sheet.svia=sheet.svia||new Set()).add('メール');
+    const l=document.createElement('a'); l.href=`mailto:${encodeURIComponent(sheet.email||'')}?subject=${encodeURIComponent('お見積書のご送付：'+(q.title||''))}&body=${encodeURIComponent(sheet.msg||'')}`; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); return; }
+  if(a==='qs-sent'){ await qsSaveEmail(); const via=[...(sheet.svia||[])]; const s={at:nowIso(),by:SHELL.meId(),via:via.length?via:['手渡し・その他'],to:sheet.email||''};
+    await patch('quotes',id,{sent:s,sends:[...(q.sends||[]),s]});
+    if(q.status==='作成中'){ await quickQuote(id,'提出済'); toast('送付を記録し、提出済にしました'); }
+    else { toast('お客様への送付を記録しました'); const j=get('jobs',q.jobId); j?openSheet({kind:'job',id:j.id}):closeSheet(); }
+    return; }
+}
+/* 案件：現地調査の予定 */
+function openSurvey(jid){ const j=get('jobs',jid); if(!j) return; openSheet({kind:'newVisit',live:false,draft:{jobId:jid,date:today(),title:`${j.title} 現地調査`,staffId:j.ownerId||SHELL.meId(),survey:true}}); }
+/* 承認の画面（メニューから） */
+VIEWS.approvals={
+  shell:()=>`<div class="vhead"><h1>承認</h1></div>`,
+  body(){ const s=SHEETS.approvals(); setTimeout(()=>{ try{ s.after&&s.after(); }catch(_){} },800); return `<div class="panel"><div class="pbody">${s.body}</div></div>`; }
+};
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
