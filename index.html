@@ -537,6 +537,7 @@ details.more[open] summary{margin-bottom:8px}
       <h2>作業報告書の初期値</h2>
       <p class="hint">このテンプレートで新しい報告を作ったときに、最初から入っている内容です。作業箇所は1行に「作業箇所｜作業内容｜定期」の形で書きます（「定期」は「スポット」も可）。</p>
       <textarea id="tplRows" class="list" rows="5" placeholder="店内床面｜床面洗浄・ワックス塗布｜定期"></textarea>
+      <label class="f">お客様名<span class="suffix"><input id="tplCustomer" autocomplete="off"><span>様</span></span></label>
       <label class="f">営業担当者<input id="tplSales"></label>
     </div>
     <div class="savebar">
@@ -675,7 +676,7 @@ function cfgFromTpl(t){
 function tplFromCfg(cfg,id,name,meta){
   const rows=meta&&Array.isArray(meta.rows)?meta.rows.filter(r=>r.place||r.content).map(r=>({place:r.place||"",content:r.content||"",type:r.type||""})):[];
   return {id,name,stages:[...cfg.stages],slots:cfg.slots.map(s=>s.name),items:cfg.items.map(i=>i.text),board:clone(cfg.board),
-    company:cfg.company,slogan:cfg.slogan||"",address:cfg.address||"",tel:cfg.tel||"",title:cfg.title,hideEmpty:cfg.hideEmpty,rows,sales:meta?meta.sales||"":""};
+    company:cfg.company,slogan:cfg.slogan||"",address:cfg.address||"",tel:cfg.tel||"",title:cfg.title,hideEmpty:cfg.hideEmpty,rows,sales:meta?meta.sales||"":"",customer:meta?meta.customer||"":""};
 }
 function blankMeta(){return {customer:"",site:"",date:today(),start:"",end:"",inspector:"",workers:[],rows:[{place:"",content:"",type:"定期"}],note:"",sales:"",signature:"",signedAt:0,signHash:""}}
 function fixMeta(m){
@@ -687,7 +688,7 @@ function fixMeta(m){
 }
 function newReport(tpl,prev){
   return {id:"r"+uid(),tplId:tpl.id,tplName:tpl.name,created:Date.now(),
-    meta:Object.assign(blankMeta(),{customer:prev?prev.meta.customer||"":"",site:prev?prev.meta.site:"",inspector:prev?prev.meta.inspector:"",
+    meta:Object.assign(blankMeta(),{customer:tpl.customer||(prev?prev.meta.customer||"":""),site:prev?prev.meta.site:"",inspector:prev?prev.meta.inspector:"",
       workers:prev&&Array.isArray(prev.meta.workers)?[...prev.meta.workers]:[],
       rows:Array.isArray(tpl.rows)&&tpl.rows.length?clone(tpl.rows):[{place:"",content:"",type:"定期"}],
       sales:tpl.sales||(prev?prev.meta.sales||"":"")}),
@@ -990,7 +991,7 @@ $("#btnNewRep").onclick=()=>{
   const sel=document.createElement("select");sel.id="newTplSel";
   D.templates.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.name;if(t.id===R().tplId)o.selected=true;sel.appendChild(o)});
   lb.appendChild(sel);
-  const p=document.createElement("p");p.className="hint";p.textContent="同じテンプレートの前回の報告から、現場名・点検者・作業内容を引き継ぎます。前回の最後の区分の写真は、施工前を撮るときのガイドに表示されます。";
+  const p=document.createElement("p");p.className="hint";p.textContent="テンプレートにお客様名が登録されていれば、それが入ります。同じテンプレートの前回の報告から、お客様名・現場名・作業責任者・作業員を引き継ぎます。前回の最後の区分の写真は、施工前を撮るときのガイドに表示されます。";
   const row=document.createElement("div");row.className="btnrow";
   const go=document.createElement("button");go.className="btn pri";go.textContent="作成する";
   const no=document.createElement("button");no.className="btn";no.textContent="やめる";
@@ -1000,7 +1001,10 @@ $("#btnNewRep").onclick=()=>{
     const t=D.templates.find(x=>x.id===sel.value);if(!t)return;
     const prev=D.reports.filter(r=>r.tplId===t.id).sort((x,y)=>y.created-x.created)[0];
     const r=newReport(t,prev);D.reports.push(r);D.current=r.id;dropAllThumbs();persist();renderAll();a.innerHTML="";
-    toast("新しい報告を作成しました");showTab("photo");
+    toast("新しい報告を作成しました。現場名などを入力してください");
+    // そのまま現場タブの「お客様・現場」へ。空いている最初の欄にカーソルを置く
+    const card=$("#m-customer").closest(".card");if(card)card.scrollIntoView({block:"start"});window.scrollBy(0,-130);
+    const f=["m-customer","m-site"].map(id=>$("#"+id)).find(el=>!el.value.trim())||$("#m-site");try{f.focus({preventScroll:true})}catch(e){f.focus()}
   };
 };
 $("#btnDelRep").onclick=()=>{
@@ -1282,7 +1286,7 @@ function fillSettings(){
   $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
   fillOrg(cfg);
   $("#tplDefaults").hidden=!tplMode;
-  if(tplMode){$("#tplRows").value=(tp.rows||[]).map(r=>[r.place||"",r.content||"",r.type||""].join("｜")).join("\n");$("#tplSales").value=tp.sales||""}
+  if(tplMode){$("#tplRows").value=(tp.rows||[]).map(r=>[r.place||"",r.content||"",r.type||""].join("｜")).join("\n");$("#tplSales").value=tp.sales||"";$("#tplCustomer").value=tp.customer||""}
   $("#setConfirm").innerHTML="";setDirty=false;
   renderBoardRows();updateCounters();renderTplList();drawBoardPreview();
 }
@@ -1421,7 +1425,7 @@ function readTplDraft(){
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
   const rows=lines($("#tplRows").value).slice(0,MAX).map(l=>{const p=l.split(/[｜|]/).map(x=>x.trim());const tp=p[2]==="スポット"?"スポット":(p[2]==="定期"?"定期":"");return {place:p[0]||"",content:p[1]||"",type:tp||(p.length>2?"":"定期")}});
   return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),...orgVals(),
-    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:$("#tplSales").value.trim()}};
+    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:$("#tplSales").value.trim(),customer:$("#tplCustomer").value.trim()}};
 }
 function saveTplDraft(){
   const d=readTplDraft();if(d.err){toast(d.err);return null}
@@ -1515,7 +1519,7 @@ function cleanTpl(t){
     board:{on:b.on!==false,link:b.link!==false,pos:["bl","br","tl","tr"].includes(b.pos)?b.pos:"bl",size:["s","m","l","xl"].includes(b.size)?b.size:"m",
       rows:(Array.isArray(b.rows)?b.rows:[]).slice(0,MAX_BOARD).map(r=>({l:str(r&&r.l),v:str(r&&r.v),src:rowSrc(r,b)}))},
     company:str(t.company),slogan:str(t.slogan),address:str(t.address),tel:str(t.tel),title:str(t.title)||"点検報告書",hideEmpty:t.hideEmpty!==false,
-    rows:(Array.isArray(t.rows)?t.rows:[]).slice(0,MAX).map(r=>({place:str(r&&r.place),content:str(r&&r.content),type:["定期","スポット"].includes(r&&r.type)?r.type:""})),sales:str(t.sales)};
+    rows:(Array.isArray(t.rows)?t.rows:[]).slice(0,MAX).map(r=>({place:str(r&&r.place),content:str(r&&r.content),type:["定期","スポット"].includes(r&&r.type)?r.type:""})),sales:str(t.sales),customer:str(t.customer)};
 }
 function tplFileName(t){return "O&K報告書テンプレート_"+t.name.replace(/[\\/:*?"<>|]/g,"").slice(0,40)+".json"}
 $("#btnTplSendFile").onclick=async()=>{
