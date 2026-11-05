@@ -1008,6 +1008,9 @@ const SHELL=(()=>{
     });
   }
   const loginStaffId=()=>sbStaffId||'';
+  async function fileBlob(id){ // 添付ファイルの中身（本番はStorage、試作は /_blob/）
+    if(SB){ const {data,error}=await SB.storage.from('attachments').download(id); if(error) throw new Error(error.message); return data; }
+    const r=await fetch('/_blob/'+id); if(!r.ok) throw new Error('ファイルが見つかりません'); return await r.blob(); }
   const sPut=(c,id,d)=>S_API.put(c,id,d), sList=c=>window.S_API?S_API.list(c):[], sDel=(c,id)=>S_API.del(c,id);
   const loginApi={ get live(){ return !!SB; }, call:(a,b)=>SB?sbFn(a,b):Promise.reject(new Error('本番（ログインあり）の画面で使えます')), kioskDemo:()=>kioskDemo() };
   function use(n){
@@ -1292,7 +1295,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {loginStaffId,sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {fileBlob,loginStaffId,sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -5866,7 +5869,7 @@ SHEETS.qsend=(st)=>{
     foot:`<button class="btn" data-act="qs-later" data-id="${q.id}">まだ（作成中のまま）</button><button class="btn" data-act="qs-print" data-id="${q.id}">中身を印刷して確認</button><button class="btn pri" data-act="qa-submit" data-id="${q.id}">承認を申請する</button>`};
   const body=head+`<section class="sec"><h3>送り方</h3>
     <div class="toolbar" style="margin:0 0 8px"><button class="btn" data-act="qs-print" data-id="${q.id}">印刷する・PDFにする</button><button class="btn" data-act="qs-mail" data-id="${q.id}">メールで送る</button><button class="btn" data-act="qs-file" data-id="${q.id}">ファイルに保存</button></div>
-    <p class="small muted" style="margin:0 0 8px">メールに見積書を付けるときは、先に「印刷する・PDFにする」で「PDFに保存」を選んでから、そのPDFをメールに添付してください。</p>
+    <p class="small muted" style="margin:0 0 8px">「メールで送る」：スマホ・タブレットは共有メニューでメールアプリを選ぶと見積書（PDF）が添付されます。パソコンは見積書のPDFを保存してからメールが開くので、保存したファイルを添付してください。</p>
     <div class="form">${fld('送り先メール',`<input class="inp" id="qs_email" type="email" value="${esc(st.email)}" placeholder="例：tanaka@example.co.jp">${cu.id&&st.email&&st.email!==(cu.email||'')?`<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="qs_save" checked> 顧客「${esc(cu.name)}」のメールとして保存する</label>`:''}`)}</div>
     ${fld('メールの文面',`<textarea class="inp" id="qs_msg" rows="10">${esc(st.msg)}</textarea>`,true)}</section>
     <section class="sec">${quotePaperHtml(q)}</section>`;
@@ -5882,8 +5885,9 @@ async function qsAct(a,id){
   const q=get('quotes',id); if(!q) return;
   if(a==='qs-print'){ if(sheet?.kind==='qsend') await qsSaveEmail(); (sheet.svia=sheet.svia||new Set()).add('印刷・PDF'); printHtml(`御見積書 ${q.no||''}`,quotePaperHtml(q)); return; }
   if(a==='qs-file'){ (sheet.svia=sheet.svia||new Set()).add('ファイル'); const html=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>御見積書 ${esc(q.no||'')}</title><style>body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;margin:24px}@media print{body{margin:0}}</style></head><body>${quotePaperHtml(q).replace('class="paper"','style="max-width:720px;margin:auto;font-size:12px;line-height:1.6"')}</body></html>`; await saveFile(`見積書_${q.no||'draft'}.html`,html,'text/html'); return; }
-  if(a==='qs-mail'){ await qsSaveEmail(); if(!sheet.email) toast('送り先メールが空です（メールの画面で入れてもかまいません）'); (sheet.svia=sheet.svia||new Set()).add('メール');
-    const l=document.createElement('a'); l.href=`mailto:${encodeURIComponent(sheet.email||'')}?subject=${encodeURIComponent('お見積書のご送付：'+(q.title||''))}&body=${encodeURIComponent(sheet.msg||'')}`; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); return; }
+  if(a==='qs-mail'){ await qsSaveEmail(); toast('見積書のPDFを作っています…');
+    let f; try{ f=await quotePdf(q); }catch(e){ toast((e&&e.message)||'PDFを作れませんでした'); return; }
+    const via=await mailWithFiles({files:[f],to:sheet.email,subject:'お見積書のご送付：'+(q.title||''),body:sheet.msg||''}); if(via) (sheet.svia=sheet.svia||new Set()).add(via); return; }
   if(a==='qs-sent'){ await qsSaveEmail(); const via=[...(sheet.svia||[])]; const s={at:nowIso(),by:SHELL.meId(),via:via.length?via:['手渡し・その他'],to:sheet.email||''};
     await patch('quotes',id,{sent:s,sends:[...(q.sends||[]),s]});
     if(q.status==='作成中'){ await quickQuote(id,'提出済'); toast('送付を記録し、提出済にしました'); }
@@ -5897,6 +5901,42 @@ VIEWS.approvals={
   shell:()=>`<div class="vhead"><h1>承認</h1></div>`,
   body(){ const s=SHEETS.approvals(); setTimeout(()=>{ try{ s.after&&s.after(); }catch(_){} },800); return `<div class="panel"><div class="pbody">${s.body}</div></div>`; }
 };
+/* ---------- メールに添付：スマホは共有メニューで添付、パソコンはPDFを保存してからメールを開く ---------- */
+let pdfLibP=null;
+function loadPdfLib(){ if(window.jspdf&&window.html2canvas) return Promise.resolve(); if(pdfLibP) return pdfLibP;
+  pdfLibP=new Promise((ok,ng)=>{ const s=document.createElement('script'); s.src='pdflib.js'; s.onload=()=>ok(); s.onerror=()=>{ pdfLibP=null; ng(new Error('PDFの部品を読み込めませんでした')); }; document.head.appendChild(s); }); return pdfLibP; }
+const safeName=s=>String(s||'').replace(/[\\/:*?"<>|\s]+/g,'_').slice(0,40);
+async function quotePdf(q){
+  await loadPdfLib();
+  const j=get('jobs',q.jobId)||{};
+  const box=document.createElement('div'); box.style.cssText='position:absolute;left:-10000px;top:0;width:760px;padding:36px;background:#fff;color:#111;font-family:"Yu Gothic","Hiragino Sans","Noto Sans JP",sans-serif;font-size:12px;line-height:1.6';
+  box.innerHTML=`<style>table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border-bottom:1px solid #ccc;padding:5px 6px;font-size:12px}h1{text-align:center;letter-spacing:.3em;font-size:22px;margin:8px 0 14px}</style>`+quotePaperHtml(q).replace('class="paper"','');
+  document.body.appendChild(box);
+  try{
+    const cv=await window.html2canvas(box,{scale:2,backgroundColor:'#ffffff',useCORS:true,logging:false});
+    const {jsPDF}=window.jspdf; const pdf=new jsPDF({unit:'mm',format:'a4',orientation:'p'});
+    const W=210, H=297, iw=W, ih=cv.height*iw/cv.width; const img=cv.toDataURL('image/jpeg',0.92);
+    let y=0; pdf.addImage(img,'JPEG',0,0,iw,ih); while(ih-y>H+1){ y+=H; pdf.addPage(); pdf.addImage(img,'JPEG',0,-y,iw,ih); }
+    const name=`見積書_${safeName(q.no||'')}_${safeName(custName(j.customerId))}_${today()}.pdf`;
+    return new File([pdf.output('blob')],name,{type:'application/pdf'});
+  } finally { box.remove(); }
+}
+async function fileOfAtt(a){ const b=await SHELL.fileBlob(a.id); return new File([b],a.name||'file',{type:b.type||a.type||'application/octet-stream'}); }
+const touchDev=()=>matchMedia('(pointer:coarse)').matches;
+async function mailWithFiles({files,to,subject,body}){
+  // スマホ・タブレット：共有メニュー（メールアプリを選ぶと添付された状態で開く）
+  if(touchDev()&&navigator.canShare&&navigator.canShare({files})){
+    try{ await navigator.share({files,title:subject,text:body}); return 'メール（共有で添付）'; }
+    catch(e){ if(e&&e.name==='AbortError') return ''; }
+  }
+  // パソコン：ファイルを保存してからメールソフトを開く（添付は保存したファイルをドラッグ）
+  if(!downloads){ toast('このページではファイルを保存できません'); return ''; }
+  for(const f of files){ try{ await downloads.save({filename:f.name,data:f}); }catch(e){ if(e&&e.code==='declined') return ''; toast('保存できませんでした（'+(e&&e.code||e?.message||'エラー')+'）'); return ''; } await new Promise(r=>setTimeout(r,250)); }
+  const note=`\n\n――――\n添付：${files.map(f=>f.name).join('、')}`;
+  const l=document.createElement('a'); l.href=`mailto:${encodeURIComponent(to||'')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body+note)}`; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove();
+  toast(`${files.length===1?files[0].name:files.length+'件のファイル'}を保存しました。メールに添付してください`);
+  return 'メール（PDF保存）';
+}
 /* =========================================================
    完了報告書をお客様に送る（メール・印刷）と、送ったかの記録
    ・報告書・写真を添付して完了した作業予定が対象
@@ -5922,7 +5962,7 @@ SHEETS.rsend=(st)=>{
   if(st.email==null) st.email=cu.email||''; if(st.msg==null) st.msg=reportMailBody(v);
   const body=`<section class="sec"><p style="margin:0"><b>${esc(visitTitle(v))}</b>　${esc(jd(v.date))}　${esc(cu.name||'')}</p></section>
   <section class="sec"><h3>送るファイル</h3><div class="list">${atts.map(a=>`<div class="li" style="cursor:default"><span class="grow"><a href="#" data-file="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.from?` <span class="small muted">（${esc(a.from)}）</span>`:''}</span><a class="btn sm" href="#" data-file="${esc(a.id)}" target="_blank" rel="noopener">開く・保存</a></div>`).join('')}</div>
-    <p class="small muted" style="margin:6px 0 0">メールで送るときは、ファイルを開いて保存してから添付してください。紙で渡すときは、開いた画面から印刷できます。</p></section>
+    <p class="small muted" style="margin:6px 0 0">「メールで送る」：スマホ・タブレットは共有メニューでメールアプリを選ぶと添付されます。パソコンはファイルを保存してからメールが開くので、保存したファイルを添付してください。紙で渡すときは「開く・保存」から印刷できます。</p></section>
   <section class="sec"><div class="form">${fld('送り先メール',`<input class="inp" id="rs_email" type="email" value="${esc(st.email)}" placeholder="例：tanaka@example.co.jp">${cu.id&&st.email&&st.email!==(cu.email||'')?`<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="rs_save" checked> 顧客「${esc(cu.name)}」のメールとして保存する</label>`:''}`)}</div>
     ${fld('メールの文面',`<textarea class="inp" id="rs_msg" rows="9">${esc(st.msg)}</textarea>`,true)}
     <div class="toolbar" style="margin:6px 0 0"><button class="btn" data-act="rs-mail" data-id="${v.id}">メールで送る</button></div></section>`;
@@ -5936,7 +5976,9 @@ async function rsSave(){
 }
 async function rsAct(a,id){
   const v=get('visits',id); if(!v) return;
-  if(a==='rs-mail'){ await rsSave(); (sheet.svia=sheet.svia||new Set()).add('メール'); const l=document.createElement('a'); l.href=`mailto:${encodeURIComponent(sheet.email||'')}?subject=${encodeURIComponent('完了報告書のご送付：'+visitTitle(v))}&body=${encodeURIComponent(sheet.msg||'')}`; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); return; }
+  if(a==='rs-mail'){ await rsSave(); toast('報告書を準備しています…');
+    let files; try{ files=await Promise.all((v.attachments||[]).map(fileOfAtt)); }catch(e){ toast('ファイルを読み込めませんでした（'+(e&&e.message||'エラー')+'）'); return; }
+    const via=await mailWithFiles({files,to:sheet.email,subject:'完了報告書のご送付：'+visitTitle(v),body:sheet.msg||''}); if(via) (sheet.svia=sheet.svia||new Set()).add(via); return; }
   if(a==='rs-sent'||a==='rs-skip'){ if(a==='rs-sent') await rsSave(); const via=[...(sheet.svia||[])];
     const r=a==='rs-skip'?{at:nowIso(),by:SHELL.meId(),skip:true}:{at:nowIso(),by:SHELL.meId(),via:via.length?via:['手渡し・その他'],to:sheet.email||''};
     await patch('visits',id,{reportSent:r}); toast(a==='rs-skip'?'社内用として、送付の確認から外しました':'お客様への送付を記録しました');
@@ -5972,6 +6014,8 @@ window.G_API={
     else if(col==='jobs'){ if(id) openSheet({kind:'job',id}); else openSheet({kind:'newJob',live:false,draft:{customerId:'',siteId:'',type:'スポット',ownerId:''}}); }
   },
   isOffice:()=>isOfficeMe(),
+  quotePdfInfo:async (qid,b64)=>{ const f=await quotePdf(get('quotes',qid)); if(b64){ const u=new Uint8Array(await f.arrayBuffer()); let s=''; u.forEach(c=>s+=String.fromCharCode(c)); return btoa(s); } return {name:f.name,size:f.size,type:f.type}; },
+  anyQuote:()=>all('quotes')[0]?.id||'',
   apResults:me=>apApproved(me).length+apReturned(me).length,
   poRepOk:(p,k)=>poRepOk(p,k),
   visitInfo:id=>visitInfo(id),
