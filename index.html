@@ -73,7 +73,7 @@ main{max-width:880px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-lef
 .card h2{font-family:var(--f-display);font-size:16px;margin:0;font-weight:700}
 .hint{color:var(--muted);font-size:13px;margin:0}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chips button{border:1px solid var(--line);background:var(--bg);color:var(--ink,inherit);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer}
+.chips button{border:1px solid var(--line);background:var(--bg);color:var(--ink,inherit);border-radius:999px;padding:8px 14px;font-size:13px;min-height:38px;cursor:pointer}
 .chips button:hover{border-color:var(--accent,currentColor)}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.04em;min-width:0}
@@ -85,7 +85,12 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .btn.warn{color:var(--ng);border-color:var(--ng)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap}
-.tg{display:flex;gap:8px;align-items:center;font-weight:700}
+.tg{display:flex;gap:10px;align-items:center;font-weight:700;min-height:40px}
+input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--brand)}
+.btn.armed{color:#fff;background:var(--ng);border-color:var(--ng)}
+details.more{border-top:1px solid var(--line);padding-top:10px}
+details.more summary{cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);padding:8px 0;min-height:40px}
+details.more[open] summary{margin-bottom:8px}
 .chkrow{display:flex;gap:18px;flex-wrap:wrap}
 .counter{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
 .counter.over{color:var(--ng);font-weight:700}
@@ -107,7 +112,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .thumb.has{border-style:solid;padding:0}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .mini{display:flex;gap:4px}
-.mini .btn{flex:1;padding:6px 4px;font-size:12px;min-width:0}
+.mini .btn{flex:1;padding:10px 4px;font-size:13px;min-width:0;min-height:40px}
 .empty{text-align:center;color:var(--muted);padding:30px 10px;background:var(--surface);border:1px dashed var(--line);border-radius:10px}
 
 /* checklist */
@@ -116,7 +121,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .chk .no{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12px;width:2.2em;text-align:right}
 .chk .txt{min-width:0}
 .seg{grid-column:2;display:flex;gap:6px;flex-wrap:wrap}
-.seg button{border:1px solid var(--line);background:var(--bg);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;min-width:64px}
+.seg button{border:1px solid var(--line);background:var(--bg);border-radius:22px;padding:9px 18px;font-size:15px;font-weight:700;min-width:76px;min-height:44px}
 .seg button[aria-pressed="true"][data-v="ok"]{background:var(--ok);border-color:var(--ok);color:#fff}
 .seg button[aria-pressed="true"][data-v="ng"]{background:var(--ng);border-color:var(--ng);color:#fff}
 .seg button[aria-pressed="true"][data-v="na"]{background:var(--na);border-color:var(--na);color:#fff}
@@ -417,12 +422,18 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
         <button class="btn" id="btnShare" hidden>PDFを共有</button>
         <button class="btn" id="btnZip">写真をまとめて保存</button>
         <button class="btn" id="btnPhotoShare" hidden>写真アプリへまとめて保存</button>
-        <button class="btn" id="btnCsv">チェック結果CSV</button>
-        <button class="btn" id="btnJson">点検データ書き出し</button>
-        <label class="btn" for="jsonIn">点検データ読み込み</label>
-        <input type="file" id="jsonIn" accept="application/json,.json" hidden>
       </div>
-      <p class="hint">写真をまとめて保存すると、施工看板入りの写真がzipファイルにまとまります（異常箇所の写真は名前の頭に「異常_」）。iPhoneは「写真アプリへまとめて保存」から共有画面を開き「画像を保存」を選ぶと写真アプリに入ります。CSVはExcelでそのまま開けます。点検データ（写真・設定込み）は別の端末に渡すときに使い、読み込むと新しい報告として追加されます。</p>
+      <p class="hint">「写真をまとめて保存」は施工看板入りの写真をzipに、「写真アプリへまとめて保存」（iPhone）は共有画面の「画像を保存」で写真アプリに入れます。</p>
+      <details class="more">
+        <summary>その他（チェック結果CSV・点検データの受け渡し）</summary>
+        <div class="btnrow">
+          <button class="btn" id="btnCsv">チェック結果CSV</button>
+          <button class="btn" id="btnJson">点検データ書き出し</button>
+          <label class="btn" for="jsonIn">点検データ読み込み</label>
+          <input type="file" id="jsonIn" accept="application/json,.json" hidden>
+        </div>
+        <p class="hint">CSVはExcelでそのまま開けます。点検データ（写真・設定込み）は別の端末に渡すときに使い、読み込むと新しい報告として追加されます。</p>
+      </details>
       <div class="om-bar">
         <div class="om-bar-h">メールで送る（PDF付き）<button type="button" class="om-link" data-omset>⚙ 宛先・文面の設定</button></div>
         <div class="om-btns"><button type="button" class="btn pri" data-om="cust">お客様へメール</button><button type="button" class="btn pri" data-om="office">社内へメール</button></div>
@@ -568,6 +579,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <div class="row" id="reviewRow" hidden style="justify-content:center">
       <button class="cam-btn" id="retake">撮り直す</button>
       <button class="cam-btn acc" id="accept">この写真を使う</button>
+      <button class="cam-btn acc" id="acceptNext" hidden>使って次へ ▶</button>
     </div>
   </div>
 </div>
@@ -726,6 +738,12 @@ async function pDel(k){keys.delete(k);memStore.delete(k);await ready;if(!idb)ret
   await new Promise(ok=>{try{const q=os("readwrite").delete(k);q.onsuccess=ok;q.onerror=ok}catch(e){ok()}})}
 const pk=(rid,sid,st)=>rid+"|"+sid+"|"+st;
 async function delPhoto(k){dropThumb(k);await pDel(k);await pDel(k+"|t");dirty=true}
+/* 削除ボタンは2回押しで実行（1回目は「もう一度押すと削除」に変わり、3秒で元に戻る） */
+function armDelete(btn,fn){
+  if(btn.dataset.armed){fn();return}
+  const label=btn.textContent;btn.dataset.armed="1";btn.classList.add("armed");btn.textContent="もう一度押すと削除";
+  setTimeout(()=>{if(btn.isConnected&&btn.dataset.armed){delete btn.dataset.armed;btn.classList.remove("armed");btn.textContent=label}},3000);
+}
 const turl=new Map();
 async function thumbURL(k){if(turl.has(k))return turl.get(k);const b=(await pGet(k+"|t"))||(await pGet(k));if(!b)return null;const u=URL.createObjectURL(b);turl.set(k,u);return u}
 function dropThumb(k){const u=turl.get(k);if(u){URL.revokeObjectURL(u);turl.delete(k)}}
@@ -1045,7 +1063,7 @@ function renderSlots(){
       lib.onclick=()=>{cur={slot:s,stage};$("#fileLib").value="";$("#fileLib").click()};
       mini.appendChild(lib);
       if(has){const d=document.createElement("button");d.className="btn";d.textContent="削除";d.setAttribute("aria-label",s.name+" "+STAGE_LABEL[stage]+"の写真を削除");
-        d.onclick=async()=>{await delPhoto(k);renderSlots();persist()};mini.appendChild(d)}
+        d.onclick=()=>armDelete(d,async()=>{await delPhoto(k);renderSlots();persist();toast("写真を削除しました")});mini.appendChild(d)}
       sh.append(lb,th,mini);grid.appendChild(sh);
     });
     el.appendChild(grid);wrap.appendChild(el);
@@ -1138,6 +1156,7 @@ async function compose(){
   const ri=$("#reviewImg");if(ri.src&&ri.src.startsWith("blob:"))URL.revokeObjectURL(ri.src);ri.src=URL.createObjectURL(reviewBlob);
 }
 function showReview(){
+  $("#acceptNext").hidden=!(cur&&nextSlotFor(cur.slot,cur.stage));
   $("#reviewImg").hidden=false;video.hidden=true;$("#liveRow").hidden=true;$("#reviewRow").hidden=false;drawOverlay();
   const m=$("#camMsg");if(!ghost.hidden){m.textContent="ガイド濃さを動かして、ずれがないか確認できます";m.hidden=false}else m.hidden=true;
 }
@@ -1145,15 +1164,30 @@ $("#retake").onclick=()=>{
   if(liveOK){raw=null;setLive(true);drawOverlay()}
   else{$("#fileCam").value="";$("#fileCam").click()}
 };
-$("#accept").onclick=async()=>{
-  if(!reviewBlob||!cur)return;
+/* 同じ区分でまだ撮っていない次の撮影箇所（異常箇所の写真には使わない） */
+function nextSlotFor(slot,stage){
+  const rep=R();if(/^ng/.test(stage))return null;
+  const i=rep.cfg.slots.findIndex(s=>s.id===slot.id);if(i<0)return null;
+  return rep.cfg.slots.slice(i+1).find(s=>!keys.has(pk(rep.id,s.id,stage)))||null;
+}
+async function acceptPhoto(){
+  if(!reviewBlob||!cur)return null;
   const rep=R(),k=pk(rep.id,cur.slot.id,cur.stage);
-  const b=$("#accept");b.disabled=true;
+  const bs=[$("#accept"),$("#acceptNext")];bs.forEach(b=>b.disabled=true);
   try{const th=await makeThumb(reviewBlob);await pPut(k,reviewBlob);await pPut(k+"|t",th);dropThumb(k)}
-  finally{b.disabled=false}
-  const name=cur.slot.name,stage=cur.stage;
+  finally{bs.forEach(b=>b.disabled=false)}
+  const done={slot:cur.slot,stage:cur.stage};
   closeCamera();renderSlots();renderChecks();persist();
-  toast(name+"の"+STAGE_LABEL[stage]+"写真を報告書に入れました");
+  return done;
+}
+$("#accept").onclick=async()=>{
+  const d=await acceptPhoto();if(d)toast(d.slot.name+"の"+STAGE_LABEL[d.stage]+"写真を報告書に入れました");
+};
+$("#acceptNext").onclick=async()=>{
+  const d=await acceptPhoto();if(!d)return;
+  const nx=nextSlotFor(d.slot,d.stage);
+  if(nx){toast(d.slot.name+"を保存。次は「"+nx.name+"」の"+STAGE_LABEL[d.stage]);openCamera(nx,d.stage)}
+  else toast(STAGE_LABEL[d.stage]+"の写真はすべて撮り終えました");
 };
 async function handleFile(file){
   if(!file||!cur)return;
@@ -1207,7 +1241,7 @@ function renderChecks(){
         const im=document.createElement("img");im.alt="";th.appendChild(im);thumbURL(k).then(u=>{if(u)im.src=u});
         th.onclick=()=>openViewer(slotLike,st,i+1);
         const d=document.createElement("button");d.className="btn";d.textContent="削除";d.setAttribute("aria-label",it.text+" の異常写真を削除");
-        d.onclick=async()=>{await delPhoto(k);persist();renderChecks()};
+        d.onclick=()=>armDelete(d,async()=>{await delPhoto(k);persist();renderChecks();toast("写真を削除しました")});
         box.append(th,d);strip.appendChild(box);
       });
       const free=[];for(let m=1;m<=NG_MAX;m++){if(!keys.has(pk(rep.id,ngSid(it.id),"ng"+m)))free.push("ng"+m)}
