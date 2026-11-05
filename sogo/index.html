@@ -2595,6 +2595,7 @@ docOn('click',async ev=>{
     case 'poRepOk': await SHELL.poRepOk(el.dataset.id,el.dataset.k); renderOverlay(); break;
     case 'poReplyS': await poReplyS(); break;
     case 'poContactS': await poContactS(); break;
+    case 'pocCopy': case 'pocMail': case 'pocLine': await pocAct(a); break;
     case 'unregAdd': unregAdd(el.dataset.k,el.dataset.name,el.dataset.c); break;
     case 'unregRm': { const r=sheet.r; r.unreg=(r.unreg||[]).filter((_,i)=>i!==+el.dataset.i); refreshRepTags(); break; }
     case 'unregReq': { const r=sheet.r; const u=(r.unreg||[])[+el.dataset.i]; if(u){ u.req=true; toast('保存すると事務所に登録の依頼が届きます'); } refreshRepTags(); break; }
@@ -2966,6 +2967,7 @@ SHEETS.porder=()=>{
   <div class="sec"><h3 style="margin:0 0 6px">質問・やりとり</h3>${(p.thread||[]).length?`<div class="list">${p.thread.map(x=>`<div class="li" style="cursor:default"><span class="pill ${x.from==='p'?'w':'g'}">${x.from==='p'?'質問':'回答'}</span><span class="grow small">${esc(x.byName||'')}　${poWhenS(x.at)}<br>${esc(x.text)}</span></div>`).join('')}</div>`:'<div class="small muted">やりとりはまだありません。</div>'}
     ${!self&&p.kind==='contract'&&SHELL.poOpenQ(p)?`<div style="display:flex;gap:6px;margin-top:8px"><input class="inp" id="po-reply-s" placeholder="回答を入力（協力会社の画面に表示されます）"><button class="btn sm pri" data-act="poReplyS">回答する</button></div>`:''}
     ${self&&!p.cancelled?`<label class="fld" style="margin-top:10px"><span>質問・相談</span><textarea class="inp" id="po-q" rows="3" placeholder="例：初日の開始時間を30分遅らせてもよいですか"></textarea></label>`:''}</div>
+  ${!self&&p.kind==='contract'&&!p.cancelled?poContactBox(p):''}
   <div class="sec"><h3 style="margin:0 0 6px">確認の記録</h3>${(p.acks||[]).length?`<div class="list">${p.acks.slice().reverse().map(x=>`<div class="li" style="cursor:default"><span class="pill ${x.status==='了承'?'g':''}">${esc(x.status)}</span><span class="grow small">${esc(x.byName||staffName(x.by))}　${poWhenS(x.at)}　第${x.rev}版</span></div>`).join('')}</div>`:'<div class="small muted">まだ確認されていません。</div>'}</div>`;
   const ackBtn=p.stopped?`<button class="btn pri" data-act="poAck" data-v="中止確認">中止を確認しました</button>`:`<button class="btn pri" data-act="poAck" data-v="了承">内容を確認し、了承します</button>`;
   const done=a&&a.rev===rev&&(p.stopped?a.status==='中止確認':a.status==='了承');
@@ -3067,11 +3069,38 @@ function poEvents(){
 
 function poOfficeFoot(p){
   const c=p.contact, need=!c||c.rev<(p.rev||1);
-  return `<span class="small muted" style="margin-right:auto">${c?`連絡：${poWhenS(c.at)}${need?'（この版はまだ）':''}`:'まだ連絡していません'}</span>${need?`<button class="btn pri" data-act="poContactS">協力会社へ連絡済みにする</button>`:''}`;
+  return `<span class="small muted" style="margin-right:auto">${c?`連絡：${poWhenS(c.at)}${need?'（この版はまだ）':''}`:'まだ連絡していません'}</span>${need?`<button class="btn pri" data-act="poContactS">連絡済みにする</button>`:''}`;
+}
+/* 定期作業の依頼：協力会社への連絡（文面・メール・LINE） */
+function poContractMsg(p){
+  const sup=get('staff',p.partnerId)||{}, st=SHELL.poState(p)||{}, kind=st.key==='stop'?'stop':p.change?.kind==='reack'?'reack':'issue';
+  const ds=(p.schedule||[]).map(r=>`${jd(r.date)}${r.start?' '+r.start+(r.end?'〜'+r.end:''):''}　${r.title||r.siteName||''}`).join('\n');
+  const ask=kind==='stop'?'中止の内容をご確認のうえ、「中止を確認しました」を押してください。':`内容をご確認のうえ、${p.due?jd(p.due)+'までに':''}「了承」をお願いします。`;
+  return `${sup.company||sup.name||''} ご担当者様\nいつもお世話になっております。\n${p.title}の作業依頼を${kind==='issue'?'お送りします':'更新しました'}。\n${ds}${p.change&&kind!=='issue'?`\n変更内容：${(p.change.labels||[]).join('・')}`:''}\n真総合アプリの「発注書」から${ask}`;
+}
+function poContactBox(p){
+  const sup=get('staff',p.partnerId)||{}, cs=(sup.contacts||[]).filter(c=>c.name||c.email);
+  if(sheet.cmsg==null) sheet.cmsg=poContractMsg(p);
+  return `<div class="sec"><h3 style="margin:0 0 6px">協力会社へ連絡する</h3>
+    <div class="small" style="margin-bottom:6px"><b>送り先</b>（${esc(sup.name||'')}）${cs.length?'':'　<span class="muted">連絡先が未登録です（「マスタ・設定 → 担当者・協力会社」で登録できます）</span>'}</div>
+    ${cs.map((c,i)=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400;margin:0 6px 6px 0;display:inline-flex;gap:6px"><input type="checkbox" data-pcs="${i}" ${c.notify!==false?'checked':''}> ${esc(c.name||c.email)}${c.line?' <span class="muted">LINE</span>':''}${c.email?' <span class="muted">メール</span>':''}</label>`).join('')}
+    <textarea class="inp" id="po_cmsg" rows="8" style="margin-top:6px">${esc(sheet.cmsg)}</textarea>
+    <div class="toolbar" style="margin:6px 0 0"><button class="btn sm" data-act="pocCopy">文面をコピー</button><button class="btn sm" data-act="pocMail">メールで開く</button><button class="btn sm" data-act="pocLine">LINEで送る</button></div>
+    <div class="small muted" style="margin-top:4px">送ったら下の「連絡済みにする」を押してください。どの方法で送ったかも記録します。</div></div>`;
+}
+async function pocAct(a){
+  const p=get('porders',sheet.id); if(!p) return; const t=ROOT.querySelector('#po_cmsg')?.value||''; sheet.cmsg=t;
+  const sup=get('staff',p.partnerId)||{}, cs=(sup.contacts||[]).filter(c=>c.name||c.email);
+  const picked=[...ROOT.querySelectorAll('[data-pcs]:checked')].map(x=>cs[+x.dataset.pcs]).filter(Boolean);
+  sheet.cto=picked.map(c=>c.name||c.email);
+  const open=href=>{ const l=document.createElement('a'); l.href=href; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); };
+  if(a==='pocCopy'){ try{ await navigator.clipboard.writeText(t); toast('文面をコピーしました'); }catch(_){ toast('コピーできませんでした。文面を選んでコピーしてください'); } (sheet.cvia=sheet.cvia||new Set()).add('コピー'); }
+  if(a==='pocMail'){ const to=picked.map(c=>c.email).filter(Boolean); if(!to.length) toast('メールアドレスのある送り先が選ばれていません'); (sheet.cvia=sheet.cvia||new Set()).add('メール'); open(`mailto:${to.join(',')}?subject=${encodeURIComponent('作業依頼のご確認のお願い：'+p.title)}&body=${encodeURIComponent(t)}`); }
+  if(a==='pocLine'){ (sheet.cvia=sheet.cvia||new Set()).add('LINE'); open('https://line.me/R/msg/text/?'+encodeURIComponent(t)); }
 }
 async function poReplyS(){ const p=get('porders',sheet.id); const t=(ROOT.querySelector('#po-reply-s')?.value||'').trim(); if(!p) return; if(!t) return toast('回答を入力してください');
   await put('porders',p.id,{...p,thread:[...(p.thread||[]),{from:'s',by:meId(),byName:staffName(meId()),at:new Date().toISOString(),text:t}]}); toast('回答しました（協力会社の画面に表示されます）'); renderOverlay(); }
-async function poContactS(){ const p=get('porders',sheet.id); if(!p) return; const c={rev:p.rev||1,upd:p.upd||0,at:new Date().toISOString(),by:meId(),to:[staffName(p.partnerId)],via:['手動']};
+async function poContactS(){ const p=get('porders',sheet.id); if(!p) return; const via=[...(sheet.cvia||[])]; const c={rev:p.rev||1,upd:p.upd||0,at:new Date().toISOString(),by:meId(),to:(sheet.cto&&sheet.cto.length)?sheet.cto:[staffName(p.partnerId)],via:via.length?via:['その他']}; sheet.cvia=null; sheet.cmsg=null;
   await put('porders',p.id,{...p,contact:c,contacts:[...(p.contacts||[]),c]}); toast('連絡済みにしました'); renderOverlay(); }
 /* 協力会社のホーム：確認が必要な発注書 */
 function poPartnerHome(){
@@ -3845,7 +3874,7 @@ VIEWS.home={
     </div>
     <div class="grid2">
       <section class="panel"><h2>対応が必要なこと</h2><div class="pbody"><div class="alerts">
-        ${alerts.map(([tone,n,l,r,f])=>`<button class="alert ${tone}" ${r==='po'?'data-sgo="go" data-m="S" data-r="porders"':r==='ap'?'data-act="ap-list"':r==='unreg'?'data-sgo="go" data-m="S" data-r="relations"':`data-act="alert" data-r="${r}" data-f="${f}"`}><span class="bar"></span><b>${n}</b><span>${esc(l)}</span></button>`).join('')}
+        ${alerts.map(([tone,n,l,r,f])=>`<button class="alert ${tone}" ${r==='po'?'data-sgo="go" data-m="S" data-r="porders"':r==='ap'?'data-act="ap-list"':r==='unreg'?'data-sgo="go" data-m="S" data-r="relations"':r==='rsend'?'data-act="rs-list"':`data-act="alert" data-r="${r}" data-f="${f}"`}><span class="bar"></span><b>${n}</b><span>${esc(l)}</span></button>`).join('')}
       </div></div></section>
       <section class="panel"><h2>今日の作業　<span class="muted small">${jd(t)}</span></h2><div class="pbody">
         ${todays.length?`<div class="list">${todays.map(visitLi).join('')}</div>`:`<p class="empty">今日の予定はありません。</p>`}
@@ -3990,7 +4019,8 @@ function monthCalendar(vs){
       <div class="cevs">${l.map(ev).join('')}</div>
       <div class="cdots">${l.slice(0,6).map(v=>`<i style="background:var(--${col(v)})"></i>`).join('')}${l.length>6?'<b>+</b>':''}</div></div>`;}).join('');
   const shown=schedRows();
-  const leg=`<div class="cleg">${shown.map(s=>`<span><i style="background:var(--${staffColor(s.id)})"></i>${esc(s.name)}</span>`).join('')}<span>薄い色＝完了／赤枠＝予定日を過ぎて未完了</span></div>`;
+  const inMonth=new Set(vs.filter(v=>ymOf(v.date||'')===m).flatMap(v=>v.staffIds||[])); const legS=shown.filter(s=>inMonth.has(s.id));
+  const leg=`<details class="cleg-box" ${VS.legOpen?'open':''} style="margin-top:8px"><summary class="small muted" data-act="legToggle" style="cursor:pointer">担当の色を見る（この月に予定がある${legS.length}人）　薄い色＝完了／赤枠＝予定日を過ぎて未完了</summary><div class="cleg">${legS.map(s=>`<span><i style="background:var(--${staffColor(s.id)})"></i>${esc(s.name)}</span>`).join('')||'<span>この月の予定はありません</span>'}</div></details>`;
   const sel=vs.filter(v=>v.date===VS.calSel).sort(by(v=>v.start||''));
   const day=`<section class="sec calday"><h3>${jd(VS.calSel)}の作業 <span class="num muted">${sel.length}件</span>${VS.placing?`<span class="sp"><button class="btn sm" data-act="place" data-d="${VS.calSel}">この日に配置</button></span>`:''}</h3>${sel.length?`<div class="list">${sel.map(visitLi).join('')}</div>`:'<p class="empty">予定はありません。</p>'}</section>`;
   return `<div class="mcal">${head}${body}</div>${leg}${day}`;
@@ -4435,7 +4465,7 @@ SHEETS.visit=({id})=>{
       <input type="file" id="attFile" accept="image/*,application/pdf" ${assets?'':'disabled'}>
       ${assets?'':'<span class="small muted">このページの編集権限がある人だけ添付できます。</span>'}
     </div>
-  </section>
+  ${reportSendBox(v)}</section>
   <div id="delBox"><button class="btn danger sm" data-act="ask-del" data-col="visits" data-id="${id}">この作業予定を削除</button></div>`};
 };
 
@@ -4797,6 +4827,10 @@ docOn('click',async e=>{
     case 'new-survey': openSurvey(id); break;
     case 'qsend': openSheet({kind:'qsend',id}); break;
     case 'qs-print': case 'qs-mail': case 'qs-file': case 'qs-sent': await qsAct(a,id); break;
+    case 'legToggle': e.preventDefault(); VS.legOpen=!VS.legOpen; render(); break;
+    case 'rsend': openSheet({kind:'rsend',id,list:!!el.dataset.list}); break;
+    case 'rs-list': openSheet({kind:'rsendList'}); break;
+    case 'rs-mail': case 'rs-sent': case 'rs-skip': await rsAct(a,id); break;
     case 'login-issue': { const t=get('staff',id); if(!t) break; readDraftForm(); if(!String(t.empNo||'').trim()) return toast('先に社員ID（英数字）を入れて「保存」してください'); const pw=(ROOT.querySelector('#lg_pw')?.value||'').trim(); if(pw&&pw.length<8) return toast('パスワードは8文字以上にしてください');
       if(await loginCall('issue',{staffId:id,password:pw},r=>`社員ID「${r.loginId}」でログインできるようにしました（${pw?'個別のパスワード':'共通の初期パスワード'}）`)) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,...get('staff',id)}; refreshSheet(); } },800); break; }
     case 'login-revoke': { if(!el.dataset.ok){ el.dataset.ok='1'; el.textContent='もう一度押すと止めます'; break; } if(await loginCall('revoke',{staffId:id},()=>'社員IDのログインを止めました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ const {loginEmail,loginUid,...r}=sheet.draft; sheet.draft={...r,...get('staff',id)}; refreshSheet(); } },800); break; }
@@ -5449,7 +5483,7 @@ async function decideAp(id,ok,comment){
 function apMine(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='申請中'&&canApproveFor(a.requestedBy,me,a)); }
 function apReturned(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='差戻し'&&a.requestedBy===me&&!a.seen); }
 function apApproved(me){ me=me||SHELL.meId(); return all('approvals').filter(a=>a.status==='承認'&&a.requestedBy===me&&!a.seen); }
-function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（見積・発注書の送付など次の操作へ）','ap','']); const u=['admin','lead','manager'].includes(roleOf(meStaff()))&&window.S_API?S_API.unregDue():0; if(u) a.push(['w',u,'登録をすすめる訪問先（日常報告に2回以上）','unreg','']); return a; }
+function apHomeAlerts(){ const a=[]; const n=apMine().length, r=apReturned().length, k=apApproved().length; if(n) a.push(['r',n,'あなたの承認待ち','ap','']); if(r) a.push(['w',r,'差し戻された申請','ap','']); if(k) a.push(['g',k,'承認された申請（見積・発注書の送付など次の操作へ）','ap','']); const u=['admin','lead','manager'].includes(roleOf(meStaff()))&&window.S_API?S_API.unregDue():0; if(u) a.push(['w',u,'登録をすすめる訪問先（日常報告に2回以上）','unreg','']); const rs=['admin','lead','manager'].includes(roleOf(meStaff()))?reportsUnsent().length:0; if(rs) a.push(['w',rs,'お客様に送っていない完了報告書','rsend','']); return a; }
 /* 承認が止まっていたら：設定の時間を過ぎた申請は、責任者・管理者・代理の人も承認できる */
 const apOverdue=a=>{ const h=num(S().apEscHours); return h>0&&a.status==='申請中'&&Date.now()-new Date(a.requestedAt).getTime()>h*3600e3; };
 SHEETS.approvals=()=>{
@@ -5863,6 +5897,53 @@ VIEWS.approvals={
   shell:()=>`<div class="vhead"><h1>承認</h1></div>`,
   body(){ const s=SHEETS.approvals(); setTimeout(()=>{ try{ s.after&&s.after(); }catch(_){} },800); return `<div class="panel"><div class="pbody">${s.body}</div></div>`; }
 };
+/* =========================================================
+   完了報告書をお客様に送る（メール・印刷）と、送ったかの記録
+   ・報告書・写真を添付して完了した作業予定が対象
+   ・送っていないものはダッシュボードに出す。「送らない（社内用）」も選べる
+   ========================================================= */
+const RSEND_FROM='2026-11-05';
+const visitCust=v=>{ const c=get('contracts',v.contractId), j=get('jobs',v.jobId); return c?.customerId||j?.customerId||v.customerId||''; };
+const reportUnsent=v=>!!v&&v.status==='完了'&&(v.attachments||[]).length>0&&!v.reportSent&&((v.completedAt||v.date||'')>=RSEND_FROM);
+const reportsUnsent=()=>all('visits').filter(reportUnsent).sort(by(v=>v.date||''));
+function reportSendBox(v){
+  if(v.status!=='完了'||!(v.attachments||[]).length) return '';
+  const r=v.reportSent;
+  if(r) return `<div class="callout ${r.skip?'':'g'}" style="margin-top:10px"><span>${r.skip?'お客様には送らない（社内用）':'お客様に送付済み'}：${esc(poWhen(r.at))}　${esc(staffName(r.by))}${r.via?'　'+esc(r.via.join('・')):''}${r.to?'　'+esc(r.to):''}</span><button class="btn sm" data-act="rsend" data-id="${v.id}">${r.skip?'送る':'もう一度送る'}</button></div>`;
+  return `<div class="callout w" style="margin-top:10px"><span>完了報告書をまだお客様に送っていません。</span><button class="btn sm pri" data-act="rsend" data-id="${v.id}">お客様に送る</button></div>`;
+}
+function reportMailBody(v){
+  const s=S(), me=staffName(SHELL.meId()), cu=get('customers',visitCust(v))||{};
+  return `${cu.name||''}\n${cu.contact?cu.contact+' 様':'ご担当者様'}\n\nいつもお世話になっております。${s.companyName||''}の${me}です。\n${v.date?jd(v.date)+'に':''}実施しました「${visitTitle(v)}」の完了報告書をお送りいたします。\n添付の報告書をご確認ください。\n\nご不明な点がございましたら、お気軽にお問い合わせください。\n\n${s.companyName||''}\n${me}${s.companyTel?'\nTEL '+s.companyTel:''}`;
+}
+SHEETS.rsend=(st)=>{
+  const v=get('visits',st.id); if(!v) return {title:'完了報告書',body:'<div class="empty">見つかりません</div>'};
+  const cu=get('customers',visitCust(v))||{}, atts=v.attachments||[];
+  if(st.email==null) st.email=cu.email||''; if(st.msg==null) st.msg=reportMailBody(v);
+  const body=`<section class="sec"><p style="margin:0"><b>${esc(visitTitle(v))}</b>　${esc(jd(v.date))}　${esc(cu.name||'')}</p></section>
+  <section class="sec"><h3>送るファイル</h3><div class="list">${atts.map(a=>`<div class="li" style="cursor:default"><span class="grow"><a href="#" data-file="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.name)}</a>${a.from?` <span class="small muted">（${esc(a.from)}）</span>`:''}</span><a class="btn sm" href="#" data-file="${esc(a.id)}" target="_blank" rel="noopener">開く・保存</a></div>`).join('')}</div>
+    <p class="small muted" style="margin:6px 0 0">メールで送るときは、ファイルを開いて保存してから添付してください。紙で渡すときは、開いた画面から印刷できます。</p></section>
+  <section class="sec"><div class="form">${fld('送り先メール',`<input class="inp" id="rs_email" type="email" value="${esc(st.email)}" placeholder="例：tanaka@example.co.jp">${cu.id&&st.email&&st.email!==(cu.email||'')?`<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" id="rs_save" checked> 顧客「${esc(cu.name)}」のメールとして保存する</label>`:''}`)}</div>
+    ${fld('メールの文面',`<textarea class="inp" id="rs_msg" rows="9">${esc(st.msg)}</textarea>`,true)}
+    <div class="toolbar" style="margin:6px 0 0"><button class="btn" data-act="rs-mail" data-id="${v.id}">メールで送る</button></div></section>`;
+  const foot=`<button class="btn" data-act="rs-skip" data-id="${v.id}">送らない（社内用）</button><button class="btn" data-act="close-sheet">あとで</button><button class="btn pri" data-act="rs-sent" data-id="${v.id}">お客様に送った</button>`;
+  return {title:'完了報告書をお客様に送る',body,foot};
+};
+async function rsSave(){
+  const v=get('visits',sheet.id), cu=get('customers',visitCust(v||{})); const em=(ROOT.querySelector('#rs_email')?.value||'').trim();
+  sheet.email=em; sheet.msg=ROOT.querySelector('#rs_msg')?.value??sheet.msg;
+  if(cu&&em&&em!==(cu.email||'')&&ROOT.querySelector('#rs_save')?.checked) await patch('customers',cu.id,{email:em});
+}
+async function rsAct(a,id){
+  const v=get('visits',id); if(!v) return;
+  if(a==='rs-mail'){ await rsSave(); (sheet.svia=sheet.svia||new Set()).add('メール'); const l=document.createElement('a'); l.href=`mailto:${encodeURIComponent(sheet.email||'')}?subject=${encodeURIComponent('完了報告書のご送付：'+visitTitle(v))}&body=${encodeURIComponent(sheet.msg||'')}`; l.target='_blank'; l.rel='noopener'; document.body.appendChild(l); l.click(); l.remove(); return; }
+  if(a==='rs-sent'||a==='rs-skip'){ if(a==='rs-sent') await rsSave(); const via=[...(sheet.svia||[])];
+    const r=a==='rs-skip'?{at:nowIso(),by:SHELL.meId(),skip:true}:{at:nowIso(),by:SHELL.meId(),via:via.length?via:['手渡し・その他'],to:sheet.email||''};
+    await patch('visits',id,{reportSent:r}); toast(a==='rs-skip'?'社内用として、送付の確認から外しました':'お客様への送付を記録しました');
+    const next=reportsUnsent()[0]; if(sheet?.list&&next) openSheet({kind:'rsendList'}); else openSheet({kind:'visit',id}); }
+}
+SHEETS.rsendList=()=>{ const vs=reportsUnsent();
+  return {title:'お客様に送っていない完了報告書',body:vs.length?`<div class="list">${vs.map(v=>`<div class="li" style="cursor:default"><span class="grow"><b>${esc(visitTitle(v))}</b><br><span class="small muted">${esc(jd(v.date))}　${esc(custName(visitCust(v)))}　添付${(v.attachments||[]).length}件</span></span><button class="btn sm pri" data-act="rsend" data-id="${v.id}" data-list="1">送る</button></div>`).join('')}</div>`:'<p class="empty">送っていない報告書はありません。</p>',foot:`<button class="btn" data-act="close-sheet">閉じる</button>`}; };
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
