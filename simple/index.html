@@ -183,6 +183,27 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .om-hint{font-size:12px;color:var(--muted);margin:0}
 @supports (background:color-mix(in srgb,red 50%,blue)){:root{--om-soft:color-mix(in srgb,var(--brand) 13%,var(--surface))}}
 @media print{.om-bar,.om-md{display:none!important}}
+/* 画像で保存する */
+.imgov{position:fixed;inset:0;z-index:60;background:rgba(10,14,20,.82);display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.imgov[hidden]{display:none}
+.imgov-head{display:flex;flex-direction:column;gap:8px;padding:12px 16px;align-items:center}
+.imgov-head p{color:#fff;margin:0;font-size:14px;text-align:center;line-height:1.6}
+.imgov-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.imgov-btns .btn:not(.pri){background:#fff;color:#111}
+.imgov-list{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;align-items:center;gap:12px;padding:4px 16px 24px}
+.imgov-list img{width:100%;max-width:620px;background:#fff;border-radius:4px}
+/* 印刷（報告書のページだけを A4 で） */
+@page{size:A4;margin:0}
+@media print{
+  body.printing{background:#fff}
+  :root:has(body.printing){padding:0!important}
+  body.printing::before,body.printing>*:not(main),body.printing main>section:not(#p-report),body.printing #p-report>.card,body.printing .pages>p{display:none!important}
+  body.printing main{padding:0!important;max-width:none!important;margin:0!important}
+  body.printing #p-report{display:block!important}
+  body.printing .pages{display:block!important}
+  body.printing .pages img{display:block;width:210mm;height:296mm;max-width:none;box-shadow:none;margin:0;break-after:page;page-break-after:always}
+  body.printing .pages img:last-child{break-after:auto;page-break-after:auto}
+}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 .pv{position:fixed;inset:0;z-index:60;background:#000;color:#fff;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
@@ -249,7 +270,8 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <div class="card">
       <h2>報告書</h2>
       <p class="hint">撮影箇所ごとに写真を並べ、右横に備考を載せたA4の報告書を作ります。備考は「写真」タブの各箇所で入力します。</p>
-      <div class="btnrow"><button class="btn pri" id="btnPdf">PDFを保存</button></div>
+      <div class="btnrow"><button class="btn" id="btnPrint">印刷</button><button class="btn" id="btnImg">画像で保存する</button><button class="btn" id="btnPdf">PDFを保存</button><button class="btn pri" id="btnShare">PDFを共有</button></div>
+      <p class="hint" id="pdfMsg" aria-live="polite" hidden></p>
       <div class="om-bar">
         <div class="om-bar-h">メールで送る（PDF付き）<button type="button" class="om-link" data-omset>⚙ 宛先・文面の設定</button></div>
         <div class="om-btns"><button type="button" class="btn pri" data-om="cust">お客様へメール</button><button type="button" class="btn pri" data-om="office">社内へメール</button></div>
@@ -345,6 +367,10 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <button type="button" class="btn" id="pvSave">この写真を保存</button>
     <button type="button" class="btn" id="pvClose">閉じる</button>
   </div>
+</div>
+<div class="imgov" id="imgOv" hidden role="dialog" aria-modal="true" aria-labelledby="imgOvMsg">
+  <div class="imgov-head"><p id="imgOvMsg">画像を作成しています…</p><div class="imgov-btns"><button type="button" class="btn pri" id="imgOvAll" hidden>画像をまとめて保存</button><button type="button" class="btn" id="imgOvClose">閉じる</button></div></div>
+  <div class="imgov-list" id="imgOvList"></div>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -929,17 +955,82 @@ async function buildReport(){
     pages.forEach((u,i)=>{const im=document.createElement("img");im.alt="報告書 "+(i+1)+"ページ";im.src=u;pg.appendChild(im)});
   }catch(e){msg.textContent="報告書を作成できませんでした。もう一度開き直してください。"}
 }
+const repBase=()=>(D.meta.date||today()).replace(/-/g,"")+"_"+(safe(D.meta.site)||"現場")+"_"+safe(D.cfg.title||"報告書");
+function pdfMsg(t){const m=$("#pdfMsg");m.textContent=t||"";m.hidden=!t}
+/* 報告書のPDFを作る（PDFを保存・PDFを共有・メールで共通） */
+async function makePdfFile(onProgress){
+  if(!window.jspdf){toast("PDFの部品を読み込めませんでした。電波のある場所で開き直してください");return null}
+  const pages=await getPages(onProgress);
+  const pdf=new window.jspdf.jsPDF({unit:"mm",format:"a4",compress:true});
+  pages.forEach((u,i)=>{if(i)pdf.addPage();pdf.addImage(u,"JPEG",0,0,210,297)});
+  const f=new File([pdf.output("blob")],repBase()+".pdf",{type:"application/pdf"});f.__pages=pages;return f;
+}
 $("#btnPdf").onclick=async e=>{
-  const b=e.currentTarget;
-  if(!window.jspdf){toast("PDFの部品を読み込めませんでした。電波のある場所で開き直してください");return}
-  b.disabled=true;b.textContent="作成中…";
-  try{
-    const pages=await getPages((n,t)=>{b.textContent="作成中 "+n+"/"+t});
-    const pdf=new window.jspdf.jsPDF({unit:"mm",format:"a4",compress:true});
-    pages.forEach((u,i)=>{if(i)pdf.addPage();pdf.addImage(u,"JPEG",0,0,210,297)});
-    await saveFile((D.meta.date||today()).replace(/-/g,"")+"_"+(safe(D.meta.site)||"現場")+"_"+safe(D.cfg.title||"報告書")+".pdf",pdf.output("blob"));
-  }finally{b.disabled=false;b.textContent="PDFを保存"}
+  const b=e.currentTarget;b.disabled=true;b.textContent="作成中…";pdfMsg("");
+  try{const f=await makePdfFile((n,t)=>{b.textContent="作成中 "+n+"/"+t});if(f)await saveFile(f.name,f)}
+  catch(err){pdfMsg("PDFを作成できませんでした。もう一度お試しください")}
+  finally{b.disabled=false;b.textContent="PDFを保存"}
 };
+/* PDFを共有（LINE・メールなど）。作ったPDFを少しの間とっておき、2回目のタップですぐ共有する */
+let canFileShare=false;try{canFileShare=!!(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.pdf",{type:"application/pdf"})]}))}catch(e){}
+let sharePrep=null;
+$("#btnShare").onclick=async e=>{
+  const b=e.currentTarget,L="PDFを共有";
+  if(sharePrep&&(Date.now()-sharePrep.t>120000||dirty||sharePrep.file.__pages!==lastPages))sharePrep=null;
+  let f=sharePrep&&sharePrep.file;pdfMsg("");
+  if(!f){b.disabled=true;b.textContent="作成中…";
+    try{f=await makePdfFile((n,t)=>{b.textContent="作成中 "+n+"/"+t})}catch(err){f=null;pdfMsg("PDFを作成できませんでした。もう一度お試しください")}
+    finally{b.disabled=false;b.textContent=L}
+    if(!f)return;sharePrep={t:Date.now(),file:f}}
+  b.textContent=L;
+  if(!canFileShare){await saveFile(f.name,f);pdfMsg("この端末では共有画面を開けないため、PDFを保存しました。保存したPDFを送ってください");sharePrep=null;return}
+  try{await navigator.share({files:[f],title:D.cfg.title||"作業写真報告書"});sharePrep=null}
+  catch(err){
+    if(err.name==="AbortError"){sharePrep=null;return}
+    if(err.name==="NotAllowedError"){b.textContent="準備できました。もう一度押して共有";return}
+    pdfMsg("共有できませんでした。PDFを保存して送ってください");sharePrep=null;
+  }
+};
+document.addEventListener("input",()=>{if(sharePrep){sharePrep=null;const b=$("#btnShare");if(!b.disabled)b.textContent="PDFを共有"}});
+/* 画像で保存する（ページごとの画像。長押しで保存、またはまとめて保存） */
+let imgFiles=null;
+$("#btnImg").onclick=async()=>{
+  const ov=$("#imgOv"),list=$("#imgOvList"),msg=$("#imgOvMsg");
+  list.innerHTML="";imgFiles=null;$("#imgOvAll").hidden=true;msg.textContent="画像を作成しています…";ov.hidden=false;document.body.style.overflow="hidden";$("#imgOvClose").focus();
+  try{
+    const pages=await getPages((n,t)=>{msg.textContent="画像を作成しています… "+n+" / "+t+"ページ"});
+    imgFiles=await Promise.all(pages.map(async(u,i)=>{const bl=await (await fetch(u)).blob();
+      return new File([bl],repBase()+(pages.length>1?"_"+(i+1):"")+".jpg",{type:"image/jpeg"})}));
+    pages.forEach((u,i)=>{const im=document.createElement("img");im.src=u;im.alt="報告書 "+(i+1)+"ページの画像";list.appendChild(im)});
+    msg.textContent="画像を長押し（パソコンは右クリック）して保存・共有してください"+(pages.length>1?"（全"+pages.length+"ページ）":"");
+    $("#imgOvAll").textContent=pages.length>1?"画像をまとめて保存（"+pages.length+"枚）":"画像を保存";$("#imgOvAll").hidden=false;
+  }catch(err){msg.textContent="画像を作成できませんでした。報告書タブを開き直して、もう一度お試しください"}
+};
+function closeImgOv(){$("#imgOv").hidden=true;document.body.style.overflow="";$("#imgOvList").innerHTML="";imgFiles=null}
+$("#imgOvClose").onclick=closeImgOv;
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#imgOv").hidden)closeImgOv()});
+$("#imgOvAll").onclick=async e=>{
+  const fs=imgFiles;if(!fs||!fs.length)return;const b=e.currentTarget,L=b.textContent;
+  let can=false;try{can=!!(navigator.canShare&&navigator.canShare({files:fs}))}catch(err){}
+  if(can){try{await navigator.share({files:fs});return}catch(err){if(err&&err.name==="AbortError")return;if(err&&err.name==="NotAllowedError"){$("#imgOvMsg").textContent="準備できました。もう一度「"+L+"」を押してください";return}}}
+  if(fs.length===1){await saveFile(fs[0].name,fs[0]);return}
+  if(typeof JSZip==="undefined"){toast("まとめて保存の準備ができていません。画像を長押しして1枚ずつ保存してください");return}
+  b.disabled=true;b.textContent="まとめています…";
+  try{const z=new JSZip();fs.forEach(f=>z.file(f.name,f));await saveFile(repBase()+"_画像.zip",await z.generateAsync({type:"blob",compression:"STORE"}))}
+  finally{b.disabled=false;b.textContent=L}
+};
+/* 印刷（報告書のページを A4 で） */
+$("#btnPrint").onclick=async e=>{
+  const b=e.currentTarget;b.disabled=true;b.textContent="準備中…";
+  try{
+    await buildReport();
+    const ims=[...document.querySelectorAll("#pages img")];if(!ims.length){pdfMsg("報告書を作成できませんでした。もう一度お試しください");return}
+    await Promise.all(ims.map(im=>im.decode?im.decode().catch(()=>{}):null));
+    document.body.classList.add("printing");
+    setTimeout(()=>{try{window.print()}catch(err){pdfMsg("この画面からは印刷できませんでした。PDFを保存して印刷してください")}},50);
+  }finally{b.disabled=false;b.textContent="印刷"}
+};
+window.addEventListener("afterprint",()=>document.body.classList.remove("printing"));
 
 const OM_JP=v=>{const [y,m,d]=String(v||"").split("-");return y&&m&&d?(+y)+"年"+(+m)+"月"+(+d)+"日":""};
 const OM_CFG={key:"ok-board-photo-mail-v1",siteWord:"現場",
@@ -953,12 +1044,7 @@ const OM_CFG={key:"ok-board-photo-mail-v1",siteWord:"現場",
     office:{subject:"【{報告書名}】{撮影日} {現場名}",
       body:"お疲れさまです。\n{現場名}の写真報告書を送ります。\n\n撮影日：{撮影日}\n作業内容：{作業内容}\n\n添付のPDFをご確認ください。",
       hint:"社内の送り先を登録します。送るときは、ここに登録したアドレスが最初からすべてチェックされています。"}},
-  pdf:async()=>{
-    if(!window.jspdf){toast("PDFの部品を読み込めませんでした。電波のある場所で開き直してください");return null}
-    const pages=await getPages();
-    const pdf=new window.jspdf.jsPDF({unit:"mm",format:"a4",compress:true});
-    pages.forEach((u,i)=>{if(i)pdf.addPage();pdf.addImage(u,"JPEG",0,0,210,297)});
-    return new File([pdf.output("blob")],(D.meta.date||today()).replace(/-/g,"")+"_"+(safe(D.meta.site)||"現場")+"_"+safe(D.cfg.title||"報告書")+".pdf",{type:"application/pdf"})},
+  pdf:()=>makePdfFile(),
   save:f=>saveFile(f.name,f)};
 /* ---------- メールで送る（共通部品：PDFは共有画面で添付／宛先はコピー・ショートカット・mailto） ---------- */
 (function(C){
