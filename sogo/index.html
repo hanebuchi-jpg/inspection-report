@@ -3935,7 +3935,7 @@ VIEWS.schedule={
     const ws=VS.weekStart, days=[...Array(7)].map((_,i)=>addDays(ws,i)), t=today();
     const vs=[...all('visits').filter(visibleVisit),...SHELL.eventsAsVisits()].filter(staffShown);
     const rows=schedRows();
-    const chip=v=>`<button class="chip ${v.status==='完了'?'done':isLate(v)?'late':''} ${isSelV(v.id)?'sel':''}" draggable="true" data-drag-visit="${v.id}" data-act="chip" data-id="${v.id}" data-fitem>${v.start?`<span class="tm">${esc(timeRange(v.start,v.end))}</span> `:''}${esc(visitTitle(v))}</button>`;
+    const chip=v=>`<button class="chip ${v.status==='完了'?'done':isLate(v)?'late':''} ${isSelV(v.id)?'sel':''}" draggable="true" data-drag-visit="${v.id}" data-act="chip" data-id="${v.id}" data-fitem>${VS.multi&&!v.ext&&!isSelV(v.id)?'<span class="muted">☐ </span>':''}${v.start?`<span class="tm">${esc(timeRange(v.start,v.end))}</span> `:''}${esc(visitTitle(v))}</button>`;
     const noRows=!rows.length?`<div class="callout w" style="margin-bottom:10px">表示する担当が選ばれていません。「担当」ボタンから選んでください。</div>`:'';
     let main;
     if(VS.schedView==='month'){
@@ -3965,10 +3965,10 @@ VIEWS.schedule={
     const groups={}; un.forEach(v=>{(groups[v.month||'未設定']??=[]).push(v);});
     const late=vs.filter(isLate);
     if(VS.unschedOpen==null) VS.unschedOpen=innerWidth>700;
-    const side=`<details class="unsched" ${VS.unschedOpen?'open':''} id="unschedBox"><summary><h3>日程未定 <span class="num muted">${un.length}</span>${late.length?` <span class="pill r">期限切れ ${late.length}</span>`:''}</h3></summary>
-      <p class="small muted" style="margin:0">定期契約から作られた作業です。ボードへドラッグするか、タップしてから配置先を選んでください。</p>
+    const side=`<details class="unsched" ${VS.unschedOpen?'open':''} id="unschedBox"><summary><h3 style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;width:calc(100% - 1.4em);vertical-align:middle">日程未定 <span class="num muted">${un.length}</span>${late.length?` <span class="pill r">期限切れ ${late.length}</span>`:''}<button class="btn sm ${VS.multi?'pri':''}" data-act="multi" aria-pressed="${!!VS.multi}" style="margin-left:auto;font-size:12px;padding:2px 10px">${VS.multi?'☑ 選択中（終える）':'☐ 選んで動かす'}</button></h3></summary>
+      <p class="small muted" style="margin:0">定期契約から作られた作業です。ボードへドラッグするか、タップしてから配置先を選んでください。まとめて動かすときは「選んで動かす」か「まとめて選択」、またはCtrl（Shift）を押しながらクリック・スマホは長押しで選べます。</p>
       ${late.length?`<div class="mgrp" style="color:var(--bad)">予定日を過ぎて未完了</div>${late.map(v=>`<button class="chip late ${isSelV(v.id)?'sel':''}" data-act="${VS.multi?'chip':'visit'}" data-id="${v.id}">${jd(v.date)} ${esc(visitTitle(v))}</button>`).join('')}`:''}
-      ${Object.keys(groups).sort().map(m=>`<div class="mgrp">${m==='未設定'?'対象月なし':ymLabel(m)}${m<tm?' <span class="pill r">過去</span>':m===tm?' <span class="pill w">今月</span>':''}${VS.multi?` <button class="btn sm" data-act="multi-group" data-m="${m}" style="padding:1px 8px;font-size:11.5px">${groups[m].every(v=>VS.multi.has(v.id))?'選択を外す':'まとめて選択'}</button>`:''}</div>${groups[m].slice(0,60).map(chip).join('')}${groups[m].length>60?`<p class="small muted">ほか${groups[m].length-60}件</p>`:''}`).join('')||'<p class="empty">日程未定の作業はありません。</p>'}
+      ${Object.keys(groups).sort().map(m=>`<div class="mgrp">${m==='未設定'?'対象月なし':ymLabel(m)}${m<tm?' <span class="pill r">過去</span>':m===tm?' <span class="pill w">今月</span>':''} <button class="btn sm" data-act="multi-group" data-m="${m}" style="padding:1px 8px;font-size:11.5px">${VS.multi&&groups[m].every(v=>VS.multi.has(v.id))?'選択を外す':'まとめて選択'}</button></div>${groups[m].slice(0,60).map(chip).join('')}${groups[m].length>60?`<p class="small muted">ほか${groups[m].length-60}件</p>`:''}`).join('')||'<p class="empty">日程未定の作業はありません。</p>'}
     </details>`;
     return `<div class="sched"><div style="min-width:0">${noRows}${main}</div>${side}</div>`;
   }
@@ -4745,6 +4745,9 @@ async function runImport(st){
 docOn('click',async e=>{
   const el=e.target.closest('[data-act]'); if(!el) return;
   const a=el.dataset.act, id=el.dataset.id;
+  if((a==='chip'||a==='visit')&&VS.route==='schedule'&&!sheet&&id&&!String(id).startsWith('ev~')){
+    if(Date.now()-(VS.lpAt||0)<700){ e.preventDefault(); return; }
+    if(e.ctrlKey||e.metaKey||e.shiftKey){ e.preventDefault(); if(!VS.multi){ VS.multi=new Set(); VS.placing=null; } VS.multi.has(id)?VS.multi.delete(id):VS.multi.add(id); render(); return; } }
   if(id&&String(id).startsWith('ev~')){ SHELL.openEvent(String(id).slice(3)); return; }
   switch(a){
     case 'go': if(el.dataset.r!=='schedule') VS.multi=null; VS.route=el.dataset.r; VS.more=false; VS.placing=null;  render(); window.scrollTo(0,0); break;
@@ -4784,9 +4787,9 @@ docOn('click',async e=>{
     case 'job': openSheet({kind:'job',id}); break;
     case 'customer': openSheet({kind:'customer',id}); break;
     case 'visit': if(VS.multi&&VS.route==='schedule'&&!sheet){ VS.multi.has(id)?VS.multi.delete(id):VS.multi.add(id); render(); break; } VS.placing=null; openSheet({kind:'visit',id}); render(); break;
-    case 'multi': VS.multi=VS.multi?null:new Set(); VS.placing=null; render(); break;
+    case 'multi': if(el.closest('summary')) e.preventDefault(); VS.multi=VS.multi?null:new Set(); VS.placing=null; render(); break;
     case 'multi-clear': VS.multi=new Set(); render(); break;
-    case 'multi-group': { const vs=all('visits').filter(visibleVisit).filter(staffShown).filter(v=>isOpenVisit(v)&&!v.date&&(v.month||'未設定')===el.dataset.m); const allIn=vs.every(v=>VS.multi.has(v.id)); vs.forEach(v=>allIn?VS.multi.delete(v.id):VS.multi.add(v.id)); render(); break; }
+    case 'multi-group': { if(!VS.multi){ VS.multi=new Set(); VS.placing=null; } const vs=all('visits').filter(visibleVisit).filter(staffShown).filter(v=>isOpenVisit(v)&&!v.date&&(v.month||'未設定')===el.dataset.m); const allIn=vs.every(v=>VS.multi.has(v.id)); vs.forEach(v=>allIn?VS.multi.delete(v.id):VS.multi.add(v.id)); render(); break; }
     case 'bulk': openSheet({kind:'bulk',live:false}); break;
     case 'bulk-save': await bulkSave(); break;
     case 'people-owner': VS.jobOwners=[el.dataset.id||'__none']; savePrefs(); VS.jobView='board'; render(); toast(`${el.dataset.id?staffName(el.dataset.id):'担当なし'}の案件を表示しています（「表示する営業担当」で戻せます）`); break;
@@ -5788,6 +5791,11 @@ async function impDel(tag){
   toast(`${items.length}件を削除しています…`); await delMany(items,(d,n)=>{ if(d%100===0) toast(`削除中… ${d} / ${n}`); }); for(const [c,id] of sItems) await SHELL.sDel(c,id); toast('削除しました（ログインできる人・管理者の担当者データは残しています）');
 }
 docOn('change',e=>{ const t=e.target; if(t.id==='migFile'&&t.files&&t.files[0]) impRead(t.files[0]); });
+/* 差配：スマホは作業を長押しすると複数選択を始める */
+let lpT=null;
+docOn('pointerdown',e=>{ if(e.pointerType!=='touch'||VS.route!=='schedule'||sheet) return; const el=e.target.closest('[data-act="chip"],[data-act="visit"]'); const id=el?.dataset.id; if(!id||String(id).startsWith('ev~')) return;
+  clearTimeout(lpT); lpT=setTimeout(()=>{ VS.lpAt=Date.now(); if(!VS.multi){ VS.multi=new Set(); VS.placing=null; } VS.multi.add(id); try{ navigator.vibrate&&navigator.vibrate(30); }catch(_){} render(); toast('複数選択を始めました。続けてタップで追加できます'); },550); });
+['pointerup','pointercancel','pointermove'].forEach(t=>docOn(t,e=>{ if(t==='pointermove'&&lpT&&(Math.abs(e.movementX)+Math.abs(e.movementY))<6) return; clearTimeout(lpT); lpT=null; }));
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
