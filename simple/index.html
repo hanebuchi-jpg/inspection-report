@@ -311,6 +311,8 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     <div class="card">
       <h2>報告書</h2>
       <label class="f">報告書タイトル<input id="setTitle"></label>
+      <label class="f">備考の位置<select id="setNotePos"><option value="right">写真の右</option><option value="below">写真の下</option></select></label>
+      <p class="hint">「写真の下」にすると、写真が大きくなり（幅 約1.3倍）、ページ数は少し増えます。備考欄は、どちらも文字数に合わせて下に広がります。</p>
       <label class="tg"><input type="checkbox" id="setHideEmpty"> 写真が1枚もない箇所は報告書に載せない</label>
     </div>
     <div class="savebar">
@@ -812,7 +814,7 @@ function fillSettings(){
   STAGES.forEach(([v,l])=>{const lb=document.createElement("label");lb.className="tg";const i=document.createElement("input");i.type="checkbox";i.value=v;i.id="stg-"+v;i.checked=c.stages.includes(v);i.onchange=drawBoardPreview;lb.append(i," "+l);box.appendChild(lb)});
   $("#setSlots").value=c.slots.map(s=>s.name).join("\n");
   $("#bdOn").checked=c.board.on;$("#bdLink").checked=c.board.link!==false;$("#bdPos").value=c.board.pos;$("#bdSize").value=c.board.size;
-  $("#setCompany").value=c.company||"";$("#setTitle").value=c.title||"";$("#setHideEmpty").checked=c.hideEmpty!==false;
+  $("#setCompany").value=c.company||"";$("#setTitle").value=c.title||"";$("#setHideEmpty").checked=c.hideEmpty!==false;$("#setNotePos").value=c.notePos==="below"?"below":"right";
   draftRows=clone(c.board.rows);renderBoardRows();updateCounters();$("#setConfirm").innerHTML="";
 }
 function updateCounters(){const n=lines($("#setSlots").value).length,el=$("#cntSlots");el.textContent=n+" / "+MAX+"件";el.classList.toggle("over",n>MAX)}
@@ -852,7 +854,7 @@ $("#btnSaveSet").onclick=()=>{
   const apply=async()=>{
     for(const k of lost)await delPhoto(k);
     const keep=new Set(slots.map(s=>s.id));Object.keys(D.notes).forEach(id=>{if(!keep.has(id))delete D.notes[id]});
-    Object.assign(D.cfg,{stages,slots,company:$("#setCompany").value.trim(),title:$("#setTitle").value.trim()||"作業写真報告書",hideEmpty:$("#setHideEmpty").checked,
+    Object.assign(D.cfg,{stages,slots,company:$("#setCompany").value.trim(),title:$("#setTitle").value.trim()||"作業写真報告書",hideEmpty:$("#setHideEmpty").checked,notePos:$("#setNotePos").value==="below"?"below":"right",
       board:{on:$("#bdOn").checked,link:$("#bdLink").checked,pos:$("#bdPos").value,size:$("#bdSize").value,rows:draftRows.map(r=>({l:r.l.trim(),v:r.v.trim()})).filter(r=>r.l||r.v)}});
     persist();renderSlots();box.innerHTML="";toast("設定を保存しました");
   };
@@ -871,7 +873,8 @@ const SC=2; // 1240x1754 の座標で描き、2倍（約300dpi）で書き出す
 const PW=1240,PH=1754,M=90,BOT=PH-110,RH=44,NOTE_W=300,GAP=16;
 const FONTD='"Zen Kaku Gothic New","BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif';
 function txt(g,s,x,y,size,o){o=o||{};g.font=(o.bold?"700 ":"400 ")+size+"px "+(o.display?FONTD:FONT);g.fillStyle=o.color||"#18242e";g.textAlign=o.align||"left";g.fillText(s,x,y)}
-function wrapLines(g,s,maxW){const out=[];String(s).split("\n").forEach(p=>{let line="";for(const ch of p){if(g.measureText(line+ch).width>maxW){out.push(line);line=ch}else line+=ch}out.push(line)});return out}
+const NO_HEAD="、。，．,.・：；？！?!ー〜）」』】〕｝〉》ぁぃぅぇぉっゃゅょァィゥェォッャュョ…";
+function wrapLines(g,s,maxW){const out=[];String(s).split("\n").forEach(p=>{let line="";for(const ch of p){if(line&&g.measureText(line+ch).width>maxW&&!NO_HEAD.includes(ch)){out.push(line);line=ch}else line+=ch}out.push(line)});return out}
 function drawContain(g,img,x,y,w,h){
   g.fillStyle="#eef1f3";g.fillRect(x,y,w,h);
   if(!img){txt(g,"写真なし",x+w/2,y+h/2,20,{color:"#9aa8b1",align:"center"});return}
@@ -889,6 +892,25 @@ function drawNoteBox(g,note,x,y,w,h){
   if(ls.length>max){ls=ls.slice(0,max);ls[max-1]=fit(g,ls[max-1]+"…",w-24)}
   ls.forEach((l,i)=>txt(g,l,x+12,y+52+i*lh,fs));
 }
+/* 備考（写真の下） */
+const NOTE_H=82,NOTE_LW=80,NOTE_LH=28;
+function drawNoteBelow(g,note,x,y,w,h){
+  g.fillStyle="#ffffff";g.fillRect(x,y,w,h);g.strokeStyle="#9aa8b1";g.lineWidth=1.5;g.strokeRect(x,y,w,h);
+  g.fillStyle="#e3e9ec";g.fillRect(x+1,y+1,NOTE_LW-1,h-2);g.beginPath();g.moveTo(x+NOTE_LW,y);g.lineTo(x+NOTE_LW,y+h);g.stroke();
+  txt(g,"備考",x+NOTE_LW/2,y+h/2,18,{bold:true,color:"#3a4750",align:"center"});
+  const fs=19,tw=w-NOTE_LW-28;g.font="400 "+fs+"px "+FONT;
+  let ls=wrapLines(g,String(note||"").trim(),tw);const max=Math.max(1,Math.floor((h-16)/NOTE_LH));
+  if(ls.length>max){ls=ls.slice(0,max);ls[max-1]=fit(g,ls[max-1]+"…",tw)}
+  ls.forEach((l,i)=>txt(g,l,x+NOTE_LW+14,y+8+NOTE_LH/2+i*NOTE_LH,fs));
+}
+/* 備考の文字数に合わせた枠の高さ（最低は minH、最大は maxH） */
+function noteHeight(g,note,below,minH,maxH){
+  const t=String(note||"").trim();if(!t)return minH;
+  g.font="400 19px "+FONT;
+  const n=wrapLines(g,t,below?PW-2*M-NOTE_LW-28:NOTE_W-24).length;
+  const need=below?16+n*NOTE_LH:48+n*NOTE_LH+12;
+  return Math.min(maxH,Math.max(minH,need));
+}
 async function loadPhoto(s,stage){const b=await pGet(pk(s.id,stage));if(!b)return null;try{return await blobImg(b)}catch(e){return null}}
 async function renderPages(onProgress){
   try{await document.fonts.ready}catch(e){}
@@ -897,11 +919,23 @@ async function renderPages(onProgress){
   let slots=cfg.slots.map((s,i)=>({s,i}));
   if(cfg.hideEmpty!==false)slots=slots.filter(o=>st.some(x=>keys.has(pk(o.s.id,x))));
   const metaRows=[["現場名",meta.site],["撮影日",fmtDate(meta.date)],["作業内容",meta.work]].filter(r=>String(r[1]||"").trim());
-  const iw=(PW-2*M-NOTE_W-GAP*N)/N,ih=Math.round(iw*3/4),block=34+ih+26;
+  const below=cfg.notePos==="below";
   const top1=180+metaRows.length*RH+40+34, topN=110+34;
-  const per1=Math.max(1,Math.floor((BOT-top1)/block)),perN=Math.max(1,Math.floor((BOT-topN)/block));
-  const plan=[{first:true,list:slots.slice(0,per1)}];
-  for(let i=per1;i<slots.length;i+=perN)plan.push({list:slots.slice(i,i+perN)});
+  let iw,ih;
+  if(below){ih=Math.floor((BOT-topN)/3)-34-10-NOTE_H-26;iw=Math.round(ih*4/3);
+    const maxW=(PW-2*M-GAP*(N-1))/N;if(iw>maxW){iw=maxW;ih=Math.round(iw*3/4)}}
+  else{iw=(PW-2*M-NOTE_W-GAP*N)/N;ih=Math.round(iw*3/4)}
+  const x0=below?(PW-(iw*N+GAP*(N-1)))/2:M;
+  // 箇所ごとの高さ（備考の文字数で広がる。最低は今の大きさ、最大は1ページに収まるまで）
+  const items=slots.map(o=>{
+    const note=D.notes[o.s.id];
+    const nh=below?noteHeight(g,note,true,NOTE_H,(BOT-topN)-(34+ih+10+26)):noteHeight(g,note,false,ih,(BOT-topN)-(34+26));
+    return Object.assign({},o,{nh,block:below?34+ih+10+nh+26:34+nh+26});
+  });
+  const plan=[{first:true,list:[]}];let yy=top1;
+  items.forEach(it=>{const cur=plan[plan.length-1];
+    if(cur.list.length&&yy+it.block>BOT){plan.push({list:[]});yy=topN}
+    plan[plan.length-1].list.push(it);yy+=it.block});
   const total=plan.length,out=[];
   for(let p=0;p<total;p++){
     const pg=plan[p];
@@ -918,14 +952,15 @@ async function renderPages(onProgress){
         txt(g,k,M+16,y+RH/2,21,{bold:true});g.font="400 22px "+FONT;txt(g,fit(g,v,PW-2*M-lw-32),M+lw+16,y+RH/2,22);y+=RH});
       y+=40;
     }else{txt(g,"写真記録",M,70,30,{bold:true,display:true});y=110}
-    st.forEach((x,ci)=>txt(g,STAGE_LABEL[x],M+ci*(iw+GAP)+iw/2,y+14,19,{bold:true,align:"center",color:"#5b6872"}));
-    txt(g,"備考",PW-M-NOTE_W/2,y+14,19,{bold:true,align:"center",color:"#5b6872"});
+    st.forEach((x,ci)=>txt(g,STAGE_LABEL[x],x0+ci*(iw+GAP)+iw/2,y+14,19,{bold:true,align:"center",color:"#5b6872"}));
+    if(!below)txt(g,"備考",PW-M-NOTE_W/2,y+14,19,{bold:true,align:"center",color:"#5b6872"});
     y+=34;
     if(!pg.list.length)txt(g,"写真がまだありません",PW/2,y+120,24,{align:"center",color:"#9aa8b1"});
-    for(const {s,i} of pg.list){
+    for(const {s,i,nh,block} of pg.list){
       g.font="700 21px "+FONT;txt(g,fit(g,String(i+1).padStart(2,"0")+"　"+s.name,PW-2*M),M,y+16,21,{bold:true});
-      for(let ci=0;ci<N;ci++){const im=await loadPhoto(s,st[ci]);drawContain(g,im,M+ci*(iw+GAP),y+34,iw,ih)}
-      drawNoteBox(g,D.notes[s.id],PW-M-NOTE_W,y+34,NOTE_W,ih);
+      for(let ci=0;ci<N;ci++){const im=await loadPhoto(s,st[ci]);drawContain(g,im,x0+ci*(iw+GAP),y+34,iw,ih)}
+      if(below)drawNoteBelow(g,D.notes[s.id],M,y+34+ih+10,PW-2*M,nh);
+      else drawNoteBox(g,D.notes[s.id],PW-M-NOTE_W,y+34,NOTE_W,nh);
       g.strokeStyle="#d3dade";g.lineWidth=1;g.beginPath();g.moveTo(M,y+block-10);g.lineTo(PW-M,y+block-10);g.stroke();
       y+=block;
     }
