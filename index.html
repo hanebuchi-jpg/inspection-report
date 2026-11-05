@@ -856,12 +856,17 @@ function renderWRows(){
   });
 }
 $("#addWRow").onclick=()=>{const m=R().meta;m.rows.push({place:"",content:"",type:"定期"});persist();renderWRows();const el=$("#wp"+(m.rows.length-1));if(el)el.focus()};
+/* 作業箇所を撮影箇所で上書き（作業内容・定期/スポットはテンプレートの初期値から） */
+function rowsFromSlots(rep){
+  const t=D.templates.find(x=>x.id===rep.tplId),def=new Map();
+  ((t&&t.rows)||[]).forEach(r=>{const k=String(r.place||"").trim();if(k&&!def.has(k))def.set(k,r)});
+  const rows=rep.cfg.slots.map(s=>{const d=def.get(String(s.name).trim());return {place:s.name,content:d?d.content||"":"",type:d?(d.type||""):"定期"}});
+  return rows.length?rows:[{place:"",content:"",type:"定期"}];
+}
+function overwriteRows(rep){rep.meta.rows=rowsFromSlots(rep);return rep.cfg.slots.length}
 $("#copySlots").onclick=()=>{
-  const m=R().meta,have=new Set(m.rows.map(r=>String(r.place||"").trim()));
-  m.rows=m.rows.filter(r=>r.place||r.content);
-  let n=0;R().cfg.slots.forEach(s=>{if(!have.has(s.name)){m.rows.push({place:s.name,content:"",type:"定期"});n++}});
-  if(!m.rows.length)m.rows.push({place:"",content:"",type:"定期"});
-  persist();renderWRows();toast(n?"撮影箇所を "+n+" 件、作業箇所に写しました":"作業箇所にない撮影箇所はありません");
+  const n=overwriteRows(R());persist();renderWRows();
+  toast(n?"作業箇所を撮影箇所 "+n+" 件で上書きしました":"撮影箇所が設定されていません");
 };
 /* 作業員 */
 function renderWorkers(){
@@ -1406,7 +1411,7 @@ $("#btnTplApply").onclick=async()=>{
   $("#setCompany").value=c.company;fillOrg(c);$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
   W={rows:clone(c.board.rows||[])};W.rows.forEach(r=>{r.src=rowSrc(r,c.board)});renderBoardRows();updateCounters();drawBoardPreview();
   const ok=await applySettings();
-  if(ok){const rep=R();rep.tplId=t.id;rep.tplName=t.name;persist();renderTplList();renderReports();toast("テンプレート「"+t.name+"」の内容を表示中の報告に使いました")}
+  if(ok){const rep=R();rep.tplId=t.id;rep.tplName=t.name;overwriteRows(rep);persist();renderWRows();renderTplList();renderReports();toast("テンプレート「"+t.name+"」の内容を表示中の報告に使い、作業箇所を上書きしました")}
 };
 function renderTplList(){
   const rep=R(),t=D.templates.find(x=>x.id===rep.tplId);
