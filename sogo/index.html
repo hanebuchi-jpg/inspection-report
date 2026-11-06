@@ -6017,11 +6017,11 @@ function partnerRows(pid){
   return rows.sort(by(r=>(r.now?'0':'1')+r.cust+r.site+r.work));
 }
 VIEWS.partners={
-  shell:()=>`<div class="vhead"><h1>協力会社別の発注</h1></div>
-    <div class="toolbar"><select class="inp auto" id="pvSel" aria-label="協力会社"><option value="">協力会社を選ぶ</option>${partners().map(p=>`<option value="${p.id}" ${VS.pvSel===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
-    <div class="seg" role="group" aria-label="状態">${[['now','依頼中'],['past','過去'],['all','すべて']].map(([k,l])=>`<button data-act="pvF" data-v="${k}" aria-pressed="${(VS.pvF||'now')===k}">${l}</button>`).join('')}</div>
-    <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pvNoPo" ${VS.pvNoPo?'checked':''}> 発注書なしだけ</label>
-    <button class="btn" data-act="pv-csv" style="margin-left:auto">CSVで保存</button></div>`,
+  shell:()=>`<div class="vhead"><h1>協力会社別の発注</h1></div><div class="toolbar" id="tools" style="flex-wrap:wrap;align-items:center"></div>`,
+  tools:()=>`${VS.pvSel?`<button class="btn" data-act="pv-open" data-id="">← 全社の集計</button>`:''}<select class="inp auto filt" id="pvSel" aria-label="協力会社" style="width:auto;max-width:360px;flex:0 1 auto"><option value="">協力会社を選ぶ（全社の集計）</option>${partners().map(p=>`<option value="${p.id}" ${VS.pvSel===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+    ${VS.pvSel?`<div class="seg" role="group" aria-label="状態">${[['now','依頼中'],['past','過去'],['all','すべて']].map(([k,l])=>`<button data-act="pvF" data-v="${k}" aria-pressed="${(VS.pvF||'now')===k}">${l}</button>`).join('')}</div>
+    <label class="small" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pvNoPo" ${VS.pvNoPo?'checked':''}> 発注書なしだけ</label>`:''}
+    <button class="btn" data-act="pv-csv" style="margin-left:auto">CSVで保存（${VS.pvSel?esc(staffName(VS.pvSel)):'全社'}）</button>`,
   body(){
     if(!VS.pvSel){ // 協力会社ごとの集計
       const list=partners().map(p=>{ const rs=partnerRows(p.id); return {p,n:rs.filter(r=>r.now).length,sites:new Set(rs.filter(r=>r.now).map(r=>r.site)).size,year:rs.reduce((a,r)=>a+r.year,0),done:rs.reduce((a,r)=>a+r.done12,0),nopo:rs.filter(r=>r.now&&!r.hasPo).length,past:rs.filter(r=>!r.now).length}; }).sort(by(x=>-x.year-x.done));
