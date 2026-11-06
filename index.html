@@ -877,6 +877,7 @@ function boardUses(cfg,src,word){const b=cfg.board||{};return !!b.on&&(b.rows||[
 function fillFeat(mode,feat){
   const custom=mode==="custom",f=custom?normFeat(feat):featsOf({mode});
   FEAT_KEYS.forEach(k=>{const c=$("#ft-"+k);c.checked=!!f[k];c.disabled=!custom});
+  $("#featRow").hidden=!custom;
   $("#featHint").textContent=APP_MODES[mode].hint;
   $("#itemsCard").hidden=!f.check;
 }
