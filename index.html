@@ -100,6 +100,7 @@ details.more[open] summary{margin-bottom:8px}
 
 /* photo slots */
 .slot{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.note-in{width:100%;border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--bg);font-size:14px;line-height:1.6;resize:vertical;min-width:0}
 .slot-head{display:flex;align-items:center;gap:8px}
 .slot-no{font-family:var(--f-display);font-weight:900;font-size:13px;background:var(--chip);border-radius:4px;padding:1px 7px;font-variant-numeric:tabular-nums}
 .slot-name{font-weight:700;flex:1;min-width:0}
@@ -532,6 +533,8 @@ details.more[open] summary{margin-bottom:8px}
         <label class="f">チェック表・写真ページの見出し<input id="setTitle"></label>
       </div>
       <label class="tg"><input type="checkbox" id="setHideEmpty"> 写真が1枚もない箇所は報告書に載せない</label>
+      <label class="f">撮影箇所の備考の位置<select id="setNotePos"><option value="below">写真の下</option><option value="right">写真の右</option></select></label>
+      <p class="hint">「写真の下」は備考を書いた箇所だけに枠が付き、写真の大きさは変わりません。「写真の右」は全箇所の右に備考の列ができ、その分写真が小さくなります。どちらも備考の文字数に合わせて枠が下に広がります。</p>
     </div>
     <div class="card" id="tplDefaults" hidden>
       <h2>作業報告書の初期値</h2>
@@ -671,12 +674,12 @@ function defaultTemplates(){
 }
 function cfgFromTpl(t){
   return {stages:[...t.stages],slots:t.slots.map(n=>({id:"s"+uid(),name:n})),items:t.items.map(x=>({id:"c"+uid(),text:x})),
-    board:clone(t.board),company:t.company||"",slogan:t.slogan||"",address:t.address||"",tel:t.tel||"",title:t.title||"点検報告書",hideEmpty:t.hideEmpty!==false};
+    board:clone(t.board),company:t.company||"",slogan:t.slogan||"",address:t.address||"",tel:t.tel||"",title:t.title||"点検報告書",hideEmpty:t.hideEmpty!==false,notePos:t.notePos==="right"?"right":"below"};
 }
 function tplFromCfg(cfg,id,name,meta){
   const rows=meta&&Array.isArray(meta.rows)?meta.rows.filter(r=>r.place||r.content).map(r=>({place:r.place||"",content:r.content||"",type:r.type||""})):[];
   return {id,name,stages:[...cfg.stages],slots:cfg.slots.map(s=>s.name),items:cfg.items.map(i=>i.text),board:clone(cfg.board),
-    company:cfg.company,slogan:cfg.slogan||"",address:cfg.address||"",tel:cfg.tel||"",title:cfg.title,hideEmpty:cfg.hideEmpty,rows,sales:meta?meta.sales||"":"",customer:meta?meta.customer||"":""};
+    company:cfg.company,slogan:cfg.slogan||"",address:cfg.address||"",tel:cfg.tel||"",title:cfg.title,hideEmpty:cfg.hideEmpty,notePos:cfg.notePos==="right"?"right":"below",rows,sales:meta?meta.sales||"":"",customer:meta?meta.customer||"":""};
 }
 function blankMeta(){return {customer:"",site:"",date:today(),start:"",end:"",inspector:"",workers:[],rows:[{place:"",content:"",type:"定期"}],note:"",sales:"",signature:"",signedAt:0,signHash:""}}
 function fixMeta(m){
@@ -756,7 +759,25 @@ function toBlob(c,q){return new Promise(ok=>c.toBlob(ok,"image/jpeg",q||0.85))}
 async function blobImg(b){const u=URL.createObjectURL(b);try{return await loadImg(u)}finally{setTimeout(()=>URL.revokeObjectURL(u),0)}}
 async function makeThumb(blob){const im=await blobImg(blob);const w=360,h=Math.round(w*im.naturalHeight/im.naturalWidth);const c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(im,0,0,w,h);return toBlob(c,.72)}
 function fit(g,s,maxW){s=String(s);if(g.measureText(s).width<=maxW)return s;while(s.length&&g.measureText(s+"…").width>maxW)s=s.slice(0,-1);return s+"…"}
-function wrapLines(g,s,maxW){const out=[];String(s).split("\n").forEach(p=>{let line="";for(const ch of p){if(g.measureText(line+ch).width>maxW){out.push(line);line=ch}else line+=ch}out.push(line)});return out}
+const NO_HEAD="、。，．,.・：；？！?!ー〜）」』】〕｝〉》ぁぃぅぇぉっゃゅょァィゥェォッャュョ…";
+/* 撮影箇所の備考（報告書の写真ページ） */
+const NOTE_FS=19,NOTE_LH=28,NOTE_LW=80,NOTE_W=300,NOTE_MINB=82;
+function noteLinesOf(g,t,w){g.font="400 "+NOTE_FS+"px "+FONT;return wrapLines(g,String(t||"").trim(),w)}
+function drawNoteBelow(g,note,x,y,w,h){
+  g.save();g.fillStyle="#ffffff";g.fillRect(x,y,w,h);g.strokeStyle="#9aa8b1";g.lineWidth=1.5;g.strokeRect(x,y,w,h);
+  g.fillStyle="#e3e9ec";g.fillRect(x+1,y+1,NOTE_LW-1,h-2);g.beginPath();g.moveTo(x+NOTE_LW,y);g.lineTo(x+NOTE_LW,y+h);g.stroke();g.restore();
+  txt(g,"備考",x+NOTE_LW/2,y+h/2,18,{bold:true,color:"#3a4750",align:"center"});
+  const tw=w-NOTE_LW-28;let ls=noteLinesOf(g,note,tw);const max=Math.max(1,Math.floor((h-16)/NOTE_LH));
+  if(ls.length>max){ls=ls.slice(0,max);g.font="400 "+NOTE_FS+"px "+FONT;ls[max-1]=fit(g,ls[max-1]+"…",tw)}
+  ls.forEach((l,i)=>txt(g,l,x+NOTE_LW+14,y+8+NOTE_LH/2+i*NOTE_LH,NOTE_FS));
+}
+function drawNoteRight(g,note,x,y,w,h){
+  g.save();g.fillStyle="#ffffff";g.fillRect(x,y,w,h);g.strokeStyle="#9aa8b1";g.lineWidth=1.5;g.strokeRect(x,y,w,h);g.restore();
+  const tw=w-24;let ls=noteLinesOf(g,note,tw);const max=Math.max(1,Math.floor((h-20)/NOTE_LH));
+  if(ls.length>max){ls=ls.slice(0,max);g.font="400 "+NOTE_FS+"px "+FONT;ls[max-1]=fit(g,ls[max-1]+"…",tw)}
+  ls.forEach((l,i)=>txt(g,l,x+12,y+10+NOTE_LH/2+i*NOTE_LH,NOTE_FS));
+}
+function wrapLines(g,s,maxW){const out=[];String(s).split("\n").forEach(p=>{let line="";for(const ch of p){if(line&&g.measureText(line+ch).width>maxW&&!NO_HEAD.includes(ch)){out.push(line);line=ch}else line+=ch}out.push(line)});return out}
 
 /* ---------- 施工看板 ---------- */
 const DATE_LABELS=["撮影日","日付","作業日","施工日"];
@@ -1070,7 +1091,10 @@ function renderSlots(){
         d.onclick=()=>armDelete(d,async()=>{await delPhoto(k);renderSlots();persist();toast("写真を削除しました")});mini.appendChild(d)}
       sh.append(lb,th,mini);grid.appendChild(sh);
     });
-    el.appendChild(grid);wrap.appendChild(el);
+    el.appendChild(grid);
+    const nt=document.createElement("textarea");nt.className="note-in";nt.rows=2;nt.placeholder="備考（報告書の写真ページに載ります）";nt.setAttribute("aria-label",s.name+"の備考");
+    if(!rep.notes)rep.notes={};nt.value=rep.notes[s.id]||"";nt.oninput=()=>{rep.notes[s.id]=nt.value;persist()};
+    el.appendChild(nt);wrap.appendChild(el);
   });
   if(!shown){const e=document.createElement("div");e.className="empty";
     e.textContent=rep.cfg.slots.length?"未撮影の箇所はありません":"撮影箇所が設定されていません。設定タブで追加してください。";wrap.appendChild(e)}
@@ -1268,7 +1292,7 @@ $("#btnAllOk").onclick=()=>{const rep=R();rep.cfg.items.forEach(it=>{const c=rep
 /* ---------- settings ---------- */
 let W=null; // draft board rows
 let SM={mode:"report"}; // settings target: the current report, or a template being edited
-function cfgOfTpl(t){return {stages:[...t.stages],slots:t.slots.map(n=>({name:n})),items:t.items.map(x=>({text:x})),board:clone(t.board||{on:true,link:true,pos:"bl",size:"m",rows:[]}),company:t.company||"",slogan:t.slogan||"",address:t.address||"",tel:t.tel||"",title:t.title||"",hideEmpty:t.hideEmpty!==false}}
+function cfgOfTpl(t){return {stages:[...t.stages],slots:t.slots.map(n=>({name:n})),items:t.items.map(x=>({text:x})),board:clone(t.board||{on:true,link:true,pos:"bl",size:"m",rows:[]}),company:t.company||"",slogan:t.slogan||"",address:t.address||"",tel:t.tel||"",title:t.title||"",hideEmpty:t.hideEmpty!==false,notePos:t.notePos==="right"?"right":"below"}}
 function fillSettings(){
   if(SM.mode==="tpl"&&!D.templates.some(t=>t.id===SM.id))SM={mode:"report"};
   const tplMode=SM.mode==="tpl",tp=tplMode?D.templates.find(t=>t.id===SM.id):null;
@@ -1283,7 +1307,7 @@ function fillSettings(){
   $("#setItems").value=cfg.items.map(i=>i.text).join("\n");
   $("#bdOn").checked=!!cfg.board.on;$("#bdPos").value=cfg.board.pos||"bl";$("#bdSize").value=cfg.board.size||"m";
   W.rows.forEach(r=>{r.src=rowSrc(r,cfg.board)});
-  $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;
+  $("#setCompany").value=cfg.company||"";$("#setTitle").value=cfg.title||"";$("#setHideEmpty").checked=cfg.hideEmpty!==false;$("#setNotePos").value=cfg.notePos==="right"?"right":"below";
   fillOrg(cfg);
   $("#tplDefaults").hidden=!tplMode;
   if(tplMode){$("#tplRows").value=(tp.rows||[]).map(r=>[r.place||"",r.content||"",r.type||""].join("｜")).join("\n");$("#tplSales").value=tp.sales||"";$("#tplCustomer").value=tp.customer||""}
@@ -1376,7 +1400,7 @@ function readDraft(){
   const board={on:$("#bdOn").checked,pos:$("#bdPos").value,size:$("#bdSize").value,
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
   const cfg={stages,slots,items,board,company:$("#setCompany").value.trim(),...orgVals(),
-    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked};
+    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,notePos:$("#setNotePos").value==="right"?"right":"below"};
   return {cfg,lose,dropItems:ipool.map(x=>x.id),removedSlots:cur,removedItems:icur,arch,iarch};
 }
 async function commitDraft(d,keep){
@@ -1425,7 +1449,7 @@ function readTplDraft(){
     rows:W.rows.map(r=>({l:String(r.l||"").trim(),v:String(r.v||"").trim(),src:r.src||""})).filter(r=>r.l||r.v||r.src).slice(0,MAX_BOARD)};
   const rows=lines($("#tplRows").value).slice(0,MAX).map(l=>{const p=l.split(/[｜|]/).map(x=>x.trim());const tp=p[2]==="スポット"?"スポット":(p[2]==="定期"?"定期":"");return {place:p[0]||"",content:p[1]||"",type:tp||(p.length>2?"":"定期")}});
   return {tpl:{id:SM.id,name,stages,slots:names,items:texts,board,company:$("#setCompany").value.trim(),...orgVals(),
-    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,rows,sales:$("#tplSales").value.trim(),customer:$("#tplCustomer").value.trim()}};
+    title:$("#setTitle").value.trim()||"点検報告書",hideEmpty:$("#setHideEmpty").checked,notePos:$("#setNotePos").value==="right"?"right":"below",rows,sales:$("#tplSales").value.trim(),customer:$("#tplCustomer").value.trim()}};
 }
 function saveTplDraft(){
   const d=readTplDraft();if(d.err){toast(d.err);return null}
@@ -1446,7 +1470,7 @@ $("#btnTplApply").onclick=async()=>{
   STAGES.forEach(([k])=>$("#st-"+k).checked=c.stages.includes(k));
   $("#setSlots").value=t.slots.join("\n");$("#setItems").value=t.items.join("\n");
   $("#bdOn").checked=!!c.board.on;$("#bdPos").value=c.board.pos||"bl";$("#bdSize").value=c.board.size||"m";
-  $("#setCompany").value=c.company;fillOrg(c);$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;
+  $("#setCompany").value=c.company;fillOrg(c);$("#setTitle").value=c.title;$("#setHideEmpty").checked=c.hideEmpty;$("#setNotePos").value=c.notePos==="right"?"right":"below";
   W={rows:clone(c.board.rows||[])};W.rows.forEach(r=>{r.src=rowSrc(r,c.board)});renderBoardRows();updateCounters();drawBoardPreview();
   const ok=await applySettings();
   if(ok){const rep=R();rep.tplId=t.id;rep.tplName=t.name;overwriteRows(rep);persist();renderWRows();renderTplList();renderReports();toast("テンプレート「"+t.name+"」の内容を表示中の報告に使い、作業箇所を上書きしました")}
@@ -1518,7 +1542,7 @@ function cleanTpl(t){
   return {name:str(t.name).trim()||"受け取ったテンプレート",stages,slots,items,
     board:{on:b.on!==false,link:b.link!==false,pos:["bl","br","tl","tr"].includes(b.pos)?b.pos:"bl",size:["s","m","l","xl"].includes(b.size)?b.size:"m",
       rows:(Array.isArray(b.rows)?b.rows:[]).slice(0,MAX_BOARD).map(r=>({l:str(r&&r.l),v:str(r&&r.v),src:rowSrc(r,b)}))},
-    company:str(t.company),slogan:str(t.slogan),address:str(t.address),tel:str(t.tel),title:str(t.title)||"点検報告書",hideEmpty:t.hideEmpty!==false,
+    company:str(t.company),slogan:str(t.slogan),address:str(t.address),tel:str(t.tel),title:str(t.title)||"点検報告書",hideEmpty:t.hideEmpty!==false,notePos:t.notePos==="right"?"right":"below",
     rows:(Array.isArray(t.rows)?t.rows:[]).slice(0,MAX).map(r=>({place:str(r&&r.place),content:str(r&&r.content),type:["定期","スポット"].includes(r&&r.type)?r.type:""})),sales:str(t.sales),customer:str(t.customer)};
 }
 function tplFileName(t){return "O&K報告書テンプレート_"+t.name.replace(/[\\/:*?"<>|]/g,"").slice(0,40)+".json"}
@@ -1748,8 +1772,31 @@ async function renderPages(onProgress,sel){
   if(cfg.hideEmpty)slots=slots.filter(s=>st.some(x=>keys.has(pk(rep.id,s.id,x))));
   if(!withPhotos)slots=[];
 
-  const per=N===1?6:(N===3?4:3);
-  for(let i=0;i<slots.length;i+=per)plan.push({t:"photos",slots:slots.slice(i,i+per),start:i});
+  // 写真ページの割り付け（備考の文字数で箇所ごとの高さが変わる）
+  const notes=rep.notes||{},right=cfg.notePos==="right",gap=20;
+  const L={right,list:N>=2||right};
+  if(L.list){
+    const per=N===1?3:(N===3?4:3),top=130;
+    L.top=top;L.h0=(BOT-130)/per-52;L.W=PW-2*M-(right?NOTE_W+gap:0);L.iw=(L.W-gap*(N-1))/N;
+    if(right)L.h0=Math.min(L.h0,Math.round(L.iw*3/4)); // 備考が右のときは写真枠を4:3にして余白を作らない
+    const units=slots.map((s,i)=>{const t=String(notes[s.id]||"").trim();let nh=0,block;
+      if(right){const need=t?20+noteLinesOf(g,t,NOTE_W-24).length*NOTE_LH:0;nh=Math.min(BOT-top-52,Math.max(L.h0,need));block=40+nh+12}
+      else{if(t){const need=16+noteLinesOf(g,t,PW-2*M-NOTE_LW-28).length*NOTE_LH;nh=Math.min(BOT-top-(40+L.h0+10+12),Math.max(NOTE_MINB,need))}
+        block=40+L.h0+(nh?10+nh:0)+12}
+      return {s,i,nh,block}});
+    let pg=null,y=0;
+    units.forEach(u=>{if(!pg||y+u.block>BOT){pg={t:"photos",units:[]};plan.push(pg);y=top}pg.units.push(Object.assign(u,{y}));y+=u.block});
+  }else{
+    // 区分が1つ・備考は写真の下：2列の格子
+    const cols=2,iw=(PW-2*M-gap)/cols,h0=(BOT-110)/3-50,top=110;L.iw=iw;L.h0=h0;
+    const cells=slots.map((s,i)=>{const t=String(notes[s.id]||"").trim();let nh=0;
+      if(t){const need=16+noteLinesOf(g,t,iw-NOTE_LW-28).length*NOTE_LH;nh=Math.min(BOT-top-(38+h0+10+12),Math.max(NOTE_MINB,need))}
+      return {s,i,nh,block:38+h0+(nh?10+nh:0)+12}});
+    let pg=null,y=0;
+    for(let r=0;r<cells.length;r+=cols){const row=cells.slice(r,r+cols),rb=Math.max(...row.map(c=>c.block));
+      if(!pg||y+rb>BOT){pg={t:"photos",units:[]};plan.push(pg);y=top}
+      row.forEach((c,ci)=>pg.units.push(Object.assign(c,{y,x:M+ci*(iw+gap)})));y+=rb}
+  }
   for(let i=0;i<ngItems.length;i+=3)plan.push({t:"ng",list:ngItems.slice(i,i+3)});
   const total=plan.length,out=[];
   for(let p=0;p<plan.length;p++){
@@ -1801,21 +1848,20 @@ async function renderPages(onProgress,sel){
       g.fillStyle="#1f4e5f";g.fillRect(0,0,PW,14);
       txt(g,"写真記録",M,70,32,{bold:true,display:true});
       g.font="400 20px "+FONT;txt(g,fit(g,[meta.site,fmtDate(meta.date)].filter(Boolean).join("　"),PW-2*M-260),PW-M,70,20,{align:"right",color:"#5b6872"});
-      const gap=20;
-      if(N===1){
-        const cols=2,iw=(PW-2*M-gap)/cols,block=(BOT-110)/3;
-        for(let j=0;j<pg.slots.length;j++){
-          const s=pg.slots[j],cx=M+(j%cols)*(iw+gap),by=110+Math.floor(j/cols)*block;
-          g.font="700 20px "+FONT;txt(g,fit(g,String(pg.start+j+1).padStart(2,"0")+"　"+s.name+"（"+STAGE_LABEL[st[0]]+"）",iw),cx,by+18,20,{bold:true});
-          const im=await loadPhoto(rep,s,st[0]);drawContain(g,im,cx,by+38,iw,block-50);
+      if(!L.list){
+        for(const u of pg.units){
+          g.font="700 20px "+FONT;txt(g,fit(g,String(u.i+1).padStart(2,"0")+"　"+u.s.name+"（"+STAGE_LABEL[st[0]]+"）",L.iw),u.x,u.y+18,20,{bold:true});
+          const im=await loadPhoto(rep,u.s,st[0]);drawContain(g,im,u.x,u.y+38,L.iw,L.h0);
+          if(u.nh)drawNoteBelow(g,notes[u.s.id],u.x,u.y+38+L.h0+10,L.iw,u.nh);
         }
       }else{
-        const iw=(PW-2*M-gap*(N-1))/N,block=(BOT-130)/per;
-        st.forEach((x,ci)=>txt(g,STAGE_LABEL[x],M+ci*(iw+gap)+iw/2,112,20,{bold:true,align:"center",color:"#5b6872"}));
-        for(let j=0;j<pg.slots.length;j++){
-          const s=pg.slots[j],by=130+j*block;
-          g.font="700 22px "+FONT;txt(g,fit(g,String(pg.start+j+1).padStart(2,"0")+"　"+s.name,PW-2*M),M,by+20,22,{bold:true});
-          for(let ci=0;ci<N;ci++){const im=await loadPhoto(rep,s,st[ci]);drawContain(g,im,M+ci*(iw+gap),by+40,iw,block-52)}
+        st.forEach((x,ci)=>txt(g,STAGE_LABEL[x],M+ci*(L.iw+gap)+L.iw/2,112,20,{bold:true,align:"center",color:"#5b6872"}));
+        if(L.right)txt(g,"備考",PW-M-NOTE_W/2,112,20,{bold:true,align:"center",color:"#5b6872"});
+        for(const u of pg.units){
+          g.font="700 22px "+FONT;txt(g,fit(g,String(u.i+1).padStart(2,"0")+"　"+u.s.name,L.right?L.W:PW-2*M),M,u.y+20,22,{bold:true});
+          for(let ci=0;ci<N;ci++){const im=await loadPhoto(rep,u.s,st[ci]);drawContain(g,im,M+ci*(L.iw+gap),u.y+40,L.iw,L.h0)}
+          if(L.right)drawNoteRight(g,notes[u.s.id],PW-M-NOTE_W,u.y+40,NOTE_W,u.nh);
+          else if(u.nh)drawNoteBelow(g,notes[u.s.id],M,u.y+40+L.h0+10,PW-2*M,u.nh);
         }
       }
     }
