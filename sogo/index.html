@@ -819,6 +819,7 @@ const SHELL=(()=>{
       ['G','jobs','案件',I.jobs],
       ['G','schedule','日程・差配',I.sched,'差配'],
       ['S','porders','協力会社の発注確認',I.po,'発注確認'],
+      ['G','partners','協力会社別の発注',I.po],
       ['G','contracts','定期契約',I.ctr,'定期'],
       ['G','customers','顧客・現場',I.cust],
       ['S','relations','顧客・担当別',I.rel],
@@ -4834,6 +4835,9 @@ docOn('click',async e=>{
     case 'rsend': openSheet({kind:'rsend',id,list:!!el.dataset.list}); break;
     case 'rs-list': openSheet({kind:'rsendList'}); break;
     case 'rs-mail': case 'rs-sent': case 'rs-skip': await rsAct(a,id); break;
+    case 'pvF': VS.pvF=el.dataset.v; render(); break;
+    case 'pv-open': VS.pvSel=id; render(); break;
+    case 'pv-csv': await pvCsv(); break;
     case 'login-issue': { const t=get('staff',id); if(!t) break; readDraftForm(); if(!String(t.empNo||'').trim()) return toast('先に社員ID（英数字）を入れて「保存」してください'); const pw=(ROOT.querySelector('#lg_pw')?.value||'').trim(); if(pw&&pw.length<8) return toast('パスワードは8文字以上にしてください');
       if(await loginCall('issue',{staffId:id,password:pw},r=>`社員ID「${r.loginId}」でログインできるようにしました（${pw?'個別のパスワード':'共通の初期パスワード'}）`)) setTimeout(()=>{ if(sheet?.kind==='staff'){ sheet.draft={...sheet.draft,...get('staff',id)}; refreshSheet(); } },800); break; }
     case 'login-revoke': { if(!el.dataset.ok){ el.dataset.ok='1'; el.textContent='もう一度押すと止めます'; break; } if(await loginCall('revoke',{staffId:id},()=>'社員IDのログインを止めました')) setTimeout(()=>{ if(sheet?.kind==='staff'){ const {loginEmail,loginUid,...r}=sheet.draft; sheet.draft={...r,...get('staff',id)}; refreshSheet(); } },800); break; }
@@ -5986,6 +5990,63 @@ async function rsAct(a,id){
 }
 SHEETS.rsendList=()=>{ const vs=reportsUnsent();
   return {title:'お客様に送っていない完了報告書',body:vs.length?`<div class="list">${vs.map(v=>`<div class="li" style="cursor:default"><span class="grow"><b>${esc(visitTitle(v))}</b><br><span class="small muted">${esc(jd(v.date))}　${esc(custName(visitCust(v)))}　添付${(v.attachments||[]).length}件</span></span><button class="btn sm pri" data-act="rsend" data-id="${v.id}" data-list="1">送る</button></div>`).join('')}</div>`:'<p class="empty">送っていない報告書はありません。</p>',foot:`<button class="btn" data-act="close-sheet">閉じる</button>`}; };
+/* =========================================================
+   協力会社別の発注一覧（今依頼している・過去に依頼していた現場と集計）
+   ・定期契約（担当に協力会社）と案件の発注書（発注先）から集める
+   ・発注書（協力会社への依頼）が出ていない定期作業も「発注書なし」として載せる
+   ========================================================= */
+const perYear=c=>{ const cy=c.cycle||{}; if(cy.kind==='flat') return 12; if(cy.kind==='interval') return 12/(num(cy.every)||12); if(cy.kind==='months') return (cy.months||[]).length; return cycleMonths(c,ymOf(today()),12).length; };
+function partnerRows(pid){
+  const t=today(), tm=ymOf(t), from12=addDays(t,-365), rows=[];
+  const poVids=new Set(all('porders').filter(p=>!p.cancelled&&p.partnerId===pid).flatMap(p=>(p.schedule||[]).map(r=>r.vid).filter(Boolean)));
+  for(const c of all('contracts').filter(c=>(c.staffIds||[]).includes(pid))){
+    const vs=all('visits').filter(v=>v.contractId===c.id);
+    const now=c.active!==false&&(!c.end||c.end>=t);
+    const unit=priceAt(c,tm).cost*(num(c.qty)||1), n=perYear(c);
+    const done12=vs.filter(v=>v.status==='完了'&&(v.date||'')>=from12).reduce((a,v)=>a+visitCost(v),0);
+    const hasPo=vs.some(v=>poVids.has(v.id));
+    const last=vs.filter(v=>v.status==='完了').map(v=>v.date).sort().slice(-1)[0]||'';
+    const nextV=vs.filter(v=>v.status!=='完了'&&v.status!=='中止'&&(v.date||'9')>=t).sort(by(v=>v.date||'9'))[0];
+    rows.push({kind:'定期',id:c.id,act:'contract',cust:custName(c.customerId),site:siteName(c.siteId),work:c.service||'',now,cycle:cycleText(c.cycle),unit,year:now?unit*n:0,done12,hasPo,noCost:!num(priceAt(c,tm).cost),last,next:nextV?(nextV.date||'日程未定'):'',start:c.start||'',end:c.end||''});
+  }
+  for(const o of all('orders').filter(o=>o.supplierId===pid&&o.status!=='作成中')){
+    const j=get('jobs',o.jobId)||{}, d=orderRows(o).map(r=>r.date).filter(Boolean).sort(), tot=qcalc(o).sub;
+    const now=!['中止','完了'].includes(o.status)&&!['完了','失注'].includes(j.stage)&&!(d.length&&d[d.length-1]<t);
+    rows.push({kind:'スポット',id:o.id,act:'order',cust:custName(j.customerId),site:siteName(j.siteId),work:o.title||j.title||'',now,cycle:'1回',unit:tot,year:0,done12:(d[0]||o.issuedAt||'')>=from12&&o.status!=='中止'?tot:0,hasPo:o.status!=='承認待ち',noCost:!tot,last:d[d.length-1]||'',next:now?(d.find(x=>x>=t)||'日程未定'):'',start:d[0]||'',end:'',status:o.status});
+  }
+  return rows.sort(by(r=>(r.now?'0':'1')+r.cust+r.site+r.work));
+}
+VIEWS.partners={
+  shell:()=>`<div class="vhead"><h1>協力会社別の発注</h1></div>
+    <div class="toolbar"><select class="inp auto" id="pvSel" aria-label="協力会社"><option value="">協力会社を選ぶ</option>${partners().map(p=>`<option value="${p.id}" ${VS.pvSel===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+    <div class="seg" role="group" aria-label="状態">${[['now','依頼中'],['past','過去'],['all','すべて']].map(([k,l])=>`<button data-act="pvF" data-v="${k}" aria-pressed="${(VS.pvF||'now')===k}">${l}</button>`).join('')}</div>
+    <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="pvNoPo" ${VS.pvNoPo?'checked':''}> 発注書なしだけ</label>
+    <button class="btn" data-act="pv-csv" style="margin-left:auto">CSVで保存</button></div>`,
+  body(){
+    if(!VS.pvSel){ // 協力会社ごとの集計
+      const list=partners().map(p=>{ const rs=partnerRows(p.id); return {p,n:rs.filter(r=>r.now).length,sites:new Set(rs.filter(r=>r.now).map(r=>r.site)).size,year:rs.reduce((a,r)=>a+r.year,0),done:rs.reduce((a,r)=>a+r.done12,0),nopo:rs.filter(r=>r.now&&!r.hasPo).length,past:rs.filter(r=>!r.now).length}; }).sort(by(x=>-x.year-x.done));
+      return `<p class="small muted" style="margin:0 0 10px">協力会社を選ぶと、今依頼している・過去に依頼していた現場の一覧が出ます。定期契約の担当に協力会社が入っているものと、案件の発注書の発注先から集めています。</p>
+      <div class="panel scroll"><table class="t"><thead><tr><th>協力会社</th><th class="r">依頼中</th><th class="r">現場数</th><th class="r">年間の発注見込み</th><th class="r">過去12か月の発注</th><th class="r">発注書なし</th><th class="r">過去の依頼</th></tr></thead><tbody>${list.map(x=>`<tr class="click" data-act="pv-open" data-id="${x.p.id}"><td><b>${esc(x.p.name)}</b></td><td class="r num">${x.n}</td><td class="r num">${x.sites}</td><td class="r num">${yen(x.year)}</td><td class="r num">${yen(x.done)}</td><td class="r num">${x.nopo?`<span class="pill w">${x.nopo}</span>`:'—'}</td><td class="r num">${x.past||'—'}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">協力会社が登録されていません</td></tr>'}</tbody></table></div>`;
+    }
+    const all0=partnerRows(VS.pvSel), f=VS.pvF||'now';
+    const rs=all0.filter(r=>(f==='all'||(f==='now'?r.now:!r.now))&&(!VS.pvNoPo||!r.hasPo));
+    const cur=all0.filter(r=>r.now), sites=new Set(cur.map(r=>r.cust+'|'+r.site));
+    const sum=(a,k)=>a.reduce((s,r)=>s+(r[k]||0),0);
+    const byCust={}; cur.forEach(r=>{ (byCust[r.cust]=byCust[r.cust]||{n:0,year:0}); byCust[r.cust].n++; byCust[r.cust].year+=r.year; });
+    return `<div class="kpis" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px">
+      ${[['依頼中の作業',cur.length+'件'],['依頼中の現場',sites.size+'か所'],['年間の発注見込み',yen(sum(cur,'year'))],['過去12か月の発注',yen(sum(all0,'done12'))],['発注書なし（依頼中）',cur.filter(r=>!r.hasPo).length+'件']].map(([k,v])=>`<div class="panel" style="padding:10px 12px"><div class="small muted">${k}</div><div class="num" style="font-size:18px;font-weight:600">${v}</div></div>`).join('')}</div>
+    ${Object.keys(byCust).length>1?`<details style="margin-bottom:10px"><summary class="small">顧客ごとの集計（依頼中）</summary><div class="panel scroll"><table class="t"><thead><tr><th>顧客</th><th class="r">作業数</th><th class="r">年間の発注見込み</th></tr></thead><tbody>${Object.entries(byCust).sort(by(([,x])=>-x.year)).map(([c,x])=>`<tr><td>${esc(c)}</td><td class="r num">${x.n}</td><td class="r num">${yen(x.year)}</td></tr>`).join('')}</tbody></table></div></details>`:''}
+    <div class="panel scroll"><table class="t"><thead><tr><th>状態</th><th>顧客／現場</th><th>作業</th><th>周期</th><th class="r">1回の発注額</th><th class="r">年間見込み</th><th class="r">過去12か月</th><th>発注書</th><th>次回／最終</th></tr></thead><tbody>${rs.map(r=>`<tr class="click" data-act="${r.act}" data-id="${r.id}"><td><span class="pill ${r.now?'g':''}">${r.now?'依頼中':'過去'}</span> <span class="small muted">${r.kind}</span></td><td>${esc(r.cust)}<div class="small muted">${esc(r.site)}</div></td><td>${esc(r.work)}</td><td class="small">${esc(r.cycle)}</td><td class="r num">${r.noCost?'<span class="pill w">未入力</span>':yen(r.unit)}</td><td class="r num">${r.year?yen(r.year):'—'}</td><td class="r num">${r.done12?yen(r.done12):'—'}</td><td>${r.hasPo?'<span class="small">あり</span>':'<span class="pill w">なし</span>'}</td><td class="small">${r.now?esc(r.next?(r.next==='日程未定'?r.next:jd(r.next)):''):esc(r.last?jd(r.last):'')}</td></tr>`).join('')||'<tr><td colspan="9" class="empty">該当する作業はありません</td></tr>'}</tbody></table></div>
+    <p class="small muted">「発注書なし」：協力会社への作業依頼がまだ出ていないもの（担当はこの協力会社だが、作業の日付が未定など）。「年間見込み」は定期作業の1回の発注額×年間回数、「過去12か月」は完了した作業と発注書の金額の合計（税抜）。</p>`;
+  }
+};
+async function pvCsv(){
+  const ids=VS.pvSel?[VS.pvSel]:partners().map(p=>p.id); const head=['協力会社','状態','種類','顧客','現場','作業','周期','1回の発注額','年間見込み','過去12か月','発注書','次回','最終','開始','終了'];
+  const lines=[head]; for(const id of ids) for(const r of partnerRows(id)) lines.push([staffName(id),r.now?'依頼中':'過去',r.kind,r.cust,r.site,r.work,r.cycle,r.unit,r.year,r.done12,r.hasPo?'あり':'なし',r.next||'',r.last||'',r.start||'',r.end||'']);
+  const csv='﻿'+lines.map(l=>l.map(x=>`"${String(x??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  await saveFile(`協力会社別の発注_${VS.pvSel?staffName(VS.pvSel):'全社'}_${today()}.csv`,csv,'text/csv');
+}
+docOn('change',e=>{ const t=e.target; if(t.id==='pvSel'){ VS.pvSel=t.value; render(); } if(t.id==='pvNoPo'){ VS.pvNoPo=t.checked; render(); } });
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
