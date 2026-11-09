@@ -1395,7 +1395,7 @@ const custs=()=>all('customers').sort(by(c=>c.kana||c.name));
 const sitesOf=cid=>all('sites').filter(s=>!cid||s.customerId===cid).sort(by(s=>s.name));
 const jobsOf=cid=>all('jobs').filter(j=>!cid||j.customerId===cid).sort(by(j=>j.title));
 const tyIdx=t=>Math.max(0,TYPES.indexOf(t));
-const isDispatch=e=>!!e.customerId&&e.dispatch!==false;
+const isDispatch=e=>!!e.customerId&&e.dispatch!==false&&!e.tpl&&!!e.date;
 function tagName(t){ const r=get(TAGC[t.k],t.id); if(!r) return '（削除済み）'; return r.name||r.title; }
 function tagHtml(t,opt={}){ return `<button class="tag t-${t.k}${opt.sug?' sug':''}" data-act="${opt.act||'rel'}" data-k="${t.k}" data-id="${t.id}" type="button">${opt.sug?'＋ ':''}<span class="k">${TAGK[t.k]}</span>${esc(tagName(t))}${opt.x?'<span class="x">×</span>':''}</button>`; }
 // 報告・予定の関連タグ（顧客は現場・案件からも辿る）
@@ -1540,7 +1540,7 @@ const homeBody=()=>{
   return h;
 };
 function evRow(e){
-  return `<button class="li ty${tyIdx(e.type)}" data-act="openEvent" data-id="${e.id}"><span class="tm">${timeRange(e.start,e.end)}</span><span class="grow"><b>${esc(e.title)}</b> <span class="pill" style="background:var(--cs);color:var(--c)">${esc(e.type)}</span>${isDispatch(e)?' <span class="pill a">差配連動</span>':''}<div class="tags">${eventTags(e).filter(t=>t.k!=='staff'||(e.staffIds||[]).length>1).map(tagSpan).join('')}</div></span></button>`;
+  return `<button class="li ty${tyIdx(e.type)}" data-act="openEvent" data-id="${e.id}"><span class="tm">${timeRange(e.start,e.end)}</span><span class="grow"><b>${e.seriesId?'↻ ':''}${esc(e.title)}</b> <span class="pill" style="background:var(--cs);color:var(--c)">${esc(e.type)}</span>${isDispatch(e)?' <span class="pill a">差配連動</span>':''}<div class="tags">${eventTags(e).filter(t=>t.k!=='staff'||(e.staffIds||[]).length>1).map(tagSpan).join('')}</div></span></button>`;
 }
 
 /* ================= カレンダー ================= */
@@ -1581,7 +1581,7 @@ VIEWS.calendar=()=>{
 };
 function evChip(e,showWho){
   const who=showWho&&(e.staffIds||[]).length?` <span class="muted">${esc(staffName(e.staffIds[0]))}${e.staffIds.length>1?'他':''}</span>`:'';
-  return `<button class="cev ty${tyIdx(e.type)}" data-fitem data-act="openEvent" data-id="${e.id}" title="${esc(e.title)}">${e.start?`<span class="tm">${e.start}</span> `:''}${isDispatch(e)?'<span class="lk">◆</span>':''}${esc(e.title)}${who}</button>`;
+  return `<button class="cev ty${tyIdx(e.type)}" data-fitem data-act="openEvent" data-id="${e.id}" title="${esc(e.title)}">${e.seriesId?'<span class="muted">↻</span>':''}${e.start?`<span class="tm">${e.start}</span> `:''}${isDispatch(e)?'<span class="lk">◆</span>':''}${esc(e.title)}${who}</button>`;
 }
 function monthCal(ids){
   const m=ymOf(VS.calDate); const first=parseD(m+'-01'); const start=addDays(m+'-01',-first.getDay());
@@ -1591,7 +1591,7 @@ function monthCal(ids){
     const d=addDays(start,i); if(i===35&&ymOf(d)!==m) break;
     const evs=eventsFor(d,ids); const wd=i%7;
     h+=`<div class="cd ${VS.wishMode?'wishing':''} ${ymOf(d)!==m?'out':''} ${d===today()?'today':''} ${d===VS.calSel?'sel':''}" data-act="calDay" data-date="${d}" data-fit>
-      <div class="cdn"><span class="${wd===0?'sun':wd===6?'sat':''}">${+d.slice(8)}</span>${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
+      <div class="cdn"><span class="${wd===0||holName(d)?'sun':wd===6?'sat':''}" ${holName(d)?`title="${esc(holName(d))}"`:''}>${+d.slice(8)}</span>${holName(d)?`<small class="muted" style="font-size:10px;color:var(--danger,#c33)">${esc(holName(d))}</small>`:''}${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
       ${evs.map(e=>evChip(e,multi)).join('')}
       <div class="cdots">${evs.slice(0,4).map(e=>`<i class="ty${tyIdx(e.type)}" style="background:var(--c)"></i>`).join('')}</div></div>`;
   }
@@ -1840,13 +1840,14 @@ SHEETS.event=()=>{
   const custSel=`<select class="inp" id="ev-cust" data-sf="customerId"><option value="">（なし）</option>${custs().map(c=>`<option value="${c.id}" ${e.customerId===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>`;
   const detailOpen=P.openDetail||e.siteId||e.jobId||e.note||e.dispatch===false;
   const body=`<div class="sec">
-    <label class="fld"><span>タイトル</span><input class="inp" id="ev-title" data-sf="title" value="${esc(e.title)}" placeholder="例：さくら食品 港南店 定期清掃"></label>
+    ${scopeBar()}${tplBar(e)}<label class="fld"><span>タイトル</span><input class="inp" id="ev-title" data-sf="title" value="${esc(e.title)}" placeholder="例：さくら食品 港南店 定期清掃"></label>
     <div id="ev-sug">${sugHtml(sug)}</div>
     <div class="form">
       <label class="fld"><span>日付</span><input class="inp" type="date" data-sf="date" value="${e.date}"></label>
       <label class="fld"><span>開始</span><input class="inp" type="time" data-sf="start" value="${e.start}"></label>
       <label class="fld"><span>終了</span><input class="inp" type="time" data-sf="end" value="${e.end}"></label>
     </div>
+    ${e.seriesId?`<div class="small muted" style="margin:-4px 0 8px">↻ 繰り返しの予定：${esc(ruleText(e.recur))}</div>`:''}${recurBox(e)}
     <div class="fld"><span>種別</span><div class="chips">${TYPES.map(t=>`<button type="button" data-act="evType" data-v="${t}" aria-pressed="${e.type===t}">${t}</button>`).join('')}</div></div>
     <label class="fld"><span>顧客（任意）<span class="muted" style="font-weight:400"> — 選ぶと差配にも入ります</span></span>${custSel}</label>
     ${e.customerId&&e.dispatch!==false?(e.type==='作業'?`<div class="callout g">現場の作業は「作業予定」として「日程・差配」に登録されます（完了報告・売上の集計もそちらで行います）</div>`:`<div class="callout g">「日程・差配」のボードにも［予定］として表示されます</div>`):''}
@@ -1863,7 +1864,7 @@ SHEETS.event=()=>{
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-sf="dispatch" ${e.dispatch!==false?'checked':''}> 顧客がある場合、差配に入れる</label>
   </div></details>
   ${!isNew?relatedReportsHtml(e):''}`;
-  const foot=`${!isNew?'<button class="btn danger l" data-act="evDel">削除</button>':''}${!isNew?'<button class="btn" data-act="reportFromEvent">この予定の報告を書く</button>':''}<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="evSave">保存</button>`;
+  const foot=`${!isNew?'<button class="btn danger l" data-act="evDel">削除</button>':''}${!isNew?'<button class="btn" data-act="reportFromEvent">この予定の報告を書く</button>':''}${!isNew?'<button class="btn" data-act="evCopy">コピー</button>':''}<button class="btn" data-act="tplSave">ひな形に保存</button><button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="evSave">保存</button>`;
   return {title:isNew?'予定を追加':'予定',body,foot,after:()=>{ if(isNew&&!sheet.focused){sheet.focused=true; $('#ev-title')?.focus();} }};
 };
 function sugHtml(sug){ if(!sug) return ''; return `<div class="callout">「${esc(tagName(sug))}」が見つかりました。<button class="btn sm pri" data-act="evApplySug" data-k="${sug.k}" data-id="${sug.id}">${TAGK[sug.k]}として紐付ける</button></div>`; }
@@ -2187,7 +2188,7 @@ function shiftVirtual(){ if(VEVk===dataVer) return VEV; const out=[];
       (arr||[]).forEach((c,i)=>{ const p=patOfCell(c); if(!p) return; const ar=get('areas',c.a);
         out.push({id:`sh~${d.siteId}~${d.ym}~${sid}~${day}~${i}`,virtual:true,shift:true,date,start:p.start,end:p.end,title:`${p.code} ${st?.name||''}${ar?' '+ar.name:''}`,type:'シフト',staffIds:[sid],customerId:st?.customerId||'',siteId:d.siteId,jobId:'',note:'',dispatch:true,ym:d.ym,day:+day,areaId:c.a||'',patternId:c.p,fz:c.fz||null}); }); } }
   VEV=out; VEVk=dataVer; return out; }
-const evAll=()=>isPartner(me())?[...all('events').filter(e=>(e.staffIds||[]).includes(meId())),...poEvents()]:[...all('events'),...shiftVirtual(),...SHELL.visitsAsEvents()];
+const evAll=()=>isPartner(me())?[...all('events').filter(e=>!e.tpl&&(e.staffIds||[]).includes(meId())),...poEvents()]:[...all('events').filter(e=>!e.tpl),...shiftVirtual(),...SHELL.visitsAsEvents()];
 
 /* 1日の予定（全現場）と、重なり・移動時間の判定 */
 function dayItems(staffId,date){
@@ -2624,8 +2625,20 @@ docOn('click',async ev=>{
     case 'evsPfClear': sheet.pc='';sheet.ps='';sheet.pa=''; refreshEvStaff(); break;
     case 'evsG': sheet.sg=el.dataset.g; sheet.sq=''; const qi=$('#ev-sq'); if(qi) qi.value=''; ROOT.querySelectorAll('[data-act="evsG"]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.g===sheet.sg)); refreshEvStaff(); break;
     case 'evApplySug': { const k=el.dataset.k,id=el.dataset.id; if(k==='site'){ sheet.e.siteId=id; sheet.e.customerId=get('sites',id)?.customerId||''; } else sheet.e.customerId=id; renderOverlay(); break; }
-    case 'evSave': await saveEvent(); break;
-    case 'evDel': if(el.dataset.ok){ await del('events',sheet.e.id); closeSheet(); toast('削除しました'); } else { el.dataset.ok='1'; el.textContent='本当に削除'; } break;
+    case 'evSave': await saveEventR(); break;
+    case 'scope': await applyScope(el.dataset.v); break;
+    case 'evCopy': copyEvent(); break;
+    case 'tplSave': await tplSave(); break;
+    case 'tplUse': tplUse(el.dataset.id); break;
+    case 'tplDel': await tplDel(el.dataset.id); break;
+    case 'rcKind': { const r=sheet.rule, d=sheet.e.date||today(); r.kind=el.dataset.v; r.every=r.every||1; if(r.kind==='weekly'&&!(r.wds||[]).length) r.wds=[parseD(d).getDay()]; if(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length) r.mdays=[+d.slice(8)]; sheet.rcOpen=true; renderOverlay(); break; }
+    case 'rcWd': { const r=sheet.rule, v=+el.dataset.v; r.wds=(r.wds||[]).includes(v)?r.wds.filter(x=>x!==v):[...(r.wds||[]),v]; renderOverlay(); break; }
+    case 'rcMd': { const r=sheet.rule, v=el.dataset.v==='L'?'L':+el.dataset.v; r.mdays=(r.mdays||[]).includes(v)?r.mdays.filter(x=>x!==v):[...(r.mdays||[]),v]; renderOverlay(); break; }
+    case 'rcNthAdd': { const r=sheet.rule, n=+$('#rc-nn').value, wd=+$('#rc-nw').value; if(!(r.nths||[]).some(x=>x.n===n&&x.wd===wd)) r.nths=[...(r.nths||[]),{n,wd}]; renderOverlay(); break; }
+    case 'rcNthDel': sheet.rule.nths.splice(+el.dataset.i,1); renderOverlay(); break;
+    case 'rcTimeAdd': (sheet.rule.times=sheet.rule.times||[]).push({start:'',end:''}); renderOverlay(); break;
+    case 'rcTimeDel': sheet.rule.times.splice(+el.dataset.i,1); renderOverlay(); break;
+    case 'evDel': if(sheet.e.seriesId){ openScope('del'); break; } if(el.dataset.ok){ await del('events',sheet.e.id); closeSheet(); toast('削除しました'); } else { el.dataset.ok='1'; el.textContent='本当に削除'; } break;
     case 'reportFromEvent': { const e=sheet.e; newReport({date:e.date,body:`・${e.start?e.start+' ':''}${e.title}：`,tags:eventTags(e).filter(t=>t.k!=='staff'),eventIds:[e.id]}); break; }
     case 'newReport': newReport(); break;
     case 'openReport': { const r=get('reports',el.dataset.id); if(r) openSheet({kind:'report',r:{title:'',kind:'日報',tags:[],eventIds:[],...structuredClone(r),off:[]}}); break; }
@@ -3293,7 +3306,7 @@ SHEETS.plan=()=>{
   <div class="sec"><h3 style="margin:0 0 6px">出勤指定（日にち）</h3>
     ${fxl.length?`<div class="list">${fxl.map(w=>`<div class="li" style="cursor:default"><span class="pill ${w.kind==='fix'?'g':'w'}" style="flex:none">${w.kind==='fix'?'出勤':'休み'}</span><span class="grow small">${esc(jd(w.date))}　${w.kind==='fix'?esc(get('sites',w.siteId)?.name||'')+(w.areaId?'・'+esc(get('areas',w.areaId)?.name||''):'')+'　'+(w.patId?esc(get('patterns',w.patId)?.code||''):'おまかせ'):'この日は休み（固定休）'}${w.kind==='fix'&&wishOf(s.id,w.date)&&wishOf(s.id,w.date).kind!=='on'?` <span class="pill w">${esc(WISH[wishOf(s.id,w.date).kind]?.t||'')}と重なり</span>`:''}</span>${ed?`<button class="btn sm ghost" data-act="pfDel" data-id="${w.id}">削除</button>`:''}</div>`).join('')}</div>`:'<div class="small muted">出勤指定はありません</div>'}
     ${ed?`<div class="panel" style="padding:10px;margin-top:8px"><div class="chips"><button type="button" data-act="pfKind" data-v="fix" aria-pressed="${fx.kind==='fix'}">出勤を指定</button><button type="button" data-act="pfKind" data-v="x" aria-pressed="${fx.kind==='x'}">この日は休み</button></div>
-      ${fx.kind==='fix'?`<div class="form" style="margin-top:6px"><label class="fld"><span>現場</span>${siteSel(s,'data-pf="siteId"',fx.siteId)}</label><label class="fld"><span>持ち場</span>${areaSel(fx.siteId,'data-pf="areaId"',fx.areaId)}</label><label class="fld"><span>勤務パターン</span><select class="inp" data-pf="patId">${patOpts(fx.siteId,fx.areaId,fx.patId)}</select></label></div>`:''}
+      ${fx.kind==='fix'?`<div class="form" style="margin-top:6px"><label class="fld"><span>現場</span>${siteSel(s,'data-pfx="siteId"',fx.siteId)}</label><label class="fld"><span>持ち場</span>${areaSel(fx.siteId,'data-pfx="areaId"',fx.areaId)}</label><label class="fld"><span>勤務パターン</span><select class="inp" data-pfx="patId">${patOpts(fx.siteId,fx.areaId,fx.patId)}</select></label></div>`:''}
       ${cal}<div style="margin-top:8px"><button class="btn sm pri" data-act="pfAdd">${fx.dates.length}日分を${fx.kind==='fix'?'出勤指定':'休み'}にする</button></div></div>`:''}
     <div class="hint">出勤指定はシフトに鍵付きで入り、自動作成でも動きません。本人の希望休と重なったときは指定を残して警告します。</div></div>
   <div class="sec">${ed?`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-act2="planHide" ${sheet.hide?'checked':''}> この人には週の型・出勤指定を見せない</label>`:''}<div class="small muted">本人への表示：${shiftCfg().showPlan===false?'全体の設定で「見せない」になっています（シフト設定 → その他）':sheet.hide?'この人には見せない':'本人のホームに表示します'}</div></div>`;
@@ -3336,7 +3349,7 @@ docOn('change',e=>{ const t=e.target; if(sheet?.kind!=='plan') return;
     if(k==='wd') v=+v;
     if(k==='rule'){ v=v==='all'||v==='alt'?{kind:v,...(v==='alt'?{anchor:r.from||today()}:{})}:{kind:'nth',nth:v.slice(1).split('').map(Number)}; }
     r[k]=v; if(k==='siteId'){ r.areaId=''; r.patId=''; } if(k==='areaId') r.patId=''; renderOverlay(); return; }
-  if(t.dataset.pf){ const k=t.dataset.pf; sheet.fx[k]=t.value; if(k==='siteId'){ sheet.fx.areaId=''; sheet.fx.patId=''; } if(k==='areaId') sheet.fx.patId=''; renderOverlay(); return; }
+  if(t.dataset.pfx){ const k=t.dataset.pfx; sheet.fx[k]=t.value; if(k==='siteId'){ sheet.fx.areaId=''; sheet.fx.patId=''; } if(k==='areaId') sheet.fx.patId=''; renderOverlay(); return; }
   if(t.dataset.act2==='planHide'){ sheet.hide=t.checked; return; } });
 /* =========================================================
    未登録の訪問先（顧客・現場）
@@ -3421,6 +3434,165 @@ async function unregAlias(gid){
   await unregLink(g,g.k,to); VS.unregOpen=''; toast(`「${g.name}」を「${x.name}」の別名にし、報告${g.n}件をつなぎました`); render();
 }
 function unregHomeNote(){ if(!canReg()) return ''; const n=unregDue().length; return n?`<div class="callout w" style="margin-bottom:12px"><span><b>登録をすすめる訪問先が${n}件</b>あります（報告で2回以上書かれた、または登録の依頼があった顧客・現場）。</span><button class="btn sm pri" data-act="go" data-r="relations">開く</button></div>`:''; }
+/* =========================================================
+   予定の繰り返し・コピー・ひな形・祝日
+   繰り返しは回ごとの予定（events）を先に作る。各回に seriesId と rule を持たせ、
+   期限なしの繰り返しは近づいた分を自動で足す。
+   ========================================================= */
+/* ---------- 祝日（日本） ---------- */
+const HOLC={};
+function jpHolidays(y){
+  if(HOLC[y]) return HOLC[y]; const m=new Map(); const ds=(mo,d)=>`${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const nthMon=(mo,n)=>{ const f=new Date(y,mo-1,1).getDay(); return 1+((8-f)%7)+(n-1)*7; };
+  [[1,1,'元日'],[2,11,'建国記念の日'],[2,23,'天皇誕生日'],[4,29,'昭和の日'],[5,3,'憲法記念日'],[5,4,'みどりの日'],[5,5,'こどもの日'],[8,11,'山の日'],[11,3,'文化の日'],[11,23,'勤労感謝の日']].forEach(([a,b,n])=>m.set(ds(a,b),n));
+  m.set(ds(1,nthMon(1,2)),'成人の日'); m.set(ds(7,nthMon(7,3)),'海の日'); m.set(ds(9,nthMon(9,3)),'敬老の日'); m.set(ds(10,nthMon(10,2)),'スポーツの日');
+  const k=Math.floor((y-1980)/4); m.set(ds(3,Math.floor(20.8431+0.242194*(y-1980))-k),'春分の日'); m.set(ds(9,Math.floor(23.2488+0.242194*(y-1980))-k),'秋分の日');
+  for(const d of [...m.keys()].sort()){ if(parseD(d).getDay()===0){ let x=addDays(d,1); while(m.has(x)) x=addDays(x,1); m.set(x,'振替休日'); } }
+  for(const d of [...m.keys()].sort()){ const x=addDays(d,2); if(m.has(x)&&!m.has(addDays(d,1))&&parseD(addDays(d,1)).getDay()!==0) m.set(addDays(d,1),'国民の休日'); }
+  return HOLC[y]=m;
+}
+const holName=d=>d?jpHolidays(+d.slice(0,4)).get(d)||'':'';
+/* ---------- 繰り返しのルール ---------- */
+const RK_L={none:'しない',daily:'毎日',weekday:'平日（月〜金）',weekly:'毎週・隔週・○週おき',monthly:'毎月（日付・第○曜日）',yearly:'毎年'};
+const NTH_L={1:'第1',2:'第2',3:'第3',4:'第4',5:'第5','-1':'最終'};
+function ruleText(r){
+  if(!r||r.kind==='none') return '';
+  let s='';
+  if(r.kind==='daily') s=+r.every>1?`${r.every}日おき`:'毎日';
+  if(r.kind==='weekday') s='平日（月〜金）';
+  if(r.kind==='weekly') s=`${+r.every===1?'毎週':+r.every===2?'隔週':r.every+'週おき'} ${(r.wds||[]).slice().sort((a,b)=>((a+6)%7)-((b+6)%7)).map(w=>WD[w]).join('・')}曜`;
+  if(r.kind==='monthly') s=`${+r.every>1?r.every+'か月おき':'毎月'} ${[...(r.mdays||[]).map(d=>d==='L'?'末日':d+'日'),...(r.nths||[]).map(x=>NTH_L[x.n]+WD[x.wd]+'曜')].join('・')}`;
+  if(r.kind==='yearly') s='毎年';
+  if(r.times?.length) s+=`（1日${r.times.length+1}回）`;
+  if(r.end?.kind==='until'&&r.end.until) s+=`　${jd(r.end.until)}まで`;
+  if(r.end?.kind==='count') s+=`　${r.end.count}回`;
+  return s;
+}
+const isOffDay=(d,r)=>parseD(d).getDay()===0||(r.sat&&parseD(d).getDay()===6)||!!holName(d);
+function ruleHit(r,start,d){
+  const diffD=Math.round((parseD(d)-parseD(start))/864e5); if(diffD<0) return false; const wd=parseD(d).getDay(), ev=Math.max(1,+r.every||1);
+  if(r.kind==='daily') return diffD%ev===0;
+  if(r.kind==='weekday') return wd>=1&&wd<=5;
+  if(r.kind==='weekly'){ const wk=Math.round((parseD(weekMon(d))-parseD(weekMon(start)))/864e5/7); return wk%ev===0&&(r.wds||[]).includes(wd); }
+  if(r.kind==='monthly'){ const mo=(+d.slice(0,4)-+start.slice(0,4))*12+(+d.slice(5,7)-+start.slice(5,7)); if(mo%ev!==0) return false;
+    const day=+d.slice(8), last=new Date(+d.slice(0,4),+d.slice(5,7),0).getDate();
+    if((r.mdays||[]).some(x=>x==='L'?day===last:+x===day)) return true;
+    return (r.nths||[]).some(x=>x.wd===wd&&(+x.n===-1?day+7>last:Math.ceil(day/7)===+x.n)); }
+  if(r.kind==='yearly') return d.slice(5)===start.slice(5);
+  return false;
+}
+/* start から to までの回の日付（休みの日の扱い込み）。fromSeq 以降の回番号も返す */
+function ruleDates(r,start,to,from){
+  const out=[], seen=new Set(); let n=0; const maxN=r.end?.kind==='count'?Math.max(1,+r.end.count||1):1e9; const until=r.end?.kind==='until'&&r.end.until?r.end.until:'9999';
+  for(let d=start;d<=to&&d<=until&&n<maxN;d=addDays(d,1)){
+    if(!ruleHit(r,start,d)) continue; n++;
+    let x=d;
+    if(isOffDay(d,r)&&r.hol&&r.hol!=='keep'){ if(r.hol==='skip') continue; let g=0; while(isOffDay(x,r)&&g<10){ x=addDays(x,r.hol==='prev'?-1:1); g++; } }
+    if(seen.has(x)) continue; seen.add(x); if(!from||x>=from) out.push({date:x,seq:n});
+  }
+  return out;
+}
+const horizonOf=r=>addDays(today(),['daily','weekday'].includes(r.kind)?183:366);
+const seriesOcc=sid=>all('events').filter(e=>e.seriesId===sid);
+const rootOf=e=>e.rootId||e.seriesId;
+const lineOcc=e=>{ const rt=rootOf(e); return all('events').filter(o=>o.seriesId&&rootOf(o)===rt); };
+async function makeOccurrences(base,r,start,from){
+  const sid=base.seriesId; const to=horizonOf(r); const list=ruleDates(r,start,to,from);
+  const times=[{start:base.start||'',end:base.end||''},...(r.times||[])];
+  const {id:_i,...rest}=base;
+  for(const o of list) for(let i=0;i<times.length;i++){ const id=`${sid}_${o.date.replace(/-/g,'')}${i?'_'+i:''}`; if(get('events',id)) continue;
+    await put('events',id,{...rest,date:o.date,start:times[i].start,end:times[i].end,seriesId:sid,seriesStart:start,seq:o.seq,recur:r}); }
+  return list.length;
+}
+/* 期限なしの繰り返し：近づいた分を足す（1日1回） */
+let recurTopAt='';
+async function recurTopUp(){
+  const t=today(); if(recurTopAt===t) return; recurTopAt=t;
+  const off=['admin','lead','manager'].includes(roleS());
+  const by=new Map(); for(const e of all('events')) if(e.seriesId&&e.recur){ const c=by.get(e.seriesId); if(!c||e.date>c.date) by.set(e.seriesId,e); }
+  for(const [sid,last] of by){ if(!off&&!(last.staffIds||[]).includes(meId())&&last.by!==meId()) continue; const r=last.recur; if(r.end?.kind==='count') continue; if(r.end?.kind==='until'&&r.end.until<=last.date) continue;
+    if(last.date<addDays(horizonOf(r),-30)) await makeOccurrences({...last,seriesId:sid},r,last.seriesStart||last.date,addDays(last.date,1)); }
+}
+/* ---------- 予定の画面：繰り返しの欄 ---------- */
+function recurBox(e){
+  const r=sheet.rule||(sheet.rule=structuredClone(e.recur||{kind:'none',every:1,wds:[],mdays:[],nths:[],end:{kind:'never'},hol:'keep',times:[]}));
+  const on=r.kind!=='none';
+  const prev=on&&e.date?ruleDates(r,e.seriesStart&&sheet.scope!=='from'?e.seriesStart:e.date,addDays(e.date,800)).slice(0,10):[];
+  const chipsWd=[1,2,3,4,5,6,0].map(w=>`<button type="button" data-act="rcWd" data-v="${w}" aria-pressed="${(r.wds||[]).includes(w)}">${WD[w]}</button>`).join('');
+  let h=`<details class="more" ${on||sheet.rcOpen?'open':''}><summary>繰り返し <span class="s muted">${on?esc(ruleText(r)):'しない'}</span></summary><div class="in">
+    <div class="chips">${Object.entries(RK_L).map(([k,l])=>`<button type="button" data-act="rcKind" data-v="${k}" aria-pressed="${r.kind===k}">${l}</button>`).join('')}</div>`;
+  if(r.kind==='daily') h+=`<label class="fld" style="margin-top:8px"><span>間隔</span><select class="inp auto" data-rc="every">${[1,2,3,4,5,6,7].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎日':n+'日おき'}</option>`).join('')}</select></label>`;
+  if(r.kind==='weekly') h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>間隔</span><select class="inp" data-rc="every">${[1,2,3,4,5,6,8].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎週':n===2?'隔週（2週おき）':n+'週おき'}</option>`).join('')}</select></label></div><div class="fld"><span>曜日（複数可）</span><div class="chips">${chipsWd}</div></div>`;
+  if(r.kind==='monthly') h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>間隔</span><select class="inp" data-rc="every">${[1,2,3,4,6,12].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎月':n+'か月おき'}</option>`).join('')}</select></label></div>
+    <div class="fld"><span>日付（複数可）</span><div class="chips" style="flex-wrap:wrap">${[...Array(31)].map((_,i)=>`<button type="button" data-act="rcMd" data-v="${i+1}" aria-pressed="${(r.mdays||[]).includes(i+1)}" style="min-width:2.4em">${i+1}</button>`).join('')}<button type="button" data-act="rcMd" data-v="L" aria-pressed="${(r.mdays||[]).includes('L')}">末日</button></div></div>
+    <div class="fld"><span>第○曜日（複数可）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${(r.nths||[]).map((x,i)=>`<span class="pill">${NTH_L[x.n]}${WD[x.wd]}曜 <button type="button" class="x" data-act="rcNthDel" data-i="${i}" aria-label="外す">×</button></span>`).join('')}
+      <select class="inp auto" id="rc-nn">${Object.entries(NTH_L).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select><select class="inp auto" id="rc-nw">${[1,2,3,4,5,6,0].map(w=>`<option value="${w}">${WD[w]}曜</option>`).join('')}</select><button type="button" class="btn sm" data-act="rcNthAdd">追加</button></div></div>`;
+  if(on){
+    h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>いつまで</span><select class="inp" data-rc="endKind"><option value="never" ${r.end?.kind==='never'?'selected':''}>終わりなし</option><option value="until" ${r.end?.kind==='until'?'selected':''}>日付まで</option><option value="count" ${r.end?.kind==='count'?'selected':''}>回数</option></select></label>
+      ${r.end?.kind==='until'?`<label class="fld"><span>最終日</span><input class="inp" type="date" data-rc="until" value="${esc(r.end.until||'')}"></label>`:''}${r.end?.kind==='count'?`<label class="fld"><span>回数</span><input class="inp num" type="number" min="1" max="500" data-rc="count" value="${esc(r.end.count||10)}"></label>`:''}
+      <label class="fld"><span>日曜・祝日に当たったら</span><select class="inp" data-rc="hol">${[['keep','そのまま'],['prev','前の平日にずらす'],['next','次の平日にずらす'],['skip','その回は休み']].map(([k,l])=>`<option value="${k}" ${r.hol===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
+      <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-rc="sat" ${r.sat?'checked':''}> 土曜も休みの日として扱う</label>
+      <div class="fld" style="margin-top:8px"><span>1日に複数回（2回目以降の時間）</span>${(r.times||[]).map((x,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px"><input class="inp" type="time" data-rct="${i}|start" value="${esc(x.start)}" style="width:8em">〜<input class="inp" type="time" data-rct="${i}|end" value="${esc(x.end)}" style="width:8em"><button type="button" class="btn sm ghost" data-act="rcTimeDel" data-i="${i}">削除</button></div>`).join('')}<button type="button" class="btn sm" data-act="rcTimeAdd">＋ 時間を追加</button></div>
+      <div class="callout" style="margin-top:8px;display:block"><b class="small">次の${prev.length}回</b><div class="small" style="margin-top:4px">${prev.length?prev.map(o=>`${jd(o.date)}${holName(o.date)?'<span class="muted">（'+esc(holName(o.date))+'）</span>':''}`).join('　'):'条件に合う日がありません'}</div>${(r.kind==='weekly'&&!(r.wds||[]).length)||(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length)?'<div class="small" style="color:var(--warn)">曜日・日付を選んでください</div>':''}</div>`;
+  }
+  return h+`</div></details>`;
+}
+function recurValid(r){ if(r.kind==='weekly'&&!(r.wds||[]).length) return '曜日を選んでください'; if(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length) return '日付か第○曜日を選んでください'; if(r.end?.kind==='until'&&!r.end.until) return '最終日を入れてください'; return ''; }
+/* 保存：繰り返しなら回をまとめて作る。既存の回を直すときは範囲を選ぶ */
+async function saveEventR(){
+  const e=sheet.e, r=sheet.rule||{kind:'none'};
+  if(!e.title.trim()) return toast('タイトルを入れてください');
+  if(!e.date) return toast('日付を入れてください');
+  if(!(e.staffIds||[]).length) e.staffIds=[meId()];
+  const er=r.kind!=='none'?recurValid(r):''; if(er) return toast(er);
+  if(e.seriesId){ if(!sheet.scope) return openScope('save'); return applyScope(sheet.scope); }
+  if(r.kind==='none') return saveEvent();
+  const base={...e,id:null,seriesId:'rs'+Math.random().toString(36).slice(2,10),by:meId()};
+  const n=await makeOccurrences(base,r,e.date,e.date); closeSheet(); toast(`繰り返しの予定を${n}回分入れました（${ruleText(r)}）`);
+}
+function openScope(mode){ sheet.scopeAsk=mode; renderOverlay(); }
+function scopeBar(){
+  if(!sheet.scopeAsk) return ''; const del=sheet.scopeAsk==='del';
+  return `<div class="callout w" style="display:block;margin-bottom:10px"><b>繰り返しの予定です。${del?'どれを削除しますか':'どこまで変えますか'}？</b><div class="toolbar" style="margin:8px 0 0"><button class="btn sm" data-act="scope" data-v="one">この予定だけ</button><button class="btn sm" data-act="scope" data-v="from">これ以降すべて</button><button class="btn sm ${del?'danger':''}" data-act="scope" data-v="all">${del?'すべて（過去の分も）':'すべて'}</button><button class="btn sm ghost" data-act="scope" data-v="">やめる</button></div></div>`;
+}
+async function applyScope(sc){
+  const mode=sheet.scopeAsk||'save', e=sheet.e, r=sheet.rule||{kind:'none'}; sheet.scopeAsk=''; sheet.scope=sc; if(!sc){ sheet.scope=''; renderOverlay(); return; }
+  const orig=get('events',e.id)||e, occ=lineOcc(orig);
+  const endBefore=async d=>{ const u=addDays(d,-1); for(const o of occ.filter(o=>o.date<d)){ const cu=o.recur?.end?.kind==='until'?o.recur.end.until:''; if(cu&&cu<=u) continue; await put('events',o.id,{...o,recur:{...o.recur,end:{kind:'until',until:u}}}); } };
+  if(mode==='del'){
+    if(sc==='one') await del('events',e.id);
+    if(sc==='from'){ for(const o of occ.filter(o=>o.date>=orig.date)) await del('events',o.id); await endBefore(orig.date); }
+    if(sc==='all') for(const o of occ) await del('events',o.id);
+    closeSheet(); toast('削除しました'); return;
+  }
+  const fields=({id,date,start,end,seriesId,rootId,seriesStart,seq,recur,...f})=>f;
+  if(sc==='one'||r.kind==='none'&&sc==='one'){ const {id,...rest}=e; await put('events',id,{...rest}); closeSheet(); toast('この予定だけ変更しました'); return; }
+  const ruleSame=JSON.stringify(r)===JSON.stringify(orig.recur||{})&&e.date===orig.date&&e.start===orig.start&&e.end===orig.end;
+  if(sc==='all'&&ruleSame){ for(const o of occ) await put('events',o.id,{...o,...fields(e)}); closeSheet(); toast(`すべての回（${occ.length}件）を変更しました`); return; }
+  // これ以降（すべての時間・ルールの変更も、今日以降を作り直す）
+  const from=sc==='all'?(occ.map(o=>o.date).sort().find(d=>d>=today())||e.date):orig.date;
+  for(const o of occ.filter(o=>o.date>=from)) await del('events',o.id); await endBefore(from);
+  if(r.kind==='none'){ const {id,...rest}=e; await put('events',null,{...fields(rest),date:e.date,start:e.start,end:e.end}); closeSheet(); toast('繰り返しをやめ、この予定だけ残しました'); return; }
+  const base={...e,id:null,seriesId:'rs'+Math.random().toString(36).slice(2,10),rootId:rootOf(orig),by:meId()};
+  const st=e.date>=from?e.date:from; const n=await makeOccurrences(base,r,st,st); closeSheet(); toast(`${jd(st)}以降を作り直しました（${n}回）`);
+}
+/* ---------- コピー・ひな形 ---------- */
+function copyEvent(){ const e=sheet.e; const {id,seriesId,rootId,seriesStart,seq,recur,...rest}=e; openSheet({kind:'event',e:{...rest,id:null},rule:null}); toast('コピーしました。日付・担当を変えて保存してください'); }
+const myTpls=()=>all('events').filter(e=>e.tpl&&((e.staffIds||[]).includes(meId())||e.shared)).sort(by(e=>e.title||''));
+function tplBar(e){ if(e.id) return ''; const ts=myTpls(); if(!ts.length) return '';
+  return `<div class="fld"><span>ひな形から入れる</span><div class="chips" style="flex-wrap:wrap">${ts.map(t=>`<span style="display:inline-flex;align-items:center;gap:2px"><button type="button" data-act="tplUse" data-id="${t.id}">${esc(t.title)}${t.start?' '+esc(t.start):''}</button><button type="button" class="btn sm ghost" data-act="tplDel" data-id="${t.id}" aria-label="ひな形を削除" title="ひな形を削除" style="padding:0 6px">×</button></span>`).join('')}</div></div>`; }
+async function tplSave(){ const e=sheet.e; if(!e.title.trim()) return toast('タイトルを入れてからひな形にしてください');
+  const {id,date,seriesId,rootId,seriesStart,seq,recur,...rest}=e; await put('events','tp'+Math.random().toString(36).slice(2,10),{...rest,date:'',tpl:true,staffIds:[meId()],by:meId()}); toast('ひな形に保存しました（次から「予定を追加」で選べます）'); renderOverlay(); }
+function tplUse(id){ const t=get('events',id); if(!t) return; const e=sheet.e; const {id:_i,tpl,by,shared,staffIds,...rest}=t; Object.assign(e,rest); if(!(e.staffIds||[]).length) e.staffIds=[meId()]; renderOverlay(); }
+async function tplDel(id){ await del('events',id); toast('ひな形を削除しました'); renderOverlay(); }
+docOn('change',ev=>{ const el=ev.target; if(sheet?.kind!=='event'||!sheet.rule) return;
+  if(el.dataset.rc){ const r=sheet.rule, k=el.dataset.rc, v=el.type==='checkbox'?el.checked:el.value;
+    if(k==='endKind') r.end={kind:v,until:r.end?.until||'',count:r.end?.count||10};
+    else if(k==='until') r.end={...r.end,until:v}; else if(k==='count') r.end={...r.end,count:+v||1}; else if(k==='every') r.every=+v; else r[k]=v;
+    renderOverlay(); }
+  if(el.dataset.rct){ const [i,k]=el.dataset.rct.split('|'); sheet.rule.times[+i][k]=el.value; renderOverlay(); } });
+
+(function loopTop(){ setTimeout(()=>{ try{ if(all('staff').length&&me()) recurTopUp(); }catch(_){} loopTop(); }, recurTopAt?3600e3:8000); })();
 
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
@@ -3434,6 +3606,7 @@ window.S_API={
   dispatchEvents:()=>all('events').filter(isDispatch),
   dataVer:()=>dataVer,
   openFieldVisit:id=>openFieldVisit(id),
+  hol:d=>holName(d),
   unregDue:()=>unregDue().length,
   get:(c,id)=>get(c,id), list:c=>all(c), patMinOf:c=>patMin(patOfCell(c)), closed:ym=>!!closeOf(ym),
   ready:()=>loaded.size===COLS.length,
@@ -4019,7 +4192,7 @@ function monthCalendar(vs){
   const body=cells.map(d=>{
     const l=vs.filter(v=>v.date===d).sort(by(v=>v.start||'')); const w=parseD(d).getDay();
     return `<div class="cd ${ymOf(d)!==m?'out':''} ${d===t?'today':''} ${d===VS.calSel?'sel':''} ${tgtMode()?'target':''}" data-drop-d="${d}" data-act="${tgtMode()?'place':'calday'}" data-d="${d}" data-fit>
-      <div class="cdn"><span class="${w===0?'sun':w===6?'sat':''}">${+d.slice(8)}</span>${l.length?`<span class="cnt">${l.length}件</span>`:''}</div>
+      <div class="cdn"><span class="${w===0||(window.S_API&&S_API.hol(d))?'sun':w===6?'sat':''}">${+d.slice(8)}</span>${window.S_API&&S_API.hol(d)?`<small style="font-size:10px;color:#c33">${esc(S_API.hol(d))}</small>`:''}${l.length?`<span class="cnt">${l.length}件</span>`:''}</div>
       <div class="cevs">${l.map(ev).join('')}</div>
       <div class="cdots">${l.slice(0,6).map(v=>`<i style="background:var(--${col(v)})"></i>`).join('')}${l.length>6?'<b>+</b>':''}</div></div>`;}).join('');
   const shown=schedRows();
