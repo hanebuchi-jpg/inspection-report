@@ -829,8 +829,7 @@ const SHELL=(()=>{
       ['G','analytics','分析',I.ana],
     ]],
     ['設定',[
-      ['G','master','マスタ・設定',I.gear],
-      ['S','settings','利用者・勤怠設定',I.users],
+      ['S','settings','設定',I.gear],
     ]],
   ];
   const TAB_FULL=[['S','home'],['S','calendar'],['S','reports'],['G','schedule']];
@@ -1166,7 +1165,7 @@ const SHELL=(()=>{
   }
   function flat(){ return items().flatMap(g=>g[1]); }
   function routeOf(m){ const A=m==='G'?window.G_API:window.S_API; if(!A) return ''; const r=A.route(); return m==='S'&&r==='shiftset'?'shift':r; }
-  function isCur(m,r){ return cur===m&&routeOf(m)===r; }
+  function isCur(m,r){ if(r==='settings') return (cur==='S'&&routeOf('S')==='settings')||(cur==='G'&&routeOf('G')==='master'); return cur===m&&routeOf(m)===r; }
   function badges(){
     const out={}; if(!window.G_API||!window.S_API) return out;
     const g=G_API.badges(), s=S_API.badges();
@@ -1181,7 +1180,7 @@ const SHELL=(()=>{
     $('#shell-nav').innerHTML=`<div class="brand">真総合<small>試作版</small></div>
       ${SB&&sbRole!=='admin'?`<div class="who"><span>ログイン中</span><b>${esc(S_API.staff().find(s=>s.id===me)?.name||'')}</b></div>`:`<label class="who"><span>${SB?'表示の確認（管理者のみ）':'利用者（試作用の切替）'}</span><select class="sinp" data-sgo-chg="me">${opts||'<option>（未登録）</option>'}</select></label>`}`+
       items().map(([gname,list])=>(gname?`<div class="grp">${esc(gname)}</div>`:'')+list.map(btn).join('')).join('')+
-      `<div class="foot">${SB?`${esc(sbUser?.email||'')}<br><button class="sbl-link" data-sbl="logout">ログアウト</button>`:preview?'プレビュー（保存されません）':'共有データに保存中'}</div>`;
+      `<div class="foot"><button class="sbl-link" data-sgo="settab" data-k="view">表示の設定</button><br>${SB?`${esc(sbUser?.email||'')}<br><button class="sbl-link" data-sbl="logout">ログアウト</button>`:preview?'プレビュー（保存されません）':'共有データに保存中'}</div>`;
     // スマホの下タブ
     const all=flat();
     let tabs;
@@ -1205,8 +1204,37 @@ const SHELL=(()=>{
     autoSeeded=true; seed();
   }
   function save(){ try{ localStorage.setItem('shin-sogo-route',JSON.stringify({m:cur,r:routeOf(cur)})); }catch(_){} }
+  /* ---------- 設定：「マスタ・設定」と「利用者・勤怠設定」を1つのメニューに ---------- */
+  const SET_TABS=[ // [キー, モジュール, 中のタブ, 表示名, 見られる段階（以下）, 個別に追加できる権限]
+    ['company','G','settings','会社・承認ルール',2,''],
+    ['users','G','staff','利用者・権限',3,'staff.edit'],
+    ['prices','G','prices','価格表・見積',3,'price.edit'],
+    ['time','S','time','勤怠・シフト',3,'time.close'],
+    ['cal','S','cal','カレンダー・予約',3,'res.edit'],
+    ['data','G','data','データ',1,''],
+    ['perm','G','auth','権限一覧',5,''],
+    ['view','S','view','表示（この端末）',99,''],
+    ['sdata','S','data','',1,''],
+  ];
+  const LVS={admin:1,lead:2,manager:3,staff:4,part:5,kiosk:8,partner:9};
+  let lastSet='';
+  function setTabOk(k){
+    const t=SET_TABS.find(x=>x[0]===k); if(!t||!window.S_API) return false; if(k==='view') return true;
+    const st=S_API.get('staff',S_API.meId()); if(!st) return !SB;
+    if(st.kind==='協力会社'||st.role==='partner'||st.role==='kiosk') return false;
+    if((st.mode||'full')!=='full') return false;
+    const lv=LVS[st.role]??4; return lv<=t[4]||(!!t[5]&&(st.extra||[]).includes(t[5]))||(t[5]==='price.edit'&&(st.extra||[]).includes('master.edit'));
+  }
+  function setKeyOf(m,t){ if(m==='G') return {settings:'company',staff:'users',prices:'prices',templates:'prices',data:'data',auth:'perm'}[t]||''; return {time:'time',cal:'cal',view:'view',data:'sdata'}[t]||''; }
+  function setTabsHtml(curKey){ return `<div class="tabs" role="tablist">${SET_TABS.filter(t=>t[3]&&setTabOk(t[0])).map(t=>`<button role="tab" data-sgo="settab" data-k="${t[0]}" aria-selected="${t[0]===curKey}">${t[3]}</button>`).join('')}</div>`; }
+  function goSet(k){
+    if(!k||!setTabOk(k)) k=(lastSet&&setTabOk(lastSet)?lastSet:'')||(SET_TABS.find(t=>t[3]&&setTabOk(t[0]))||[])[0]||'view';
+    const t=SET_TABS.find(x=>x[0]===k); lastSet=k;
+    if(t[1]==='G'){ G_API.setMtab(t[2]); go('G','master'); } else { S_API.setTab(t[2]); go('S','settings'); }
+  }
   function go(m,r){
-    if(!flat().some(x=>x[0]===m&&x[1]===r)){ m='S'; r='home'; }
+    const setOk=(m==='G'&&r==='master'&&flat().some(x=>x[1]==='settings'))||(m==='S'&&r==='settings');
+    if(!setOk&&!flat().some(x=>x[0]===m&&x[1]===r)){ m='S'; r='home'; }
     moreOpen=false; closeFit(); show(m); (m==='G'?G_API:S_API).go(r); window.scrollTo(0,0); save(); renderNav();
   }
 
@@ -1274,7 +1302,7 @@ const SHELL=(()=>{
       const mid=S_API.meId(); if(mid!==lastMe){ lastMe=mid; G_API.rerender(); }
       if(g!==lastG){ lastG=g; S_API.rerender(); }
       if(s!==lastS){ lastS=s; G_API.rerender(); }
-      if(S_API.isSimple()&&!flat().some(([m,r])=>isCur(m,r))){ go('S','home'); return; }
+      if(S_API.isSimple()&&!flat().some(([m,r])=>isCur(m,r))&&!(cur==='S'&&routeOf('S')==='settings')){ go('S','home'); return; }
       save(); renderNav(); renderBanner(); fit(); maybeAutoSeed();
     });
   }
@@ -1282,7 +1310,8 @@ const SHELL=(()=>{
   document.addEventListener('click',e=>{
     const el=e.target.closest('[data-sgo]'); if(!el) return;
     const a=el.dataset.sgo;
-    if(a==='go') go(el.dataset.m,el.dataset.r);
+    if(a==='go'){ if(el.dataset.r==='settings'||el.dataset.r==='master') goSet(''); else go(el.dataset.m,el.dataset.r); }
+    else if(a==='settab') goSet(el.dataset.k);
     else if(a==='more'){ moreOpen=!moreOpen; renderNav(); }
     else if(a==='close-more'){ moreOpen=false; renderNav(); }
     else if(a==='seed') seed();
@@ -1298,7 +1327,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {fileBlob,loginStaffId,sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {setTabsHtml,goSet,setTabOk,setKeyOf,fileBlob,loginStaffId,sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -1484,7 +1513,7 @@ function mtop(){ const opts=staffList().map(s=>`<option value="${s.id}" ${s.id==
   return `<div class="mtop"><div class="brand">真総合</div><select class="inp auto" data-chg="me" aria-label="利用者">${opts}</select></div>`; }
 const VIEWS={};
 function render(){
-  if(!navItems().some(n=>n[0]===VS.route)&&!(VS.route==='shiftset'&&!isSimple())) VS.route='home';
+  if(!navItems().some(n=>n[0]===VS.route)&&!(VS.route==='shiftset'&&!isSimple())&&!(VS.route==='settings'&&VS.setTab==='view')) VS.route='home';
   renderNav(); SHELL.sync();
   const ae=document.activeElement; const fid=ae&&ae.id&&$('#main').contains(ae)?ae.id:null; const sel=fid&&ae.selectionStart;
   let h=mtop();
@@ -1755,8 +1784,10 @@ VIEWS.relations=()=>{
 /* ================= 設定 ================= */
 VIEWS.settings=()=>{
   const tab=VS.setTab;
-  let h=`<div class="vhead"><h1>利用者・勤怠設定</h1></div><div class="tabs" role="tablist">${[['users','利用者・利用モード'],['master','顧客・現場・案件'],['view','表示（この端末）'],['data','データ'],...(canRes()?[['cal','カレンダー・予約']]:[])].map(([k,l])=>`<button role="tab" aria-selected="${tab===k}" data-act="setTab" data-v="${k}">${l}</button>`).join('')}</div>`;
-  if(tab==='users'){
+  if(!['time','cal','view','data'].includes(tab)||!SHELL.setTabOk(SHELL.setKeyOf('S',tab))){ setTimeout(()=>SHELL.goSet(['users','master'].includes(tab)?'users':''),0); return '<div class="empty">…</div>'; }
+  let h=`<div class="vhead"><h1>設定</h1></div>${SHELL.setTabsHtml(SHELL.setKeyOf('S',tab))}`;
+  if(tab==='time'){ h+=timeHubHtml();
+  } else if(tab==='users'){
     h+=`<div class="callout" style="margin-bottom:12px">利用モードで、人ごとに使える機能を選べます。フル機能／報告＋勤怠（ホーム・報告・自分の予定・タイムカード）／報告のみ（ホーム・報告）／勤怠のみ（ホーム・タイムカード）。ログイン機能を入れたときは、この設定がそのまま権限になります。</div>`;
     const allU=staffList(); const ul=allU.filter(s=>nameHit(s,F('u_q'))&&(!F('u_kind')||kindOf(s)===F('u_kind'))&&(!F('u_mode')||(s.mode||'full')===F('u_mode'))&&staffAtSite(s,F('u_site'),''));
     h+=fBar([fSearch('u_q'),fSel('u_kind',[['','区分：すべて'],...Object.entries(KIND_L)],'区分'),fSel('u_mode',[['','利用モード：すべて'],...Object.entries(MODES)],'利用モード'),fSel('u_site',siteOptsF(),'現場','')],ul.length,allU.length,['u_q','u_kind','u_mode','u_site']);
@@ -3164,7 +3195,7 @@ function del(col,id){
 }
 let closingNow=false;
 function closeBar(m){
-  const c=closeOf(m), r=roleS(), canClose=['admin','lead'].includes(r);
+  const c=closeOf(m), r=roleS(), canClose=['admin','lead'].includes(r)||(me()?.extra||[]).includes('time.close');
   if(c) return `<div class="callout g" style="margin:8px 0"><span><b>${ymLabel(m)}は締め済み</b>（${esc(staffName(c.by))} ${esc(String(c.at||'').slice(0,10))}）。打刻・修正申請・休み希望・シフトは変更できません。シフトの時間は締めた時点のパターンで固定しています。</span>${r==='admin'?`<button class="btn sm" data-act="monthOpen" data-m="${m}">締めを解除</button>`:''}</div>`;
   if(isSimple()||!canClose) return '';
   if(m>=ymOf(today())&&m!==ymOf(addDays(today(),-1))) return '';
@@ -3613,7 +3644,8 @@ docOn('change',ev=>{ const el=ev.target; if(sheet?.kind!=='event'||!sheet.rule) 
    ========================================================= */
 const RES_CAT={car:'車両',equip:'資器材',room:'会議室'};
 const RES_CAT_ORDER=['car','equip','room'];
-const canRes=()=>['admin','lead','manager'].includes(roleS());
+const hasEx=k=>(me()?.extra||[]).includes(k);
+const canRes=()=>['admin','lead','manager'].includes(roleS())||hasEx('res.edit');
 const resAll=()=>all('resources').slice().sort(by(r=>RES_CAT_ORDER.indexOf(r.cat)+'|'+String(r.order??999).padStart(4,'0')+'|'+r.name));
 const resOn=()=>resAll().filter(r=>r.active!==false);
 const resLabel=r=>r?(r.name+(r.cat==='car'&&r.plate?`（${r.plate}）`:'')):'（削除されたもの）';
@@ -3734,7 +3766,7 @@ function resSettingsHtml(){
   </div></div></div>`;
   return h;
 }
-function resDue(r){ const t=today(); return (r.inspects||[]).filter(x=>x.date&&x.date<=addDays(t,30)).map(x=>({...x,over:x.date<t})); }
+function resDue(r){ const t=today(); if(!(r.cat==='car'||(r.cat==='equip'&&r.track))) return []; return (r.inspects||[]).filter(x=>x.date&&x.date<=addDays(t,30)).map(x=>({...x,over:x.date<t})); }
 function resStatusHtml(r){
   if(r.active===false) return '<span class="pill">停止</span>';
   if(resOpenTrouble(r.id).length) return '<span class="pill r">修理中</span>';
@@ -3744,30 +3776,38 @@ function resStatusHtml(r){
 
 /* ---------- 登録・編集 ---------- */
 SHEETS.resEdit=()=>{
-  const r=sheet.r, car=r.cat==='car', room=r.cat==='room';
+  const r=sheet.r, car=r.cat==='car', room=r.cat==='room', eq=r.cat==='equip';
+  const f=(k,l,ph,num)=>`<label class="fld"><span>${l}</span><input class="inp${num?' num':''}" ${num?'inputmode="numeric"':''} data-rsf="${k}" value="${esc(r[k]??'')}" placeholder="${ph||''}"></label>`;
+  const track=car||(eq&&r.track);
   const body=`<div class="sec"><div class="seg" role="group" style="margin-bottom:10px">${RES_CAT_ORDER.map(c=>`<button type="button" data-act="resCat" data-v="${c}" aria-pressed="${r.cat===c}">${RES_CAT[c]}</button>`).join('')}</div>
     <div class="form">
-      <label class="fld"><span>名前</span><input class="inp" data-rsf="name" value="${esc(r.name)}" placeholder="${car?'例：ハイエース①':room?'例：本社 会議室A':'例：ポリッシャー'}"></label>
-      ${car?`<label class="fld"><span>ナンバー</span><input class="inp" data-rsf="plate" value="${esc(r.plate)}" placeholder="例：名古屋 300 あ 12-34"></label><label class="fld"><span>定員</span><input class="inp num" inputmode="numeric" data-rsf="seats" value="${esc(r.seats)}"></label>`:''}
-      ${room?`<label class="fld"><span>定員</span><input class="inp num" inputmode="numeric" data-rsf="seats" value="${esc(r.seats)}"></label>`:''}
-      ${!car&&!room?`<label class="fld"><span>台数（同時に貸し出せる数）</span><input class="inp num" inputmode="numeric" data-rsf="qty" value="${esc(r.qty||1)}"></label>`:''}
-      <label class="fld"><span>保管場所</span><input class="inp" data-rsf="place" value="${esc(r.place)}" placeholder="例：本社倉庫"></label>
-      <label class="fld"><span>状態</span><select class="inp" data-rsf="active"><option value="1" ${r.active!==false?'selected':''}>使用可</option><option value="0" ${r.active===false?'selected':''}>使用停止（廃車・売却など）</option></select></label>
+      ${f('name','名前',car?'例：ハイエース①':room?'例：本社 会議室A':'例：ポリッシャー')}
+      ${car?f('plate','ナンバー','例：名古屋 300 あ 12-34')+f('model','車種','例：ハイエース バン')+f('seats','定員','',1)+f('place','駐車場所','例：本社 裏の駐車場'):''}
+      ${eq?f('qty','台数（同時に貸し出せる数）','',1)+f('place','保管場所','例：本社倉庫'):''}
+      ${room?f('seats','定員','',1)+f('equip','設備','例：モニター、ホワイトボード'):''}
+      <label class="fld"><span>状態</span><select class="inp" data-rsf="active"><option value="1" ${r.active!==false?'selected':''}>使用可</option><option value="0" ${r.active===false?'selected':''}>使用停止（${car?'廃車・売却':room?'使わなくなった':'廃棄・売却'}など）</option></select></label>
     </div>
-    <label class="fld"><span>メモ</span><textarea class="inp" style="min-height:60px" data-rsf="note">${esc(r.note)}</textarea></label></div>
-    <div class="sec"><b class="small">${car?'車検・点検の期限':'点検の期限'}（30日前からホームでお知らせ）</b>
-      ${(r.inspects||[]).map((x,i)=>`<div class="toolbar" style="margin:6px 0 0"><input class="inp" style="max-width:160px" data-rsi="${i}|label" value="${esc(x.label)}" placeholder="${car?'車検':'点検'}"><input class="inp" type="date" style="max-width:170px" data-rsi="${i}|date" value="${esc(x.date)}"><button class="btn sm ghost" data-act="resInsDel" data-i="${i}">✕</button></div>`).join('')}
-      <div class="toolbar" style="margin:6px 0 0"><button class="btn sm" data-act="resInsAdd">＋ 期限を追加</button></div></div>
-    <div class="sec"><b class="small">使用不可の期間（車検・修理・点検中など。この間は予約できません）</b>
-      ${(r.off||[]).map((x,i)=>`<div class="toolbar" style="margin:6px 0 0"><input class="inp" type="date" style="max-width:160px" data-rso="${i}|from" value="${esc(x.from)}">〜<input class="inp" type="date" style="max-width:160px" data-rso="${i}|to" value="${esc(x.to)}"><input class="inp" style="max-width:160px" data-rso="${i}|why" value="${esc(x.why)}" placeholder="理由（車検など）"><button class="btn sm ghost" data-act="resOffDel" data-i="${i}">✕</button></div>`).join('')}
+    <label class="fld"><span>メモ</span><textarea class="inp" style="min-height:54px" data-rsf="note">${esc(r.note)}</textarea></label></div>
+    ${eq?`<div class="sec"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-rsf="track" ${r.track?'checked':''}> 点検の期限を管理する（高所作業車・発電機など）</label></div>`:''}
+    ${track?`<div class="sec"><b class="small">${car?'車検・点検・保険の期限':'点検の期限'}（30日前からホームでお知らせ）</b>
+      ${(r.inspects||[]).map((x,i)=>`<div class="toolbar" style="margin:6px 0 0"><input class="inp" style="max-width:160px" data-rsi="${i}|label" value="${esc(x.label)}" placeholder="${car?'車検':'点検'}"><input class="inp" type="date" style="max-width:170px" data-rsi="${i}|date" value="${esc(x.date)}"><button class="btn sm ghost" data-act="resInsDel" data-i="${i}" aria-label="削除">✕</button></div>`).join('')}
+      <div class="toolbar" style="margin:6px 0 0"><button class="btn sm" data-act="resInsAdd">＋ 期限を追加</button></div></div>`:''}
+    <div class="sec"><b class="small">使えない期間（${car?'修理・車検中':room?'工事・貸切':'修理・点検中'}など。この間は予約できません）</b>
+      ${(r.off||[]).map((x,i)=>`<div class="toolbar" style="margin:6px 0 0"><input class="inp" type="date" style="max-width:160px" data-rso="${i}|from" value="${esc(x.from)}">〜<input class="inp" type="date" style="max-width:160px" data-rso="${i}|to" value="${esc(x.to)}"><input class="inp" style="max-width:160px" data-rso="${i}|why" value="${esc(x.why)}" placeholder="${car?'車検':room?'工事':'修理'}"><button class="btn sm ghost" data-act="resOffDel" data-i="${i}" aria-label="削除">✕</button></div>`).join('')}
       <div class="toolbar" style="margin:6px 0 0"><button class="btn sm" data-act="resOffAdd">＋ 期間を追加</button></div></div>`;
   const used=r.id&&(resItems().some(it=>it.res.some(x=>x.id===r.id))||all('reslogs').some(l=>l.resId===r.id));
   const foot=`${r.id?`<button class="btn danger l" data-act="resDelAsk">削除</button>`:''}<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="resSave">保存</button>`;
   return {title:r.id?'予約できるもの':'予約できるものを追加',body:body+(sheet.delAsk?`<div class="callout w" style="display:block">${used?'予約や使用記録があります。削除すると履歴に名前が出なくなるため、「使用停止」にするのがおすすめです。':''}本当に削除しますか？ <button class="btn sm danger" data-act="resDel">削除する</button></div>`:''),foot};
 };
+/* 区分に合わない項目は保存しない */
+const RES_KEYS={car:['plate','model','seats','place','inspects'],equip:['qty','place','track','inspects'],room:['seats','equip']};
 async function resSave(){
   const r=sheet.r; if(!String(r.name||'').trim()) return toast('名前を入れてください');
-  const d={...r,qty:r.cat==='equip'?Math.max(1,parseInt(r.qty)||1):1,inspects:(r.inspects||[]).filter(x=>x.date||x.label),off:(r.off||[]).filter(x=>x.from)};
+  const keep=RES_KEYS[r.cat]||[], d={id:r.id,cat:r.cat,name:String(r.name).trim(),active:r.active!==false,note:r.note||'',order:r.order??'',off:(r.off||[]).filter(x=>x.from)};
+  keep.forEach(k=>{ if(r[k]!=null&&r[k]!=='') d[k]=r[k]; });
+  d.qty=r.cat==='equip'?Math.max(1,parseInt(r.qty)||1):1;
+  if(r.cat==='equip'&&!r.track) delete d.inspects;
+  if(d.inspects) d.inspects=d.inspects.filter(x=>x.date||x.label);
   const {id,...rest}=d; await put('resources',id,rest); closeSheet(); toast('保存しました');
 }
 
@@ -3777,43 +3817,45 @@ SHEETS.resInfo=()=>{
   const t=today(), its=resItems().filter(it=>it.res.some(x=>x.id===r.id)&&it.date>=t&&it.date<=addDays(t,30)).sort(by(it=>it.date+(it.start||'')));
   const logs=all('reslogs').filter(l=>l.resId===r.id).sort(by(l=>l.at||l.date,-1)).slice(0,15);
   const lastKm=logs.find(l=>l.km)?.km;
-  const body=`<div class="sec"><div class="small">${RES_CAT[r.cat]||''}${r.place?'　保管：'+esc(r.place):''}${r.cat==='equip'&&+r.qty>1?'　'+r.qty+'台':''}${r.seats?'　定員'+esc(r.seats)+'人':''}${lastKm?'　最新の走行距離：'+Number(lastKm).toLocaleString()+'km':''}</div>
+  const info=r.cat==='car'?[r.model,r.seats?'定員'+r.seats+'人':'',r.place?'駐車：'+r.place:'',lastKm?'最新の走行距離：'+Number(lastKm).toLocaleString()+'km':'']:r.cat==='equip'?[+r.qty>1?r.qty+'台':'',r.place?'保管：'+r.place:'']:[r.seats?'定員'+r.seats+'人':'',r.equip?'設備：'+r.equip:''];
+  const body=`<div class="sec"><div class="small">${RES_CAT[r.cat]||''}　${info.filter(Boolean).map(esc).join('　')}</div>
     <div style="margin-top:6px">${resStatusHtml(r)}</div>${r.note?`<div class="small muted" style="margin-top:6px;white-space:pre-wrap">${esc(r.note)}</div>`:''}</div>
     ${resOpenTrouble(r.id).map(l=>`<div class="callout w" style="display:block"><b>不具合の報告</b>（${esc(staffName(l.staffId))}・${jd(l.date)}）<div class="small" style="white-space:pre-wrap">${esc(l.trouble)}</div>${canRes()?`<button class="btn sm" data-act="resFixed" data-id="${l.id}" style="margin-top:6px">直った（予約できるようにする）</button>`:''}</div>`).join('')}
     <div class="sec"><b class="small">この先30日の予約</b>${its.length?`<div class="list">${its.map(it=>`<button class="li" data-act="rvOpen" data-key="${it.key}"><span class="tm">${jd(it.date)} ${timeRange(it.start,it.end)}</span><span class="grow">${esc(it.title)} <span class="small muted">${esc(whoOf(it))}</span></span></button>`).join('')}</div>`:'<div class="empty" style="padding:4px 0">ありません</div>'}</div>
     <div class="sec"><b class="small">使用後の記録</b>${logs.length?`<div class="list">${logs.map(l=>`<div class="li" style="cursor:default"><span class="tm">${jd(l.date)}</span><span class="grow small">${esc(staffName(l.staffId))}　${l.km?Number(l.km).toLocaleString()+'km　':''}${l.fuelL?'給油'+esc(l.fuelL)+'L　':''}${l.returned?'返却済み　':''}${l.trouble?`<b style="color:var(--bad)">不具合：${esc(l.trouble)}</b>${l.fixed?'（対応済み）':''}`:''}</span></div>`).join('')}</div>`:'<div class="empty" style="padding:4px 0">まだありません</div>'}</div>`;
-  const foot=`<button class="btn" data-act="rvNew" data-rid="${r.id}" data-d="${VS.rvDate||today()}">この${RES_CAT[r.cat]==='会議室'?'部屋':'設備'}を予約</button>${canRes()?`<button class="btn" data-act="resEdit" data-id="${r.id}">編集</button>`:''}<button class="btn pri" data-act="close">閉じる</button>`;
+  const foot=`<button class="btn" data-act="resTrouble" data-id="${r.id}">不具合を報告</button><button class="btn" data-act="rvBook" data-rid="${r.id}" data-d="${VS.rvDate||today()}">予約する</button>${canRes()?`<button class="btn" data-act="resEdit" data-id="${r.id}">編集</button>`:''}<button class="btn pri" data-act="close">閉じる</button>`;
   return {title:esc(resLabel(r)),body,foot};
 };
 
 /* ---------- 使用後の記録 ---------- */
 SHEETS.resLog=()=>{
-  const it=sheet.it, d=sheet.d; const rs=it.res.map(x=>get('resources',x.id)).filter(Boolean);
+  const it=sheet.it, d=sheet.d; const rs=it.res.map(x=>get('resources',x.id)).filter(Boolean).filter(r=>sheet.onlyTrouble||r.cat!=='room');
   const body=`<div class="sec"><div class="small muted">${jd(it.date)} ${timeRange(it.start,it.end)}　${esc(it.title)}</div></div>
     ${rs.map(r=>{ const x=d[r.id]||(d[r.id]={}); const last=all('reslogs').filter(l=>l.resId===r.id&&l.km).sort(by(l=>l.at||l.date,-1))[0];
       return `<div class="sec"><b>${esc(resLabel(r))}</b><div class="form" style="margin-top:6px">
-        ${r.cat==='car'?`<label class="fld"><span>走行距離（メーター）${last?`<span class="muted" style="font-weight:400">　前回 ${Number(last.km).toLocaleString()}km</span>`:''}</span><input class="inp num" inputmode="numeric" data-rlf="${r.id}|km" value="${esc(x.km||'')}" placeholder="km"></label>
+        ${sheet.onlyTrouble?'':r.cat==='car'?`<label class="fld"><span>走行距離（メーター）${last?`<span class="muted" style="font-weight:400">　前回 ${Number(last.km).toLocaleString()}km</span>`:''}</span><input class="inp num" inputmode="numeric" data-rlf="${r.id}|km" value="${esc(x.km||'')}" placeholder="km"></label>
           <label class="fld"><span>給油（L・しなかったら空欄）</span><input class="inp num" inputmode="decimal" data-rlf="${r.id}|fuelL" value="${esc(x.fuelL||'')}"></label>`:
           `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-rlf="${r.id}|returned" ${x.returned!==false?'checked':''}> ${r.cat==='room'?'片付け・退室した':'元の場所に返却した'}</label>`}
         </div><label class="fld" style="margin-top:6px"><span>不具合・気づいたこと（入れると「修理中」になり予約できなくなります）</span><textarea class="inp" style="min-height:54px" data-rlf="${r.id}|trouble" placeholder="例：ブレーキの効きが弱い／パッドが割れた">${esc(x.trouble||'')}</textarea></label></div>`; }).join('')}`;
-  return {title:'使用後の記録',body,foot:`<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="resLogSave">記録する</button>`};
+  return {title:sheet.onlyTrouble?'不具合を報告':'使用後の記録',body:sheet.onlyTrouble?body.replace(/^<div class="sec"><div class="small muted">.*?<\/div><\/div>/s,''):body,foot:`<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="resLogSave">記録する</button>`};
 };
 const resLogged=(it,rid)=>all('reslogs').some(l=>l.itemKey===it.key&&l.itemDate===it.date&&l.resId===rid);
+const resNeedLog=it=>it.res.filter(x=>{ const r=get('resources',x.id); return r&&r.cat!=='room'; });
 async function resLogSave(){
   const it=sheet.it, at=new Date().toISOString(); let n=0, tr=0;
-  for(const x of it.res){ const r=get('resources',x.id); if(!r) continue; const d=sheet.d[x.id]||{};
+  for(const x of it.res){ const r=get('resources',x.id); if(!r||(r.cat==='room'&&!sheet.onlyTrouble)) continue; const d=sheet.d[x.id]||{}; if(sheet.onlyTrouble&&!String(d.trouble||'').trim()) return toast('内容を入れてください');
     if(r.cat==='car'&&d.km&&!(+String(d.km).replace(/,/g,'')>0)) return toast('走行距離は数字で入れてください');
     await put('reslogs',null,{resId:r.id,itemKey:it.key,itemDate:it.date,date:today(),staffId:meId(),km:d.km?+String(d.km).replace(/,/g,''):'',fuelL:d.fuelL||'',returned:r.cat==='car'?true:d.returned!==false,trouble:String(d.trouble||'').trim(),fixed:false,at}); n++; if(String(d.trouble||'').trim()) tr++; }
-  closeSheet(); toast(tr?'記録しました。不具合を管理者に知らせました（直るまで予約できません）':`記録しました（${n}件）`);
+  closeSheet(); toast(tr?'不具合を管理者に知らせました（直るまで予約できません）':`記録しました（${n}件）`);
 }
 
 /* ---------- ホーム ---------- */
 function resHomePanel(){
   const m=me(); if(!m||isPartner(m)) return '';
-  const t=today(), y=addDays(t,-1), mine=resItems().filter(it=>(it.date===t||(it.date===y&&!it.res.every(x=>resLogged(it,x.id))))&&(it.staffIds||[]).includes(m.id)).sort(by(it=>it.date+(it.start||'')));
+  const t=today(), y=addDays(t,-1), mine=resItems().filter(it=>(it.date===t||(it.date===y&&resNeedLog(it).length&&!resNeedLog(it).every(x=>resLogged(it,x.id))))&&(it.staffIds||[]).includes(m.id)).sort(by(it=>it.date+(it.start||'')));
   let h='';
-  if(mine.length) h+=`<div class="panel" style="margin-bottom:14px"><h2>今日使うもの</h2><div class="pbody"><div class="list">${mine.map(it=>{ const done=it.res.every(x=>resLogged(it,x.id));
-    return `<div class="li" style="cursor:default;align-items:center"><span class="tm">${it.date===t?'':jd(it.date)+' '}${timeRange(it.start,it.end)}</span><span class="grow"><b>${esc(it.res.map(x=>resNameOf(x.id)+((+x.n||1)>1?`×${x.n}`:'')).join('、'))}</b><div class="small muted">${esc(it.title)}</div></span>${done?'<span class="pill g">記録済み</span>':`<button class="btn sm" data-act="resLog" data-key="${it.key}" data-d="${it.date}">使用後の記録</button>`}</div>`; }).join('')}</div></div></div>`;
+  if(mine.length) h+=`<div class="panel" style="margin-bottom:14px"><h2>今日使うもの</h2><div class="pbody"><div class="list">${mine.map(it=>{ const nl=resNeedLog(it), done=nl.every(x=>resLogged(it,x.id));
+    return `<div class="li" style="cursor:default;align-items:center"><span class="tm">${it.date===t?'':jd(it.date)+' '}${timeRange(it.start,it.end)}</span><span class="grow"><b>${esc(it.res.map(x=>resNameOf(x.id)+((+x.n||1)>1?`×${x.n}`:'')).join('、'))}</b><div class="small muted">${esc(it.title)}</div></span>${!nl.length?'':done?'<span class="pill g">記録済み</span>':`<button class="btn sm" data-act="resLog" data-key="${it.key}" data-d="${it.date}">使用後の記録</button>`}</div>`; }).join('')}</div></div></div>`;
   if(canRes()){
     const due=resOn().flatMap(r=>resDue(r).map(x=>({r,...x}))).sort(by(x=>x.date)), tr=resOn().filter(r=>resOpenTrouble(r.id).length);
     if(due.length||tr.length) h+=`<div class="panel" style="margin-bottom:14px"><h2>車両・資器材のお知らせ</h2><div class="pbody"><div class="list">
@@ -3824,12 +3866,57 @@ function resHomePanel(){
   return h;
 }
 
+
+/* ---------- 予約（短い画面） ---------- */
+const bkStaff=()=>staffList().filter(x=>!isPartner(x)&&!x.inactive&&kindOf(x)!=='協力会社');
+function bkOpen(rid,d,start){
+  const r=get('resources',rid)||resOn().find(x=>!VS.rvCat||x.cat===VS.rvCat)||resOn()[0]; if(!r) return toast('予約できるものが登録されていません');
+  const st=start!=null?hm(start):'', en=start!=null?hm(Math.min(start+60,RV_H1*60)):'';
+  openSheet({kind:'resBook',b:{rid:r.id,date:d||VS.rvDate||today(),start:st,end:en,user:meId(),riders:[],siteId:'',dest:'',n:1,purpose:'',people:'',guest:false,note:''}});
+}
+SHEETS.resBook=()=>{
+  const b=sheet.b, r=get('resources',b.rid), c=r?.cat, q=Math.max(1,+r?.qty||1);
+  const x={date:b.date,start:b.start,end:b.end,res:[{id:b.rid,n:+b.n||1}]}, pr=r?resProblems(x,null):[];
+  const sel=(k,opts,v)=>`<select class="inp" data-bkf="${k}">${opts.map(([a,l])=>`<option value="${esc(a)}" ${String(v)===String(a)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const staffO=bkStaff().map(x=>[x.id,x.name]);
+  const siteO=[['','（選ばない）'],...sitesOf().map(x=>[x.id,x.name])];
+  const body=`<div class="sec"><div class="form">
+    <label class="fld wide"><span>予約するもの</span>${sel('rid',resOn().map(y=>[y.id,RES_CAT[y.cat]+'：'+resLabel(y)]),b.rid)}</label>
+    <label class="fld"><span>日付</span><input class="inp" type="date" data-bkf="date" value="${esc(b.date)}"></label>
+    <label class="fld"><span>開始</span><input class="inp" type="time" data-bkf="start" value="${esc(b.start)}"></label>
+    <label class="fld"><span>終了</span><input class="inp" type="time" data-bkf="end" value="${esc(b.end)}"></label>
+    ${c==='room'?`<label class="fld wide"><span>用途</span><input class="inp" data-bkf="purpose" value="${esc(b.purpose)}" placeholder="例：週次ミーティング、面接"></label>
+      <label class="fld"><span>人数</span><input class="inp num" inputmode="numeric" data-bkf="people" value="${esc(b.people)}"></label>
+      <label class="fld"><span>予約する人</span>${sel('user',staffO,b.user)}</label>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-bkf="guest" ${b.guest?'checked':''}> 来客あり</label>`:
+     `<label class="fld"><span>使う人</span>${sel('user',staffO,b.user)}</label>
+      <label class="fld"><span>${c==='car'?'行き先（現場）':'使う現場'}</span>${sel('siteId',siteO,b.siteId)}</label>
+      ${c==='car'?`<label class="fld"><span>行き先（現場以外）</span><input class="inp" data-bkf="dest" value="${esc(b.dest)}" placeholder="例：資材の買い出し"></label>`:''}
+      ${c==='equip'&&q>1?`<label class="fld"><span>台数</span>${sel('n',[...Array(q)].map((_,i)=>[i+1,(i+1)+'台']),b.n)}</label>`:''}`}
+    </div>
+    ${c==='car'?`<div class="fld" style="margin-top:8px"><span>同乗者</span><div class="chips">${bkStaff().filter(x=>x.id!==b.user).map(x=>`<button type="button" data-act="bkRider" data-v="${x.id}" aria-pressed="${b.riders.includes(x.id)}">${esc(x.name)}</button>`).join('')}</div></div>`:''}
+    <label class="fld" style="margin-top:8px"><span>メモ</span><input class="inp" data-bkf="note" value="${esc(b.note)}"></label></div>
+    ${r&&c==='room'&&+r.seats&&+b.people>+r.seats?`<div class="callout w" style="display:block">定員（${r.seats}人）を超えています</div>`:''}
+    ${pr.length?`<div class="callout w" style="display:block"><b>この時間は予約できません</b><div class="small">${pr.map(esc).join('<br>')}</div></div>`:b.date?`<div class="callout" style="display:block">空いています</div>`:''}`;
+  return {title:'予約',body,foot:`<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="bkSave" ${pr.length?'disabled':''}>予約する</button>`};
+};
+async function bkSave(){
+  const b=sheet.b, r=get('resources',b.rid); if(!r) return toast('予約するものを選んでください');
+  if(!b.date) return toast('日付を入れてください'); if(!b.start||!b.end) return toast('開始と終了の時刻を入れてください');
+  const res=[{id:r.id,n:+b.n||1}], pr=resProblems({date:b.date,start:b.start,end:b.end,res},null); if(pr.length){ renderOverlay(); return toast('この時間は予約できません'); }
+  const site=b.siteId?get('sites',b.siteId):null, where=site?.name||b.dest;
+  const title=r.cat==='room'?`${b.purpose||'会議'}（${r.name}）`:r.cat==='car'?`${r.name}${where?'：'+where:''}`:`${r.name}${(+b.n||1)>1?'×'+b.n:''}${where?'：'+where:''}`;
+  const type=r.cat==='room'&&tyFind('社内・会議')?'社内・会議':(tyFind('作業')?'作業':tyList()[0].v);
+  const note=[r.cat==='room'&&b.people?`人数：${b.people}人`:'',r.cat==='room'&&b.guest?'来客あり':'',r.cat==='car'&&b.riders.length?'同乗：'+b.riders.map(staffName).join('・'):'',b.note].filter(Boolean).join('\n');
+  await put('events',null,{title,date:b.date,start:b.start,end:b.end,type,staffIds:[b.user,...(r.cat==='car'?b.riders:[])].filter(Boolean),customerId:'',siteId:'',jobId:'',note,res,bk:{cat:r.cat,siteId:b.siteId||'',dest:b.dest||'',people:b.people||'',guest:!!b.guest},dispatch:false,by:meId()});
+  closeSheet(); toast(`予約しました：${resLabel(r)}　${jd(b.date)} ${timeRange(b.start,b.end)}`);
+}
 /* ---------- 予約の画面（設備・車両の予約） ---------- */
 const RV_H0=6, RV_H1=22;
 VIEWS.reserve=()=>{
   const v=VS.rvView||'day', d=VS.rvDate||today(), cat=VS.rvCat||'';
   const rs=resOn().filter(r=>!cat||r.cat===cat);
-  let h=`<div class="vhead"><h1>設備・車両の予約</h1><div class="sp" style="display:flex;gap:6px;margin-left:auto">${canRes()?'<button class="btn" data-act="resGoSet">登録・編集</button>':''}<button class="btn pri" data-act="rvNew" data-d="${d}">＋ 予約</button></div></div>
+  let h=`<div class="vhead"><h1>設備・車両の予約</h1><div class="sp" style="display:flex;gap:6px;margin-left:auto">${canRes()?'<button class="btn" data-act="resGoSet">登録・編集</button>':''}<button class="btn pri" data-act="rvBook" data-d="${d}">＋ 予約</button></div></div>
   <div class="toolbar rv-bar"><div class="seg" role="group">${[['day','日'],['week','週']].map(([k,l])=>`<button data-act="rvView" data-v="${k}" aria-pressed="${v===k}">${l}</button>`).join('')}</div>
     <button class="btn sm" data-act="rvMove" data-v="-1" aria-label="前へ">‹</button><button class="btn sm" data-act="rvMove" data-v="0">今日</button><button class="btn sm" data-act="rvMove" data-v="1" aria-label="次へ">›</button>
     <b>${v==='day'?jd(d)+(holName(d)?' '+holName(d):''):`${jd(weekMon(d))}〜${jd(addDays(weekMon(d),6))}`}</b>
@@ -3843,14 +3930,14 @@ VIEWS.reserve=()=>{
         const lanes=[]; os.forEach(o=>{ let i=lanes.findIndex(e=>e<=o.sp[0]); if(i<0){ i=lanes.length; lanes.push(0); } lanes[i]=o.sp[1]; o.lane=i; });
         const nl=Math.max(1,lanes.length);
         return `<div class="rv-row"><div class="rv-name"><button class="linkbtn" data-act="resInfo" data-id="${r.id}">${esc(resLabel(r))}</button>${+r.qty>1?`<small>${r.qty}台</small>`:''}</div>
-          <div class="rv-track ${blk?'blk':''}" style="height:${nl*30+8}px" ${blk?`title="${esc(blk)}"`:`data-act="rvNew" data-rid="${r.id}" data-d="${d}" data-grid="1"`}>${blk?`<span class="rv-blk">${esc(blk)}</span>`:''}
+          <div class="rv-track ${blk?'blk':''}" style="height:${nl*30+8}px" ${blk?`title="${esc(blk)}"`:`data-act="rvBook" data-rid="${r.id}" data-d="${d}" data-grid="1"`}>${blk?`<span class="rv-blk">${esc(blk)}</span>`:''}
           ${os.map(o=>{ const l=(Math.max(o.sp[0],b0)-b0)/W*100, w=(Math.min(o.sp[1],b1)-Math.max(o.sp[0],b0))/W*100; return `<button class="rv-b ${o.it.col==='visits'?'v':''}" style="left:${l}%;width:${Math.max(w,2)}%;top:${4+o.lane*30}px" data-act="rvOpen" data-key="${o.it.key}" title="${esc(timeRange(o.it.start,o.it.end)+' '+o.it.title+' '+whoOf(o.it))}"><b>${esc(o.it.start||'')}</b> ${esc(whoOf(o.it)||o.it.title)}</button>`; }).join('')}</div></div>`; }).join('')}
     </div></div><div class="small muted" style="margin-top:6px">空いている所を押すと、その時間で予約できます。青＝予定、緑＝作業予定（日程・差配）。</div>`;
   } else {
     const days=[...Array(7)].map((_,i)=>addDays(weekMon(d),i));
     h+=`<div class="rv-wrap"><table class="rv-week"><thead><tr><th></th>${days.map(x=>`<th class="${x===today()?'td':''} ${holName(x)||wdOf(x)===0?'hol':''}">${jd(x)}</th>`).join('')}</tr></thead><tbody>
       ${rs.map(r=>`<tr><th><button class="linkbtn" data-act="resInfo" data-id="${r.id}">${esc(resLabel(r))}</button></th>${days.map(x=>{ const blk=resBlock(r,x); const os=items.filter(it=>it.date===x&&it.res.some(y=>y.id===r.id)).sort(by(it=>it.start||''));
-        return `<td class="${blk?'blk':''}" ${blk?`title="${esc(blk)}"`:`data-act="rvNew" data-rid="${r.id}" data-d="${x}"`}>${blk?`<small>${esc(blk.replace(/（.*$/,''))}</small>`:''}${os.map(it=>`<button class="rv-c ${it.col==='visits'?'v':''}" data-act="rvOpen" data-key="${it.key}">${esc(it.start||'終日')} ${esc(whoOf(it)||it.title)}</button>`).join('')}</td>`; }).join('')}</tr>`).join('')}
+        return `<td class="${blk?'blk':''}" ${blk?`title="${esc(blk)}"`:`data-act="rvBook" data-rid="${r.id}" data-d="${x}"`}>${blk?`<small>${esc(blk.replace(/（.*$/,''))}</small>`:''}${os.map(it=>`<button class="rv-c ${it.col==='visits'?'v':''}" data-act="rvOpen" data-key="${it.key}">${esc(it.start||'終日')} ${esc(whoOf(it)||it.title)}</button>`).join('')}</td>`; }).join('')}</tr>`).join('')}
     </tbody></table></div><div class="small muted" style="margin-top:6px">空いている日を押すと予約できます。</div>`;
   }
   return h;
@@ -3870,10 +3957,10 @@ function rvOpen(key){
 
 /* ---------- 操作 ---------- */
 const ACT_S={
-  resGoSet(){ VS.setTab='cal'; SHELL.go('S','settings'); },
+  resGoSet(){ SHELL.goSet('cal'); },
   async resPick(el){ if(sheet?.kind!=='event') return; sheet.e.res=resToggle(sheet.e.res,el.dataset.rid); sheet.resErr=null; renderOverlay(); },
-  resEdit(el){ if(!canRes()) return toast('登録できるのは権限3（営業・事務）までの方です'); const id=el.dataset.id; const r=id?structuredClone(get('resources',id)):{id:null,cat:'car',name:'',qty:1,inspects:[],off:[],active:true}; openSheet({kind:'resEdit',r}); },
-  resCat(el){ sheet.r.cat=el.dataset.v; if(sheet.r.cat==='car'&&!(sheet.r.inspects||[]).length) sheet.r.inspects=[{label:'車検',date:''}]; renderOverlay(); },
+  resEdit(el){ if(!canRes()) return toast('登録できるのは権限3（営業・事務）までの方です'); const id=el.dataset.id; const r=id?structuredClone(get('resources',id)):{id:null,cat:VS.rvCat||'car',name:'',qty:1,inspects:(VS.rvCat||'car')==='car'?[{label:'車検',date:''},{label:'任意保険の更新',date:''}]:[],off:[],active:true}; openSheet({kind:'resEdit',r}); },
+  resCat(el){ sheet.r.cat=el.dataset.v; if(sheet.r.cat==='car'&&!(sheet.r.inspects||[]).length) sheet.r.inspects=[{label:'車検',date:''},{label:'任意保険の更新',date:''}]; if(sheet.r.cat==='equip'&&sheet.r.track&&!(sheet.r.inspects||[]).length) sheet.r.inspects=[{label:'点検',date:''}]; renderOverlay(); },
   resInsAdd(){ (sheet.r.inspects=sheet.r.inspects||[]).push({label:sheet.r.cat==='car'?'定期点検':'点検',date:''}); renderOverlay(); },
   resInsDel(el){ sheet.r.inspects.splice(+el.dataset.i,1); renderOverlay(); },
   resOffAdd(){ (sheet.r.off=sheet.r.off||[]).push({from:today(),to:today(),why:''}); renderOverlay(); },
@@ -3889,6 +3976,10 @@ const ACT_S={
   rvCat(el){ VS.rvCat=el.dataset.v; render(); },
   rvMove(el){ const n=+el.dataset.v, d=VS.rvDate||today(); VS.rvDate=n?addDays(d,n*((VS.rvView||'day')==='week'?7:1)):today(); render(); },
   rvNew(el,ev){ let st=null; if(el.dataset.grid&&ev){ const b=el.getBoundingClientRect(); const f=(ev.clientX-b.left)/b.width; st=Math.floor((RV_H0*60+f*(RV_H1-RV_H0)*60)/30)*30; } if(sheet) closeSheet(); rvNew(el.dataset.rid,el.dataset.d,st); },
+  rvBook(el,ev){ let st=null; if(el.dataset.grid&&ev){ const b=el.getBoundingClientRect(); const f=(ev.clientX-b.left)/b.width; st=Math.floor((RV_H0*60+f*(RV_H1-RV_H0)*60)/30)*30; } if(sheet) closeSheet(); bkOpen(el.dataset.rid,el.dataset.d,st); },
+  bkRider(el){ const a=sheet.b.riders, v=el.dataset.v, i=a.indexOf(v); if(i>=0) a.splice(i,1); else a.push(v); renderOverlay(); },
+  async bkSave(){ await bkSave(); },
+  resTrouble(el){ const r=get('resources',el.dataset.id); if(!r) return; openSheet({kind:'resLog',onlyTrouble:true,it:{key:'manual:'+r.id,date:today(),start:'',end:'',title:'',res:[{id:r.id,n:1}]},d:{}}); },
   rvOpen(el){ if(sheet?.kind==='resInfo') closeSheet(); rvOpen(el.dataset.key); },
   async tyAdd(){ const n=String(byId('ty-new')?.value||'').trim(); if(!n) return toast('名前を入れてください'); const l=structuredClone(tyList()); if(l.some(t=>t.name===n||t.v===n)) return toast('同じ名前があります');
     const used=new Set(l.map(t=>t.k)); let k=5; while(used.has(k)) k++; const c=TY_PAL[(k)%TY_PAL.length][0]; l.push({k,v:n,name:n,c}); await tySave(l); toast(`「${n}」を追加しました`); },
@@ -3897,9 +3988,10 @@ const ACT_S={
 };
 docOn('change',async ev=>{ const t=ev.target;
   if(t.dataset.rescnt&&sheet?.kind==='event'){ const x=(sheet.e.res||[]).find(y=>y.id===t.dataset.rescnt); if(x) x.n=+t.value; sheet.resErr=null; renderOverlay(); return; }
-  if(t.dataset.rsf&&sheet?.kind==='resEdit'){ const k=t.dataset.rsf; sheet.r[k]=k==='active'?t.value==='1':t.value; return; }
+  if(t.dataset.rsf&&sheet?.kind==='resEdit'){ const k=t.dataset.rsf; sheet.r[k]=k==='active'?t.value==='1':k==='track'?t.checked:t.value; if(k==='track'){ if(t.checked&&!(sheet.r.inspects||[]).length) sheet.r.inspects=[{label:'点検',date:''}]; renderOverlay(); } return; }
   if(t.dataset.rsi&&sheet?.kind==='resEdit'){ const [i,k]=t.dataset.rsi.split('|'); sheet.r.inspects[+i][k]=t.value; return; }
   if(t.dataset.rso&&sheet?.kind==='resEdit'){ const [i,k]=t.dataset.rso.split('|'); sheet.r.off[+i][k]=t.value; if(k==='from'&&(!sheet.r.off[+i].to||sheet.r.off[+i].to<t.value)) { sheet.r.off[+i].to=t.value; renderOverlay(); } return; }
+  if(t.dataset.bkf&&sheet?.kind==='resBook'){ const k=t.dataset.bkf; sheet.b[k]=t.type==='checkbox'?t.checked:t.value; if(k==='rid'){ sheet.b.n=1; } if(k==='user') sheet.b.riders=sheet.b.riders.filter(x=>x!==t.value); if(['rid','date','start','end','n','user','people'].includes(k)) renderOverlay(); return; }
   if(t.dataset.rlf&&sheet?.kind==='resLog'){ const [rid,k]=t.dataset.rlf.split('|'); (sheet.d[rid]=sheet.d[rid]||{})[k]=t.type==='checkbox'?t.checked:t.value; return; }
   if(t.dataset.tyf){ if(!canRes()) return; const [i,k]=t.dataset.tyf.split('|'); const l=structuredClone(tyList()); const ty=l[+i]; if(!ty) return;
     let v=t.type==='checkbox'?t.checked:t.value; if(k==='name'){ v=String(v).trim(); if(!v) return toast('名前を入れてください'); if(l.some((x,j)=>j!==+i&&x.name===v)) return toast('同じ名前があります'); }
@@ -3952,6 +4044,19 @@ docOn('change',ev=>{ const t=ev.target; if(sheet?.kind==='event'&&['date','start
 #S .rv-c{display:block;width:100%;margin:0 0 3px;border:0;border-left:3px solid var(--p1);background:var(--p1s);color:var(--fg);border-radius:4px;padding:2px 4px;text-align:left;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
 
+/* ---------- 設定：勤怠・シフト ---------- */
+function timeHubHtml(){
+  const t=today(), ms=[0,1,2].map(i=>{ const d=parseD(t); d.setDate(1); d.setMonth(d.getMonth()-i); return d.getFullYear()+'-'+pad(d.getMonth()+1); });
+  const canC=['admin','lead'].includes(roleS())||hasEx('time.close');
+  return `<div class="stack">
+    <div class="panel"><h2>勤怠の締め</h2><div class="pbody"><div class="list">${ms.map(m=>{ const c=closeOf(m); return `<div class="li" style="cursor:default;align-items:center"><span class="tm">${+m.slice(5)}月</span><span class="grow">${c?`<span class="pill g">締め済み</span> <span class="small muted">${esc(staffName(c.by)||'')}　${c.at?jd(c.at.slice(0,10)):''}</span>`:'<span class="pill">未締め</span>'}</span></div>`; }).join('')}</div>
+      <div class="small muted" style="margin-top:8px">締めは「出退勤・勤怠」の月の画面で行います。締めると、その月の打刻・修正申請・休み希望・シフトは変更できなくなり、シフトの時間も固定されます。${canC?'締めができるのは段階1・2の人（と個別に権限を追加した人）、締めの解除は管理者だけです。':'締めは段階1・2の人が行います。'}</div>
+      <div class="toolbar" style="margin:10px 0 0"><button class="btn" data-act="go" data-r="time">出退勤・勤怠を開く</button></div></div></div>
+    <div class="panel"><h2>シフト</h2><div class="pbody"><div class="small">勤務パターン・持ち場と必要人数・スタッフ条件（入れる曜日・パターン）は、現場ごとに「シフト設定」で決めます。複数の店舗に行く人の「週の型・出勤指定」も、その人の勤務の予定から設定できます。</div>
+      <div class="toolbar" style="margin:10px 0 0"><button class="btn" data-act="go" data-r="shiftset">シフト設定を開く</button><button class="btn" data-act="go" data-r="shift">シフト表を開く</button></div></div></div>
+  </div>`;
+}
+
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
   route:()=>VS.route,
@@ -3975,6 +4080,8 @@ window.S_API={
     if(sid!==undefined){ if(!sid) staffIds=ids; else if(!ids.includes(sid)) staffIds=[sid,...ids.slice(1)]; }
     put('events',id,{...e,date,staffIds}); toast(`「${e.title}」を${jd(date)}${sid&&!ids.includes(sid)?'・'+staffName(sid):''}に移動しました`); },
   put:(c,id,d)=>put(c,id,d),
+  setTab:t=>{ VS.setTab=t; },
+  modes:()=>MODES,
   resProblems:(x,col,id)=>resProblems(x,exclOf(col,id,'')),
   resPickHtml:(x,col,id,act)=>resPickHtml(x,exclOf(col,id,''),act),
   resAny:()=>all('resources').length>0,
@@ -4030,6 +4137,11 @@ const PERMS={
   'approve':['admin','lead'],
   'master.edit':['admin'],
   'import':['admin'],
+  'price.edit':['admin','lead','manager'],
+  'staff.edit':['admin','lead','manager'],
+  'time.close':['admin','lead'],
+  'res.edit':['admin','lead','manager'],
+  'settings.edit':['admin'],
 };
 const AUTH_ENABLED=true; // 試作では「利用者」の切り替えで本人を決める
 const auth={get staffId(){ return SHELL.meId(); }, get role(){ return roleOf(get('staff',SHELL.meId())); }};
@@ -4037,7 +4149,7 @@ function can(action,rec){
   if(!AUTH_ENABLED) return true;
   const s=get('staff',auth.staffId); if(!s) return true;
   const role=auth.role, ex=s.extra||[];
-  if(role==='admin'||ex.includes(action)||(action==='contract.edit'&&ex.includes('visit.assign'))) return true;
+  if(role==='admin'||ex.includes(action)||(action==='contract.edit'&&ex.includes('visit.assign'))||(action==='price.edit'&&ex.includes('master.edit'))) return true;
   if(action==='cost.view'&&role==='manager'&&S().costForSales===false) return false;
   const r=PERMS[action]; if(!r||!r.includes(role)) return false;
   if(auth.role==='partner'&&rec&&'staffIds' in rec) return (rec.staffIds||[]).includes(auth.staffId);
@@ -4699,8 +4811,8 @@ function convRate(){const done=all('jobs').filter(j=>j.type!=='定期'&&j.stage=
 
 /* ---- マスタ・設定 ---- */
 VIEWS.master={
-  shell:()=>`<div class="vhead"><h1>マスタ・設定</h1></div><div class="tabs" role="tablist">${[['prices','価格表'],['templates','見積テンプレート'],['staff','担当者・協力会社'],['settings','会社・連携'],['data','データ取込・バックアップ'],['auth','権限（設計）']].map(([k,l])=>`<button role="tab" data-act="mtab" data-v="${k}" aria-selected="${VS.mtab===k}">${l}</button>`).join('')}</div>`,
-  body(){ return MTABS[VS.mtab](); }
+  shell:()=>`<div class="vhead"><h1>設定</h1></div>${SHELL.setTabsHtml(SHELL.setKeyOf('G',VS.mtab))}`,
+  body(){ if(!SHELL.setTabOk(SHELL.setKeyOf('G',VS.mtab))){ setTimeout(()=>SHELL.goSet(''),0); return ''; } return MTABS[VS.mtab](); }
 };
 const MTABS={
   prices(){
@@ -4723,7 +4835,7 @@ const MTABS={
   },
   settings(){
     const s=S();
-    return `${loginSettingsSec()}<section class="sec"><h3>会社情報（見積書に表示）</h3><div class="form">
+    return `<section class="sec"><h3>会社情報（見積書に表示）</h3><div class="form">
       <label class="fld"><span>会社名</span><input class="inp" id="set_companyName" value="${esc(s.companyName)}"></label>
       <label class="fld"><span>電話</span><input class="inp" id="set_companyTel" value="${esc(s.companyTel)}"></label>
       <label class="fld wide"><span>住所</span><input class="inp" id="set_companyAddr" value="${esc(s.companyAddr)}"></label>
@@ -5125,9 +5237,9 @@ SHEETS.staff=(st)=>{const s=st.draft;return {title:st.isNew?'担当者・協力�
   ${fld('会社名（協力会社）',`<input class="inp" id="st_company" value="${esc(s.company)}">`)}${fld('電話',`<input class="inp" id="st_tel" value="${esc(s.tel)}">`)}
   ${fld('段階（1〜3は営業担当の一覧に出ます。変えると利用モードも初期値に変わります）',`<select class="inp" id="st_role">${opt('','（未設定）',s.role)}${Object.entries(ROLES).map(([k,l])=>opt(k,l,s.role)).join('')}</select>`)}
   ${fld('ログイン用メール（管理者だけが設定できます）',`<input class="inp" id="st_email" type="email" value="${esc(s.email)}" ${roleOf(meStaff())==='admin'?'':'disabled'} placeholder="例：yamada@oandk.ne.jp">`)}
-  ${s.kind!=='協力会社'?fld('承認者（未設定なら責任者・管理者）',`<select class="inp" id="st_approverId">${staffOpts(s.approverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('承認者が不在のときの代理',`<select class="inp" id="st_subApproverId">${staffOpts(s.subApproverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('不在中（この人に来る承認を代理へ回す）',`<label class="pill" style="cursor:pointer;padding:6px 12px;font-weight:400"><input type="checkbox" id="st_away" ${s.away?'checked':''}> 不在中</label>`)+`<div class="fld wide"><span>追加の権限（段階に関係なく、この人だけに足す）</span><div style="display:flex;flex-wrap:wrap;gap:6px">${Object.entries(EXTRA_L).map(([k,l])=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-extra value="${k}" ${(s.extra||[]).includes(k)?'checked':''}> ${l}</label>`).join('')}</div></div>`:''}
+  ${s.kind!=='協力会社'?fld('承認者（未設定なら責任者・管理者）',`<select class="inp" id="st_approverId">${staffOpts(s.approverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('承認者が不在のときの代理',`<select class="inp" id="st_subApproverId">${staffOpts(s.subApproverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('不在中（この人に来る承認を代理へ回す）',`<label class="pill" style="cursor:pointer;padding:6px 12px;font-weight:400"><input type="checkbox" id="st_away" ${s.away?'checked':''}> 不在中</label>`)+`<div class="fld wide"><span>追加の権限（段階に関係なく、この人だけに足す）</span><div style="display:flex;flex-wrap:wrap;gap:6px">${Object.entries(EXTRA_L).map(([k,l])=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-extra value="${k}" ${(s.extra||[]).includes(k)||(k==='price.edit'&&(s.extra||[]).includes('master.edit'))?'checked':''} ${roleOf(meStaff())==='admin'?'':'disabled'}> ${l}</label>`).join('')}</div></div>`:''}
   ${fld('状態',`<select class="inp" id="st_inactive">${opt('0','有効',s.inactive?'1':'0')}${opt('1','無効（退職・取引終了）',s.inactive?'1':'0')}</select>`)}
-  </div></section>${loginBox(s,st)}${s.kind==='協力会社'?`<section class="sec"><h3>連絡先（発注の連絡を送る人・複数可）<span class="sp"><button class="btn sm" data-act="cn-add">＋ 連絡先</button></span></h3>
+  </div></section>${staffUseSec(s)}${loginBox(s,st)}${s.kind==='協力会社'?`<section class="sec"><h3>連絡先（発注の連絡を送る人・複数可）<span class="sp"><button class="btn sm" data-act="cn-add">＋ 連絡先</button></span></h3>
     ${(s.contacts||[]).length?`<div class="scroll"><table class="t lines"><thead><tr><th>名前</th><th>メール</th><th>LINE</th><th>通常送る</th><th></th></tr></thead><tbody>${(s.contacts||[]).map((c,i)=>`<tr><td><input data-cn="${i}" data-k="name" value="${esc(c.name)}" placeholder="例：山本（現場責任者）"></td><td><input data-cn="${i}" data-k="email" value="${esc(c.email)}" placeholder="example@…"></td><td style="text-align:center"><input type="checkbox" data-cn="${i}" data-k="line" ${c.line?'checked':''}></td><td style="text-align:center"><input type="checkbox" data-cn="${i}" data-k="notify" ${c.notify!==false?'checked':''}></td><td class="x"><button class="btn ghost sm" data-act="cn-del" data-i="${i}" aria-label="削除">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="small muted" style="margin:0">まだありません。発注を出したときの連絡先を登録しておくと、送り先を選ぶだけで連絡できます。</p>'}</section>`:''}`,foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="staff-save">保存</button>`};};
 SHEETS.template=(st)=>{const t=st.draft;const c=qcalc(t);return {title:st.isNew?'テンプレートを追加':'見積テンプレート',body:`
   ${fld('テンプレート名',`<input class="inp" id="t_name" value="${esc(t.name)}" placeholder="例：店舗床面 定期洗浄ワックス">`,true)}
@@ -5465,11 +5577,11 @@ docOn('click',async e=>{
     case 'site': openSheet({kind:'site',live:false,draft:{...get('sites',id)}}); break;
     case 'site-save': { const d=sheet.draft; const cid=val('s_customerId'); if(!cid) return toast('顧客を選んでください'); if(!val('s_name')&&!val('s_facility')) return toast('現場名を入力してください'); await put('sites',d.id,{...d,customerId:cid,facility:val('s_facility'),name:val('s_name')||val('s_facility'),storeNo:val('s_storeNo'),address:val('s_address'),keyRequired:val('s_key')==='1',note:val('s_note'),aliases:val('s_aliases'),pKey:val('s_pKey'),pParking:val('s_pParking'),pEntry:val('s_pEntry'),pHours:val('s_pHours'),pContact:val('s_pContact'),pNote:val('s_pNote')}); toast('保存しました'); openSheet(sheet.isNew?{kind:'customer',id:cid}:{kind:'siteView',id:d.id}); break; }
     case 'price': openSheet({kind:'price',isNew:!id,live:false,draft:id?{...get('prices',id)}:{id:uid(),folder:'',name:'',unit:'式',price:'',cost:''}}); break;
-    case 'price-save': { if(!can('master.edit')) return toast('権限がありません'); const d=sheet.draft; if(!val('p_name')) return toast('品目を入力してください'); await put('prices',d.id,{...d,folder:val('p_folder'),name:val('p_name'),unit:val('p_unit'),price:num(val('p_price')),cost:num(val('p_cost'))}); closeSheet(); toast('保存しました'); break; }
+    case 'price-save': { if(!can('price.edit')) return toast('価格表の変更は段階1〜3の人だけができます'); const d=sheet.draft; if(!val('p_name')) return toast('品目を入力してください'); await put('prices',d.id,{...d,folder:val('p_folder'),name:val('p_name'),unit:val('p_unit'),price:num(val('p_price')),cost:num(val('p_cost'))}); closeSheet(); toast('保存しました'); break; }
     case 'staff': openSheet({kind:'staff',isNew:!id,live:false,draft:id?{...get('staff',id)}:{id:uid(),name:'',kind:'社員'}}); break;
-    case 'staff-save': { readDraftForm(); const d=sheet.draft; if(roleOf(meStaff())!=='admin'&&get('staff',d.id)){ const o0=get('staff',d.id); if(val('st_role')!==(o0.role||'')||val('st_kind')!==(o0.kind||'社員')) return toast('段階・区分は管理者だけが変更できます'); } if(!val('st_name')) return toast('名前を入力してください'); { const er=empNoCheck(d.id,(val('st_empNo')||'').trim()); if(er) return toast(er); } const empCh=d.loginEmail&&String(d.empNo||'').toLowerCase()!==(val('st_empNo')||'').trim().toLowerCase(); await put('staff',d.id,{...d,name:val('st_name'),kind:val('st_kind'),company:val('st_company'),tel:val('st_tel'),role:val('st_role'),...(d.kind!=='協力会社'&&val('st_kind')!=='協力会社'?{approverId:val('st_approverId')||'',subApproverId:val('st_subApproverId')||'',away:!!ROOT.querySelector('#st_away')?.checked,extra:[...ROOT.querySelectorAll('[data-extra]:checked')].map(x=>x.value)}:{}),...(val('st_role')!==(get('staff',d.id)?.role||'')&&DEFAULT_MODE[val('st_role')]?{mode:DEFAULT_MODE[val('st_role')]}:{}),email:roleOf(meStaff())==='admin'?(val('st_email')||'').trim():(d.email||''),loginId:d.loginId||'',empNo:(val('st_empNo')||'').trim(),inactive:val('st_inactive')==='1'}); closeSheet(); toast(empCh?'保存しました。社員IDを変えたので、ログインを「再発行」してください（それまでは前のIDでログインします）':'保存しました'); break; }
+    case 'staff-save': { if(!can('staff.edit')) return toast('利用者の編集はできません（段階1〜3の人）'); readDraftForm(); const d=sheet.draft; if(roleOf(meStaff())!=='admin'&&get('staff',d.id)){ const o0=get('staff',d.id); if(val('st_role')!==(o0.role||'')||val('st_kind')!==(o0.kind||'社員')) return toast('段階・区分は管理者だけが変更できます'); } if(!val('st_name')) return toast('名前を入力してください'); { const er=empNoCheck(d.id,(val('st_empNo')||'').trim()); if(er) return toast(er); } const empCh=d.loginEmail&&String(d.empNo||'').toLowerCase()!==(val('st_empNo')||'').trim().toLowerCase(); await put('staff',d.id,{...d,name:val('st_name'),kind:val('st_kind'),company:val('st_company'),tel:val('st_tel'),role:val('st_role'),...(d.kind!=='協力会社'&&val('st_kind')!=='協力会社'?{approverId:val('st_approverId')||'',subApproverId:val('st_subApproverId')||'',away:!!ROOT.querySelector('#st_away')?.checked,extra:roleOf(meStaff())==='admin'?[...ROOT.querySelectorAll('[data-extra]:checked')].map(x=>x.value):(d.extra||[])}:{}),...(val('st_role')!==(get('staff',d.id)?.role||'')&&DEFAULT_MODE[val('st_role')]?{mode:DEFAULT_MODE[val('st_role')]}:{}),email:roleOf(meStaff())==='admin'?(val('st_email')||'').trim():(d.email||''),loginId:d.loginId||'',...staffUseVals(d),empNo:(val('st_empNo')||'').trim(),inactive:val('st_inactive')==='1'}); closeSheet(); toast(empCh?'保存しました。社員IDを変えたので、ログインを「再発行」してください（それまでは前のIDでログインします）':'保存しました'); break; }
     case 'template': openSheet({kind:'template',isNew:!id,live:false,draft:id?JSON.parse(JSON.stringify(get('templates',id))):{id:uid(),name:'',lines:[{name:'',qty:1,unit:'式',price:0,cost:0}]}}); break;
-    case 'template-save': { readDraftForm(); const d=sheet.draft; if(!d.name) return toast('テンプレート名を入力してください'); d.lines=(d.lines||[]).filter(l=>l.name); await put('templates',d.id,d); closeSheet(); toast('保存しました'); break; }
+    case 'template-save': { if(!can('price.edit')) return toast('見積テンプレートの変更は段階1〜3の人だけができます'); readDraftForm(); const d=sheet.draft; if(!d.name) return toast('テンプレート名を入力してください'); d.lines=(d.lines||[]).filter(l=>l.name); await put('templates',d.id,d); closeSheet(); toast('保存しました'); break; }
     case 'save-settings': { const ch={}; ['companyName','companyTel','companyAddr','kanryoUrl'].forEach(k=>ch[k]=val('set_'+k)); ['taxRate','quoteValidDays','followDays','archiveDays','fyStartMonth','fyBaseNo','poDueDays','poDueBefore','poEscHours'].forEach(k=>ch[k]=num(val('set_'+k))); ch.poDueMode=val('set_poDueMode')||'early'; ['apQuoteMax','apQuoteGpr','apOrderMax','apEscHours','flowIntakeDays','flowDraftDays','flowWonDays'].forEach(k=>ch[k]=num(val('set_'+k))); ch.flowAuto=!!ROOT.querySelector('#set_flowAuto')?.checked; ['costForSales','apQuote','apOrder','apStop','apPrice'].forEach(k=>ch[k]=!!ROOT.querySelector('#set_'+k)?.checked); ch.poEscTo=[...ROOT.querySelectorAll('[data-esc]:checked')].map(x=>x.value); await put('settings','main',{...(D.settings.get('main')||{}),...ch}); toast('設定を保存しました'); break; }
     case 'import': if(!can('import')) return toast('権限がありません'); openSheet({kind:'import',live:false,year:new Date().getFullYear()}); break;
     case 'import-run': readImportForm(); await runImport(sheet); break;
@@ -5970,7 +6082,7 @@ function poOrderExtras(o,st){
    ========================================================= */
 const LV={admin:1,lead:2,manager:3,staff:4,part:5,kiosk:8,partner:9};
 const DEFAULT_MODE={admin:'full',lead:'full',manager:'full',staff:'simple',part:'time',partner:'report',kiosk:'time'};
-const EXTRA_L={'cost.view':'原価・粗利を見る','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','master.edit':'マスタ・設定の編集'};
+const EXTRA_L={'cost.view':'原価・粗利を見る','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
 const roleOf=s=>s?.kind==='協力会社'?'partner':(s?.role&&LV[s.role]?s.role:'staff');
 const meStaff=()=>get('staff',SHELL.meId());
 function approverFor(rid){
@@ -6624,6 +6736,80 @@ const ACT_G={
 docOn('change',async e=>{ const t=e.target; if(!t.dataset||!t.dataset.rescnt||sheet?.kind!=='visit') return; const v=get('visits',sheet.id); if(!v) return;
   const res=(v.res||[]).map(x=>x.id===t.dataset.rescnt?{...x,n:+t.value}:x); await patch('visits',v.id,{res}); refreshLiveSheet(); });
 docOn('change',e=>{ const t=e.target; if(sheet?.kind==='visit'&&['date','start','end'].includes(t.dataset?.vf)) setTimeout(refreshLiveSheet,60); });
+/* =========================================================
+   設定（統合）：利用者・権限／価格表・見積／会社・承認ルール／データ／権限一覧
+   ========================================================= */
+const SET_COLS=['1 管理者','2 責任者','3 営業・事務','4 現場','5 パート','協力会社'];
+const SET_ROLES=['admin','lead','manager','staff','part','partner'];
+/* 権限一覧の行：[内容, 権限キー or 段階の配列, 補足] */
+const PERM_ROWS=[
+  ['日常報告・出退勤の打刻・自分の予定',['admin','lead','manager','staff','part'],''],
+  ['設備・車両・会議室の予約、使用後の記録',['admin','lead','manager','staff','part'],''],
+  ['作業の完了報告',PERMS['visit.report'],''],
+  ['案件・見積の作成・編集',PERMS['job.edit'],''],
+  ['顧客・現場の登録',['admin','lead','manager'],''],
+  ['原価・粗利を見る',PERMS['cost.view'],'営業に見せない設定もできます（会社・承認ルール）'],
+  ['日程の差配・定期契約の編集','visit.assign',''],
+  ['承認する',PERMS['approve'],'金額などの条件は「会社・承認ルール」'],
+  ['価格表・見積テンプレートの変更','price.edit',''],
+  ['利用者の追加・編集','staff.edit','段階・区分の変更は管理者だけ'],
+  ['勤怠の締め','time.close','締めの解除は管理者だけ'],
+  ['予約できるもの・予定の種別の設定','res.edit',''],
+  ['会社設定・承認ルールの変更','settings.edit',''],
+  ['データの取り込み・バックアップ・削除','import',''],
+];
+const SET_EXTRA_L={'cost.view':'原価・粗利を見る','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
+MTABS.auth=()=>{
+  const me=meStaff(), myRole=roleOf(me);
+  const rows=PERM_ROWS.map(([l,k,n])=>{ const rs=Array.isArray(k)?k:(PERMS[k]||[]); return `<tr><td>${esc(l)}${n?`<div class="small muted">${esc(n)}</div>`:''}</td>${SET_ROLES.map(r=>`<td class="c" style="text-align:center">${rs.includes(r)?'<b style="color:var(--good)">○</b>':'<span class="muted">－</span>'}</td>`).join('')}</tr>`; }).join('');
+  const ex=all('staff').filter(s=>!s.inactive&&(s.extra||[]).length);
+  return `<section class="sec"><h3>誰が何をできるか</h3><p class="small muted" style="margin:0 0 8px">あなたは「${esc(ROLES[myRole]||'未設定')}」です。段階は「利用者・権限」で人ごとに決めます（段階の変更は管理者だけ）。</p>
+    <div class="scroll"><table class="t"><thead><tr><th>できること</th>${SET_COLS.map(c=>`<th style="text-align:center">${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></section>
+  <section class="sec"><h3>個別に追加している権限</h3><p class="small muted" style="margin:0 0 8px">段階にない権限を人ごとに足せます（利用者・権限 → その人を開く）。</p>
+    ${ex.length?`<div class="scroll"><table class="t"><thead><tr><th>名前</th><th>段階</th><th>追加している権限</th></tr></thead><tbody>${ex.map(s=>`<tr class="click" data-act="staff" data-id="${s.id}"><td>${esc(s.name)}</td><td class="small">${esc(ROLES[s.role]||'')}</td><td class="small">${(s.extra||[]).map(k=>esc(SET_EXTRA_L[k]||(k==='master.edit'?SET_EXTRA_L['price.edit']:k))).join('、')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty" style="padding:4px 0">ありません</p>'}</section>`;
+};
+/* 利用者・権限 */
+MTABS.staff=()=>{
+  const q=String(VS.stQ||'').trim(), k=VS.stKind||'';
+  const allS=all('staff').filter(s=>s.role!=='kiosk'||k==='kiosk');
+  const ss=allS.filter(s=>(!q||[s.name,s.empNo,s.company,s.aliases].join(' ').includes(q))&&(k==='inactive'?s.inactive:!s.inactive)&&(!k||k==='inactive'||(k==='partner'?s.kind==='協力会社':k==='kiosk'?s.role==='kiosk':s.kind!=='協力会社'&&(k==='emp'?!['part','kiosk'].includes(s.role):s.role===k))))
+    .sort(by(s=>(s.kind==='協力会社'?'1':'0')+String(9-(9-(({admin:1,lead:2,manager:3,staff:4,part:5}[s.role])||6))).padStart(2,'0')+(s.empNo||'~')+s.name));
+  const modes=window.S_API?S_API.modes():{};
+  const lg=s=>s.role==='kiosk'?'<span class="pill">共用端末</span>':(s.loginEmail||s.email)?`<span class="pill g">${s.loginEmail?'ID':'メール'}</span>`:'<span class="muted small">－</span>';
+  return `${roleOf(meStaff())==='admin'||roleOf(meStaff())==='lead'?`<details class="more" style="margin-bottom:12px"><summary>ログインの設定（最初のパスワード・共用端末）</summary><div class="in">${loginSettingsSec()}</div></details>`:''}
+  <div class="toolbar"><input class="inp search" id="stQ" placeholder="名前・社員IDで検索" value="${esc(VS.stQ||'')}" style="max-width:220px">
+    <div class="seg" role="group">${[['','すべて'],['emp','社員'],['part','パート'],['partner','協力会社'],['kiosk','共用端末'],['inactive','無効']].map(([v,l])=>`<button data-act="stKind" data-v="${v}" aria-pressed="${k===v}">${l}</button>`).join('')}</div>
+    <span class="sp"></span>${can('staff.edit')?'<button class="btn pri" data-act="staff" data-id="">＋ 利用者を追加</button>':''}</div>
+  <div class="panel scroll"><table class="t"><thead><tr><th>名前</th><th>社員ID</th><th>区分</th><th>段階</th><th>利用モード</th><th>ログイン</th><th>連絡先</th></tr></thead><tbody>${ss.map(s=>`<tr class="click" data-act="staff" data-id="${s.id}" style="${s.inactive?'opacity:.5':''}"><td>${esc(s.name)}${s.kind==='協力会社'&&s.company&&s.company!==s.name?`<div class="small muted">${esc(s.company)}</div>`:''}${(s.extra||[]).length?' <span class="pill" title="個別に追加した権限あり">＋権限</span>':''}</td><td class="num small">${esc(s.empNo||'')}</td><td class="small">${esc(s.kind||'社員')}</td><td class="small">${esc(ROLES[s.role]||'')}</td><td class="small">${esc(modes[s.mode||'full']||'')}</td><td>${lg(s)}</td><td class="small">${esc(s.tel||'')}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">該当なし</td></tr>'}</tbody></table></div>
+  <p class="small muted">${ss.length}人。日程ボードの行・シフト・報告の担当者になります。協力会社は会社単位でも作業員単位でも登録できます。</p>`;
+};
+/* 価格表・見積テンプレートの切り替え */
+const priceSeg=()=>`<div class="seg" role="group" style="margin-bottom:10px">${[['prices','価格表'],['templates','見積テンプレート']].map(([v,l])=>`<button data-act="mtab" data-v="${v}" aria-pressed="${VS.mtab===v}">${l}</button>`).join('')}</div>${can('price.edit')?'':'<div class="callout" style="margin-bottom:10px">見るだけです（変更は段階1〜3の人）</div>'}`;
+{ const p0=MTABS.prices, t0=MTABS.templates; MTABS.prices=()=>priceSeg()+p0(); MTABS.templates=()=>priceSeg()+t0(); }
+/* 会社・承認ルール：管理者以外は見るだけ */
+{ const s0=MTABS.settings; MTABS.settings=()=>{ const h=s0(); return can('settings.edit')?h:`<div class="callout" style="margin-bottom:12px">見るだけです。変更は管理者だけができます。</div><fieldset disabled style="border:0;padding:0;margin:0;min-width:0">${h}</fieldset>`; }; }
+/* データ：勤怠・報告側の操作へのリンク */
+{ const d0=MTABS.data; MTABS.data=()=>d0()+`<section class="sec"><h3>勤怠・報告側のデータ（試作用）</h3><p class="small muted" style="margin:0 0 8px">勤怠・報告側のサンプルデータの投入、全データのJSONコピー、全削除はこちら。</p><button class="btn" data-sgo="settab" data-k="sdata">開く</button></section>`; }
+/* 利用者の編集画面に「使う機能・現場」を追加 */
+function staffUseSec(s){
+  if(s.kind==='協力会社') return '';
+  const modes=window.S_API?S_API.modes():{}, my=s.mySites||[];
+  return `<section class="sec"><h3>使う機能・担当現場</h3><div class="form">
+    ${fld('利用モード（段階を変えると初期値に変わります）',`<select class="inp" id="st_mode">${Object.entries(modes).map(([k,l])=>opt(k,l,s.mode||'full')).join('')}</select>`)}
+    ${fld('表示色',`<select class="inp" id="st_color">${[...Array(8)].map((_,i)=>opt(String(i),'色'+(i+1),String(+s.color||0))).join('')}</select>`)}
+    ${fld('略称・呼び名（報告の自動タグ用、カンマ区切り）',`<input class="inp" id="st_aliases" value="${esc(s.aliases||'')}">`,true)}
+  </div>
+  <div class="fld" style="margin-top:8px"><span>担当している現場（シフト表・出退勤の絞り込みの初期値）</span><div style="display:flex;flex-wrap:wrap;gap:6px 14px;max-height:160px;overflow:auto">${all('sites').sort(by(x=>x.name||'')).map(x=>`<label class="small" style="display:flex;gap:4px;align-items:center"><input type="checkbox" data-mysite value="${x.id}" ${my.includes(x.id)?'checked':''}>${esc(x.name||x.facility||'')}</label>`).join('')||'<span class="small muted">現場が未登録です</span>'}</div></div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="st_shift" ${s.shift?'checked':''}> シフトで管理する（パート・アルバイトなど。条件は「シフト設定 → スタッフ条件」）</label></section>`;
+}
+function staffUseVals(d){
+  if(!ROOT.querySelector('#st_mode')) return {};
+  const role=val('st_role'), roleCh=role!==(get('staff',d.id)?.role||''), m=val('st_mode');
+  const mode=m!==(d.mode||'full')?m:(roleCh&&DEFAULT_MODE[role]?DEFAULT_MODE[role]:(d.mode||'full'));
+  return {mode,color:+val('st_color')||0,aliases:val('st_aliases'),mySites:[...ROOT.querySelectorAll('[data-mysite]:checked')].map(x=>x.value),shift:!!ROOT.querySelector('#st_shift')?.checked};
+}
+ACT_G.stKind=el=>{ VS.stKind=el.dataset.v; $('#vb').innerHTML=VIEWS.master.body(); };
+docOn('input',e=>{ if(e.target.id==='stQ'){ VS.stQ=e.target.value; const pos=e.target.selectionStart; $('#vb').innerHTML=VIEWS.master.body(); const n=$('#stQ'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){} } } });
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
@@ -6661,6 +6847,7 @@ window.G_API={
   visitAttach:(id,f)=>visitAttachField(id,f),
   visitPatch:(id,ch)=>patch('visits',id,ch),
   resMirror:id=>resMirror(id),
+  setMtab:t=>{ VS.mtab=t; shellRoute=null; },
   rerender:()=>requestRender(),
   toast:m=>toast(m),
 };
