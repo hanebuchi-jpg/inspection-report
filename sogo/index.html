@@ -1626,6 +1626,7 @@ function whoIds(){
   if(w==='all') return staffList().map(s=>s.id);
   if(w==='emp') return employees().map(s=>s.id);
   if(w==='ptn') return partners().map(s=>s.id);
+  if(String(w).startsWith('dept:')){ const d=w.slice(5); return staffList().filter(s=>deptOf(s.id)===d).map(s=>s.id); }
   return get('staff',w)?[w]:[meId()];
 }
 let eventsFor=function(date,ids){
@@ -1636,9 +1637,7 @@ const eventsFor0=eventsFor; eventsFor=(date,ids)=>{ const l=eventsFor0(date,ids)
 VIEWS.calendar=()=>{
   const v=isSimple()&&P.calView==='week'?'month':P.calView;
   const ids=whoIds();
-  const whoSel=isSimple()?'':`<select class="inp auto" data-chg="calWho" aria-label="表示する担当">
-    <option value="me" ${P.calWho==='me'?'selected':''}>自分</option><option value="all" ${P.calWho==='all'?'selected':''}>全員</option><option value="emp" ${P.calWho==='emp'?'selected':''}>社員のみ</option><option value="ptn" ${P.calWho==='ptn'?'selected':''}>協力会社のみ</option>
-    <optgroup label="個別">${staffList().map(s=>`<option value="${s.id}" ${P.calWho===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</optgroup></select>`;
+  const whoSel=isSimple()?'':cwBtn();
   let title=v==='month'?ymLabel(ymOf(VS.calDate)):v==='week'?`${jd(weekMon(VS.calDate))} 〜 ${jd(addDays(weekMon(VS.calDate),6))}`:jd(VS.calDate);
   let h=`<div class="vhead"><h1>${isSimple()?'自分の予定':'カレンダー'}</h1><button class="btn pri" data-act="newEvent" data-date="${VS.calSel||today()}">＋ 予定</button></div>
   <div class="toolbar">
@@ -2685,7 +2684,7 @@ function fixListHtml(list,admin){
 docOn('click',async ev=>{
   const el=ev.target.closest('[data-act]'); if(!el) return;
   const a=el.dataset.act;
-  if(el.closest('.cev')&&a!=='openEvent') return;
+  if(el.closest('.cev')&&a!=='openEvent'&&a!=='openReport') return;
   if(a==='openEvent'||a==='openReport'||a==='rel'||a==='repTagRm'||a==='repTagAdd') ev.stopPropagation();
   if(typeof ACT_S!=='undefined'&&ACT_S[a]){ await ACT_S[a](el,ev); return; }
   switch(a){
@@ -4598,6 +4597,59 @@ Object.assign(ACT_S,{
 #S .cdots i.rpdot{background:var(--ok)!important}
 #S .li.rpl{border-left:4px solid var(--ok)}
 `; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
+
+/* =========================================================
+   カレンダーの担当選択：日常報告と同じ「検索して選ぶ」形
+   ・まとめて（自分・全員・社員のみ・協力会社のみ・所属）／よく使う／所属／社員・パート・その他アカウント・協力会社・退職者
+   ・表示中の期間に予定がある人だけを件数順（シフトは別に数える）。「予定のない人も表示」で全員
+   ========================================================= */
+function cwRange(){
+  const d=VS.calDate||today(), v=P.calView||'month';
+  if(v==='day') return [d,d];
+  if(v==='week'){ const m=weekMon(d); return [m,addDays(m,6)]; }
+  const ym=ymOf(d); return [ym+'-01',addDays(ymOf(addDays(ym+'-28',7))+'-01',-1)];
+}
+function cwLabel(w){ w=w||'me'; return w==='me'?'自分':w==='all'?'全員':w==='emp'?'社員のみ':w==='ptn'?'協力会社のみ':String(w).startsWith('dept:')?'所属：'+w.slice(5):staffName(w)||'自分'; }
+function cwCounts(){
+  const [a,b]=cwRange(), ev=new Map(), sh=new Map();
+  for(const e of evAll()){ if(e.tpl||!e.date||e.date<a||e.date>b) continue; (e.staffIds||[]).forEach(id=>{ const m=e.shift?sh:ev; m.set(id,(m.get(id)||0)+1); }); }
+  return {ev,sh};
+}
+function cwBtn(){ const w=P.calWho||'me'; return `<button type="button" class="btn rf-btn ${w!=='me'?'on':''}" data-act="cwOpen" aria-label="表示する担当"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"/></svg>${esc(cwLabel(w))}<span aria-hidden="true">▾</span></button>`; }
+SHEETS.cwPick=()=>{
+  const [a,b]=cwRange();
+  return {title:'表示する担当',body:`<div class="sec" style="padding-bottom:6px"><input class="inp" id="cw-q" placeholder="名前・所属で検索（ひらがな可）" value="${esc(sheet.q)}" autocomplete="off"></div><div id="cw-list">${cwListHtml()}</div>`,
+    foot:`<span class="small muted" style="margin-right:auto">${a===b?jd(a):jd(a)+'〜'+jd(b)}の予定の数</span><button class="btn pri" data-act="close">閉じる</button>`};
+};
+function cwListHtml(){
+  const q=sheet.q, cur=P.calWho||'me', C=cwCounts(), n=id=>(C.ev.get(id)||0), s2=id=>(C.sh.get(id)||0);
+  const sub=(s,extra)=>[extra,s.dept,s2(s.id)?`シフト${s2(s.id)}`:''].filter(Boolean).join('・');
+  const sec=(t,rows,coll)=>rows.length?(coll?`<details class="rf-sec" ${sheet.open[t]||q?'open':''} data-cwsec="${esc(t)}"><summary>${esc(t)}（${rows.length}）</summary>${rows.join('')}</details>`:`<div class="rf-h">${esc(t)}</div>${rows.join('')}`):'';
+  const row=(v,l,cnt,s)=>rfRow(v,l,cnt,s,cur===v);
+  let h='', hidden=0;
+  const ss=all('staff').filter(s=>s.role!=='kiosk');
+  if(!q){
+    const myD=deptOf(meId());
+    h+=sec('まとめて',[row('me','自分',n(meId()),''),row('all','全員',null,'人数が多いと週表示が長くなります'),row('emp','社員のみ',null,''),row('ptn','協力会社のみ',null,''),...(myD?[row('dept:'+myD,'所属：'+myD,null,'自分の所属')]:[])]);
+    const fav=rfRecent('calwho').filter(id=>get('staff',id)&&id!==meId());
+    h+=sec('よく使う',fav.map(id=>row(id,staffName(id),n(id),sub(get('staff',id),''))));
+  }
+  const depts=[...new Set(ss.filter(s=>!s.inactive).map(s=>deptOf(s.id)).filter(Boolean))].filter(d=>rfHit(q,d)).map(d=>{ const mem=ss.filter(s=>!s.inactive&&deptOf(s.id)===d); return {d,m:mem.length,c:mem.reduce((t,s)=>t+n(s.id),0)}; }).sort((x,y)=>y.c-x.c||x.d.localeCompare(y.d,'ja'));
+  h+=sec('所属',depts.map(x=>row('dept:'+x.d,x.d,x.c,x.m+'人')),!q);
+  const show=s=>sheet.showAll||n(s.id)>0||s2(s.id)>0;
+  RF_GROUPS.forEach(g=>{ const list=ss.filter(s=>rfGroupOf(s)===g&&rfHit(q,s.name,s.aliases,s.empNo,s.company,s.dept)), vis=list.filter(show); hidden+=list.length-vis.length;
+    h+=sec(g,vis.sort((x,y)=>n(y.id)-n(x.id)||s2(y.id)-s2(x.id)||rfName(x).localeCompare(rfName(y),'ja')).map(s=>row(s.id,s.name,n(s.id),sub(s,''))),g==='退職者'||(g==='パート'&&!q&&vis.length>15)); });
+  if(hidden&&!sheet.showAll) h+=`<button type="button" class="rf-more" data-act="cwShowAll">▸ この期間に予定のない人も表示（${hidden}）</button>`;
+  else if(sheet.showAll) h+=`<button type="button" class="rf-more" data-act="cwShowAll">▴ 予定のある人だけにする</button>`;
+  return h||'<div class="empty">該当がありません</div>';
+}
+Object.assign(ACT_S,{
+  cwOpen(){ openSheet({kind:'cwPick',q:'',showAll:false,open:{}}); setTimeout(()=>{ if(!matchMedia('(max-width:700px)').matches) byId('cw-q')?.focus(); },50); },
+  cwShowAll(){ sheet.showAll=!sheet.showAll; const l=byId('cw-list'); if(l) l.innerHTML=cwListHtml(); },
+});
+{ const pick0=ACT_S.rfPickSet; ACT_S.rfPickSet=el=>{ if(sheet?.kind!=='cwPick') return pick0(el); const v=el.dataset.v||'me'; P.calWho=v; savePrefs(); if(get('staff',v)) rfPushRecent('calwho',v); closeSheet(); render(); }; }
+docOn('input',e=>{ if(e.target.id==='cw-q'&&sheet?.kind==='cwPick'){ sheet.q=e.target.value; const l=byId('cw-list'); if(l) l.innerHTML=cwListHtml(); } });
+docOn('toggle',e=>{ const d=e.target; if(d.dataset&&d.dataset.cwsec&&sheet?.kind==='cwPick') sheet.open[d.dataset.cwsec]=d.open; },true);
 
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
