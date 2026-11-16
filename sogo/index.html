@@ -1615,6 +1615,7 @@ const homeBody=()=>{
   return h;
 };
 function evRow(e){
+  if(e.rp) return rpRow(e);
   return `<button class="li ty${tyIdx(e.type)}" data-act="openEvent" data-id="${e.id}"><span class="tm">${timeRange(e.start,e.end)}</span><span class="grow"><b>${e.seriesId?'↻ ':''}${esc(e.title)}</b> <span class="pill" style="background:var(--cs);color:var(--c)">${esc(typeName(e.type))}</span>${(e.res||[]).length?` <span class="small muted">［${esc(e.res.map(x=>resNameOf(x.id)).join('・'))}］</span>`:''}${isDispatch(e)?' <span class="pill a">差配連動</span>':''}<div class="tags">${eventTags(e).filter(t=>t.k!=='staff'||(e.staffIds||[]).length>1).map(tagSpan).join('')}</div></span></button>`;
 }
 
@@ -1627,10 +1628,11 @@ function whoIds(){
   if(w==='ptn') return partners().map(s=>s.id);
   return get('staff',w)?[w]:[meId()];
 }
-function eventsFor(date,ids){
+let eventsFor=function(date,ids){
   const set=new Set(ids);
   return evAll().filter(e=>e.date===date&&(e.staffIds||[]).some(i=>set.has(i))&&(!P.dispatchOnly||isDispatch(e)||VS.route==='home')&&(!e.shift||!isSimple()||shiftPublished(ymOf(e.date),e.siteId))).sort(by(e=>e.start||'00:00'));
 }
+const eventsFor0=eventsFor; eventsFor=(date,ids)=>{ const l=eventsFor0(date,ids); return VS.route==='calendar'&&!P.dispatchOnly?calMix(l,date,ids):l; };
 VIEWS.calendar=()=>{
   const v=isSimple()&&P.calView==='week'?'month':P.calView;
   const ids=whoIds();
@@ -1651,10 +1653,11 @@ VIEWS.calendar=()=>{
   if(v==='month') h+=monthCal(ids);
   else if(v==='week') h+=weekBoard(ids);
   else h+=dayView(ids);
-  h+=`<div class="cleg">${tyLegend()}<span>◆＝顧客に紐付いた予定（「日程・差配」にも表示）。種別「作業」で顧客を選ぶと作業予定として差配に登録されます</span></div>`;
+  h+=`<div class="cleg">${tyLegend()}<span>✓（濃い緑）＝報告済みの予定、✎＝予定なしで書いた報告（自分・個別に選んだ人のときだけ表示）。◆＝顧客に紐付いた予定（「日程・差配」にも表示）。種別「作業」で顧客を選ぶと作業予定として差配に登録されます</span></div>`;
   return h;
 };
 function evChip(e,showWho){
+  if(e.rp) return rpChip(e,showWho);
   const who=showWho&&(e.staffIds||[]).length?` <span class="muted">${esc(staffName(e.staffIds[0]))}${e.staffIds.length>1?'他':''}</span>`:'';
   return `<button class="cev ty${tyIdx(e.type)}" data-fitem data-act="openEvent" data-id="${e.id}" title="${esc(e.title)}">${e.seriesId?'<span class="muted">↻</span>':''}${e.start?`<span class="tm">${e.start}</span> `:''}${isDispatch(e)?'<span class="lk">◆</span>':''}${esc(e.title)}${who}</button>`;
 }
@@ -1668,7 +1671,7 @@ function monthCal(ids){
     h+=`<div class="cd ${VS.wishMode?'wishing':''} ${ymOf(d)!==m?'out':''} ${d===today()?'today':''} ${d===VS.calSel?'sel':''}" data-act="calDay" data-date="${d}" data-fit>
       <div class="cdn"><span class="${wd===0||holName(d)?'sun':wd===6?'sat':''}" ${holName(d)?`title="${esc(holName(d))}"`:''}>${+d.slice(8)}</span>${holName(d)?`<small class="muted" style="font-size:10px;color:var(--danger,#c33)">${esc(holName(d))}</small>`:''}${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
       ${evs.map(e=>evChip(e,multi)).join('')}
-      <div class="cdots">${evs.slice(0,4).map(e=>`<i class="ty${tyIdx(e.type)}" style="background:var(--c)"></i>`).join('')}</div></div>`;
+      <div class="cdots">${evs.slice(0,4).map(e=>e.rp?'<i class="rpdot"></i>':`<i class="ty${tyIdx(e.type)}" style="background:var(--c)"></i>`).join('')}</div></div>`;
   }
   h+=`</div>`;
   const evs=eventsFor(VS.calSel,ids);
@@ -1682,7 +1685,7 @@ function weekBoard(ids){
   let h=calBar(rows,allRows)+`<div class="scroll"><table class="board"><thead><tr><th class="whoh">担当</th>${days.map((d,i)=>`<th class="${d===today()?'today':''} ${i===6?'sun':i===5?'sat':''}">${jd(d)}</th>`).join('')}</tr></thead><tbody>`;
   rows.forEach(s=>{
     h+=`<tr><td class="whoc"><span class="dot" style="background:${pc(s)}"></span> ${esc(s.name)}<small>${s.kind==='協力会社'?'協力会社':esc(roleLbl(s.role))}</small></td>`;
-    days.forEach((d,i)=>{ const evs=evAll().filter(e=>e.date===d&&(e.staffIds||[]).includes(s.id)&&(!P.dispatchOnly||isDispatch(e))).sort(by(e=>e.start||''));
+    days.forEach((d,i)=>{ const evs0=evAll().filter(e=>e.date===d&&(e.staffIds||[]).includes(s.id)&&(!P.dispatchOnly||isDispatch(e))).sort(by(e=>e.start||'')); const evs=!P.dispatchOnly&&ids.length===1?calMix(evs0,d,[s.id]):evs0;
       h+=`<td class="${i>=5?'wk':''}" data-act="newEvent" data-date="${d}" data-staff="${s.id}" data-fit><div class="fitl">${evs.map(e=>evChip(e,false)).join('')}</div></td>`; });
     h+=`</tr>`;
   });
@@ -1959,7 +1962,7 @@ SHEETS.event=()=>{
     <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-sf="dispatch" ${e.dispatch!==false?'checked':''}> 顧客がある場合、差配に入れる</label>
   </div></details>
   ${!isNew?relatedReportsHtml(e):''}`;
-  const foot=`${!isNew?'<button class="btn danger l" data-act="evDel">削除</button>':''}${!isNew?'<button class="btn" data-act="reportFromEvent">この予定の報告を書く</button>':''}${!isNew?'<button class="btn" data-act="evCopy">コピー</button>':''}<button class="btn" data-act="tplSave">ひな形に保存</button><button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="evSave">保存</button>`;
+  const foot=`${!isNew?'<button class="btn danger l" data-act="evDel">削除</button>':''}${!isNew&&!e.shift?`<button class="btn" data-act="reportFromEvent">${rpOfEvent(e.id).some(r=>r.staffId===meId())?'報告を見る':'この予定の報告を書く'}</button>`:''}${!isNew?'<button class="btn" data-act="evCopy">コピー</button>':''}<button class="btn" data-act="tplSave">ひな形に保存</button><button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="evSave">保存</button>`;
   return {title:isNew?'予定を追加':'予定',body,foot,after:()=>{ if(isNew&&!sheet.focused){sheet.focused=true; $('#ev-title')?.focus();} }};
 };
 function sugHtml(sug){ if(!sug) return ''; return `<div class="callout">「${esc(tagName(sug))}」が見つかりました。<button class="btn sm pri" data-act="evApplySug" data-k="${sug.k}" data-id="${sug.id}">${TAGK[sug.k]}として紐付ける</button></div>`; }
@@ -3309,7 +3312,7 @@ SHEETS.fvisit=()=>{
   <div class="sec"><label class="fld"><span>作業メモ・特記事項（事務所にも見えます）</span><textarea class="inp" id="fv-note" rows="3" ${mine?'':'disabled'}>${esc(v.reportNote)}</textarea></label>
     <div class="fld"><span>写真・報告書</span>${v.attachments.length?`<div class="list">${v.attachments.map(a=>`<a class="li" href="#" data-file="${esc(a.id)}" data-blob="${esc(a.id)}" target="_blank" rel="noopener">${esc(a.name)}</a>`).join('')}</div>`:'<div class="small muted">まだありません</div>'}
     ${mine?`<input type="file" id="fv-file" accept="image/*,application/pdf" style="margin-top:6px">`:''}</div></div>`;
-  const foot=`<button class="btn" data-act="close">閉じる</button>${mine?`<button class="btn" data-act="fvSave">メモを保存</button>${v.done||v.status==='中止'?'':'<button class="btn pri" data-act="fvDone">作業を完了にする</button>'}`:''}`;
+  const foot=`<button class="btn" data-act="close">閉じる</button>${mine?`<button class="btn" data-act="reportFromVisit">${rpOfEvent('vs~'+sheet.id).some(r=>r.staffId===meId())?'報告を見る':'報告を書く'}</button><button class="btn" data-act="fvSave">メモを保存</button>${v.done||v.status==='中止'?'':'<button class="btn pri" data-act="fvDone">作業を完了にする</button>'}`:''}`;
   return {title:esc(v.title),body,foot};
 };
 /* 日報を書くとき、その日の自分の作業予定を一緒に完了にできる */
@@ -4520,11 +4523,81 @@ docOn('change',e=>{ if(sheet?.kind==='report'&&e.target.dataset&&e.target.datase
 `; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
 /* --- 既存の処理につなぐ --- */
 { const rs0=SHEETS.report; SHEETS.report=()=>{ const r=sheet.r; if(rmNarrow()&&repMine(r)) return rmReportSheet(); return rs0(); }; }
-newReport=(nr0=>function(opt={}){ const d=!opt.body&&!(opt.tags||[]).length?draftGet():null;
+newReport=(nr0=>function(opt={}){ const d=!opt.body&&!(opt.tags||[]).length&&!(opt.eventIds||[]).length?draftGet():null;
   if(d&&(!opt.date||opt.date===d.r.date)){ openSheet({kind:'report',r:{...d.r,id:null,off:d.r.off||[]},mp:null,draftAt:d.at}); toast('書きかけの下書きを開きました'); return; }
   nr0(opt); })(newReport);
 saveReport=(sr0=>async function(){ const isNew=!sheet?.r?.id, d=sheet?.r?.date, k=sheet?.kind; await sr0(); if(k==='report'&&!sheet){ if(isNew) draftClear(); if(isNew&&rmNarrow()) openSheet({kind:'rmDone',date:d,msg:'報告を提出しました。別の現場の報告も続けて書けます。'}); } })(saveReport);
 ACT_S.csPick=el=>{ csPick(el.dataset.k,el.dataset.id); draftSave(); if(rmNarrow()){ const q=byId('cs-q')?.value; renderOverlay(); if(q!=null&&sheet.pick){ const i=byId('cs-q'); if(i){ i.value=q; } } } };
+/* =========================================================
+   カレンダーに報告を出す
+   ・予定に報告がつながっていれば、カレンダーではその予定を「報告」（✓・緑）に置き換える
+   ・予定なしの報告は、報告を書いた時刻（なければ終日扱い）で出す
+   ・出すのは「自分」または個別に選んだ1人を表示しているときだけ（全員・社員のみ等では出さない）
+   ・報告の提出時、同じ日・同じ現場の自分（または一緒に行った人）の予定に自動でつなぐ
+   ・予定・作業予定から「報告を書く」／報告があれば「報告を見る」
+   ========================================================= */
+const rpOfEvent=id=>all('reports').filter(r=>(r.eventIds||[]).includes(id));
+const rpFor=(sid,date)=>all('reports').filter(r=>r.date===date&&(r.staffId===sid||(r.tags||[]).some(t=>t.k==='staff'&&t.id===sid)));
+function rpFirst(r){ const b=String(r.body||'').replace(/^[・\s]+/,'').split(/\n|。/)[0].trim(); return b.length>28?b.slice(0,28)+'…':b; }
+function rpWhere(r){ const t=(r.tags||[]).find(x=>x.k==='site')||(r.tags||[]).find(x=>x.k==='customer'); return t?tagName(t):''; }
+/* 予定の一覧に報告を混ぜる（1人を表示しているときだけ） */
+function calMix(evs,date,ids){
+  if(!ids||ids.length!==1) return evs;
+  const sid=ids[0], rs=rpFor(sid,date); if(!rs.length) return evs;
+  const linked=new Map(); rs.forEach(r=>(r.eventIds||[]).forEach(id=>{ if(!linked.has(id)) linked.set(id,r); }));
+  const out=[], used=new Set();
+  evs.forEach(e=>{ const r=linked.get(e.id); if(r){ if(!used.has(r.id)){ used.add(r.id); out.push(rpVirtual(r,e,sid)); } } else out.push(e); });
+  rs.filter(r=>!used.has(r.id)).forEach(r=>out.push(rpVirtual(r,null,sid)));
+  return out.sort(by(e=>e.start||'00:00'));
+}
+function rpVirtual(r,e,sid){
+  const head=[e?(e.title||''):rpWhere(r),r.work&&!(e&&String(e.title||'').includes(r.work))?r.work:''].filter(Boolean).join(' ');
+  return {id:'rp~'+r.id,rp:r,ev:e,date:r.date,start:e?e.start:(r.time||''),end:e?e.end:'',title:head||'報告',body:rpFirst(r),staffIds:[r.staffId],type:'__rp',mine:r.staffId===sid};
+}
+function rpChip(e,showWho){
+  const r=e.rp;
+  return `<button class="cev rpc" data-fitem data-act="openReport" data-id="${r.id}" title="${esc((e.ev?'予定：'+e.ev.title+'\n':'')+'報告：'+String(r.body||'').slice(0,200))}"><span class="rpk" aria-hidden="true">${e.ev?'✓':'✎'}</span>${e.start?`<span class="tm">${e.start}</span> `:''}${esc(e.title)}${e.body?`<span class="rpb"> ${esc(e.body)}</span>`:''}${!e.mine?` <span class="muted">（同行）</span>`:''}</button>`;
+}
+function rpRow(e){
+  const r=e.rp;
+  return `<button class="li rpl" data-act="openReport" data-id="${r.id}"><span class="tm">${e.ev?timeRange(e.ev.start,e.ev.end):(r.time||'')}</span><span class="grow"><b>${e.ev?'✓ ':'✎ '}${esc(e.title)}</b> <span class="pill g">${e.ev?'報告済み':'報告'}</span>${!e.mine?` <span class="small muted">${esc(staffName(r.staffId))}さんの報告（同行）</span>`:''}<div class="small muted" style="white-space:pre-wrap">${esc(String(r.body||'').slice(0,120))}</div></span></button>`;
+}
+/* 提出時に予定へ自動でつなぐ */
+function rpAutoLink(r){
+  const who=[r.staffId,...(r.tags||[]).filter(t=>t.k==='staff').map(t=>t.id)];
+  const cands=evAll().filter(e=>e.date===r.date&&!e.shift&&!e.tpl&&e.type!=='休み・私用'&&e.type!=='シフト'&&(e.staffIds||[]).some(id=>who.includes(id)));
+  const sites=(r.tags||[]).filter(t=>t.k==='site').map(t=>t.id), custs=(r.tags||[]).filter(t=>t.k==='customer').map(t=>t.id);
+  const evSite=e=>e.siteId||'', evCust=e=>e.customerId||(e.siteId?get('sites',e.siteId)?.customerId:'')||'';
+  let hit=cands.filter(e=>(evSite(e)&&sites.includes(evSite(e)))||(!evSite(e)&&evCust(e)&&custs.includes(evCust(e))));
+  if(!hit.length&&sites.length) hit=cands.filter(e=>!evSite(e)&&evCust(e)&&custs.includes(evCust(e)));
+  if(!hit.length&&!sites.length&&!custs.length&&cands.filter(e=>!rpOfEvent(e.id).some(x=>x.id!==r.id)).length===1) hit=cands.filter(e=>!rpOfEvent(e.id).some(x=>x.id!==r.id));
+  const ids=new Set(r.eventIds||[]); hit.forEach(e=>{ if(!rpOfEvent(e.id).some(x=>x.id!==r.id&&x.staffId===r.staffId)) ids.add(e.id); });
+  r.eventIds=[...ids];
+  return hit.length;
+}
+saveReport=(sr1=>async function(){ const r=sheet?.r; if(r&&sheet.kind==='report'&&repMine(r)&&!(r.eventIds||[]).length) rpAutoLink(r); return sr1(); })(saveReport);
+/* 予定・作業予定から報告へ */
+function reportFromEv(e){
+  const mineR=rpOfEvent(e.id).find(r=>r.staffId===meId());
+  if(mineR){ openSheet({kind:'report',r:{title:'',kind:'日報',tags:[],eventIds:[],...structuredClone(mineR),off:[]}}); return; }
+  const tags=eventTags(e).filter(t=>t.k!=='staff'); (e.staffIds||[]).filter(id=>id!==meId()&&get('staff',id)&&get('staff',id).kind!=='協力会社').forEach(id=>tags.push({k:'staff',id}));
+  if(e.siteId&&!tags.some(t=>t.k==='site'&&t.id===e.siteId)) tags.push({k:'site',id:e.siteId});
+  const cu=e.customerId||(e.siteId?get('sites',e.siteId)?.customerId:''); if(cu&&!tags.some(t=>t.k==='customer'&&t.id===cu)) tags.push({k:'customer',id:cu});
+  newReport({date:e.date,tags,eventIds:[e.id],work:e.work||''});
+}
+newReport=(nr1=>function(opt={}){ nr1(opt); if(opt.work&&sheet?.kind==='report'&&!sheet.r.work) sheet.r.work=opt.work, renderOverlay(); })(newReport);
+Object.assign(ACT_S,{
+  reportFromEvent(){ reportFromEv(sheet.e); },
+  reportFromVisit(){ const e=evAll().find(x=>x.id==='vs~'+sheet.id); if(e) reportFromEv(e); else toast('作業予定が見つかりません'); },
+});
+(function(){ const css=`
+#S .cev.rpc{--c:var(--ok);background:var(--ok);color:#fff;border-left-color:var(--ok);font-weight:700}
+#S .cev.rpc .tm,#S .cev.rpc .muted{color:rgba(255,255,255,.85)}
+#S .cev.rpc .rpk{margin-right:3px}
+#S .cev.rpc .rpb{font-weight:400;color:rgba(255,255,255,.88)}
+#S .cdots i.rpdot{background:var(--ok)!important}
+#S .li.rpl{border-left:4px solid var(--ok)}
+`; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
 
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
