@@ -1637,8 +1637,8 @@ const eventsFor0=eventsFor; eventsFor=(date,ids)=>{ const l=eventsFor0(date,ids)
 VIEWS.calendar=()=>{
   const v=isSimple()&&P.calView==='week'?'month':P.calView;
   const ids=whoIds();
-  const whoSel=isSimple()?'':cwBtn();
-  let title=v==='month'?ymLabel(ymOf(VS.calDate)):v==='week'?`${jd(weekMon(VS.calDate))} 〜 ${jd(addDays(weekMon(VS.calDate),6))}`:jd(VS.calDate);
+  const whoSel=(isSimple()?'':cwBtn())+(P.dispatchOnly?'':cwToggles());
+  let title=v==='month'?ymLabel(ymOf(VS.calDate)):v==='week'?`${jd(wkFirst(VS.calDate,1))} 〜 ${jd(addDays(wkFirst(VS.calDate,1),6))}`:jd(VS.calDate);
   let h=`<div class="vhead"><h1>${isSimple()?'自分の予定':'カレンダー'}</h1><button class="btn pri" data-act="newEvent" data-date="${VS.calSel||today()}">＋ 予定</button></div>
   <div class="toolbar">
     <div class="seg" role="group" aria-label="表示">${[['month','月'],...(isSimple()?[]:[['week','週（差配）']]),['day','日']].map(([k,l])=>`<button data-act="calView" data-v="${k}" aria-pressed="${v===k}">${l}</button>`).join('')}</div>
@@ -1661,9 +1661,9 @@ function evChip(e,showWho){
   return `<button class="cev ty${tyIdx(e.type)}" data-fitem data-act="openEvent" data-id="${e.id}" title="${esc(e.title)}">${e.seriesId?'<span class="muted">↻</span>':''}${e.start?`<span class="tm">${e.start}</span> `:''}${isDispatch(e)?'<span class="lk">◆</span>':''}${esc(e.title)}${who}</button>`;
 }
 function monthCal(ids){
-  const m=ymOf(VS.calDate); const first=parseD(m+'-01'); const start=addDays(m+'-01',-first.getDay());
+  const m=ymOf(VS.calDate); const start=wkFirst(m+'-01',0);
   const multi=ids.length>1;
-  let h=`<div class="mcal">${[...WD].map((w,i)=>`<div class="dh ${i===0?'sun':i===6?'sat':''}">${w}</div>`).join('')}`;
+  let h=`<div class="mcal">${[...Array(7)].map((_,i)=>{ const w=parseD(addDays(start,i)).getDay(); return `<div class="dh ${w===0?'sun':w===6?'sat':''}">${WD[w]}</div>`; }).join('')}`;
   for(let i=0;i<42;i++){
     const d=addDays(start,i); if(i===35&&ymOf(d)!==m) break;
     const evs=eventsFor(d,ids); const wd=i%7;
@@ -1679,12 +1679,12 @@ function monthCal(ids){
   return h;
 }
 function weekBoard(ids){
-  const mon=weekMon(VS.calDate); const days=[...Array(7)].map((_,i)=>addDays(mon,i));
+  const mon=wkFirst(VS.calDate,1); const days=[...Array(7)].map((_,i)=>addDays(mon,i));
   const allRows=staffList().filter(s=>ids.includes(s.id)); const rows=calFilter(allRows,days);
   let h=calBar(rows,allRows)+`<div class="scroll"><table class="board"><thead><tr><th class="whoh">担当</th>${days.map((d,i)=>`<th class="${d===today()?'today':''} ${i===6?'sun':i===5?'sat':''}">${jd(d)}</th>`).join('')}</tr></thead><tbody>`;
   rows.forEach(s=>{
     h+=`<tr><td class="whoc"><span class="dot" style="background:${pc(s)}"></span> ${esc(s.name)}<small>${s.kind==='協力会社'?'協力会社':esc(roleLbl(s.role))}</small></td>`;
-    days.forEach((d,i)=>{ const evs0=evAll().filter(e=>e.date===d&&(e.staffIds||[]).includes(s.id)&&(!P.dispatchOnly||isDispatch(e))).sort(by(e=>e.start||'')); const evs=!P.dispatchOnly&&ids.length===1?calMix(evs0,d,[s.id]):evs0;
+    days.forEach((d,i)=>{ const evs0=evAll().filter(e=>e.date===d&&(e.staffIds||[]).includes(s.id)&&(!P.dispatchOnly||isDispatch(e))).sort(by(e=>e.start||'')); const evs=!P.dispatchOnly?calMix(evs0,d,ids.length===1?[s.id]:null):evs0;
       h+=`<td class="${i>=5?'wk':''}" data-act="newEvent" data-date="${d}" data-staff="${s.id}" data-fit><div class="fitl">${evs.map(e=>evChip(e,false)).join('')}</div></td>`; });
     h+=`</tr>`;
   });
@@ -1710,7 +1710,7 @@ function repCard(r){
     <div class="rb">${esc(String(r.body||'').length>300?String(r.body).slice(0,300)+'…':r.body)}</div>${reportTags(r).length||(r.unreg||[]).length?`<div class="tags">${reportTags(r).map(t=>`<span class="tag t-${t.k} ${VS.route==='reports'&&['customer','site','partner'].includes(t.k)?'rf-by':''}" ${VS.route==='reports'&&['customer','site','partner'].includes(t.k)?`data-act="rfBy" data-k="tag" data-v="${t.k}:${t.id}" title="この${TAGK[t.k]}で絞り込み"`:''}><span class="k">${TAGK[t.k]}</span>${esc(tagName(t))}</span>`).join('')}${(r.unreg||[]).map(u=>`<span class="tag" style="border:1px dashed var(--line,#ccc)"><span class="k">${u.k==='site'?'現場':'顧客'}（未登録）</span>${esc(u.name)}</span>`).join('')}</div>`:''}</button>`;
 }
 /* 報告の期間 */
-const wkStart=d=>{ const x=parseD(d); return addDays(d,-((x.getDay()+6)%7)); };
+const wkStart=d=>wkFirst(d,1);
 const monthEnd=ym=>addDays(ymAdd(ym,1)+'-01',-1);
 const md=s=>{ const d=parseD(s); return `${d.getMonth()+1}/${d.getDate()}`; };
 function rpAt(u,d){ d=d||today();
@@ -1860,6 +1860,7 @@ VIEWS.settings=()=>{
   } else if(tab==='cal'){ h+=resSettingsHtml();
   } else if(tab==='work'){ h+=workSettingsHtml();
   } else if(tab==='view'){
+    h+=weekStartSec();
     h+=`<div class="panel"><h2>表示の好み（この端末だけに保存）</h2><div class="pbody" style="display:flex;flex-direction:column;gap:14px">
       <label class="fld"><span>カレンダーの初期表示</span><select class="inp auto" data-chg="calView"><option value="month" ${P.calView==='month'?'selected':''}>月</option><option value="week" ${P.calView==='week'?'selected':''}>週（差配）</option><option value="day" ${P.calView==='day'?'selected':''}>日</option></select></label>
       <div class="fld"><span>担当現場（${esc(me()?.name||'')}さん）</span><div class="small">${mySites().map(id=>esc(get('sites',id).name)).join('、')||'未設定'}　<button class="btn sm" data-act="editStaff" data-id="${meId()}">変更する</button></div><div class="hint">担当現場を決めておくと、シフト表・人別・出退勤・タイムカードの絞り込みが最初から担当現場になります。</div></div>
@@ -4011,7 +4012,7 @@ VIEWS.reserve=()=>{
   let h=`<div class="vhead"><h1>設備・車両の予約</h1><div class="sp" style="display:flex;gap:6px;margin-left:auto">${canRes()?'<button class="btn" data-act="resGoSet">登録・編集</button>':''}<button class="btn pri" data-act="rvBook" data-d="${d}">＋ 予約</button></div></div>
   <div class="toolbar rv-bar"><div class="seg" role="group">${[['day','日'],['week','週']].map(([k,l])=>`<button data-act="rvView" data-v="${k}" aria-pressed="${v===k}">${l}</button>`).join('')}</div>
     <button class="btn sm" data-act="rvMove" data-v="-1" aria-label="前へ">‹</button><button class="btn sm" data-act="rvMove" data-v="0">今日</button><button class="btn sm" data-act="rvMove" data-v="1" aria-label="次へ">›</button>
-    <b>${v==='day'?jd(d)+(holName(d)?' '+holName(d):''):`${jd(weekMon(d))}〜${jd(addDays(weekMon(d),6))}`}</b>
+    <b>${v==='day'?jd(d)+(holName(d)?' '+holName(d):''):`${jd(wkFirst(d,1))}〜${jd(addDays(wkFirst(d,1),6))}`}</b>
     <div class="seg" role="group" style="margin-left:auto">${[['','すべて'],...RES_CAT_ORDER.map(c=>[c,RES_CAT[c]])].map(([k,l])=>`<button data-act="rvCat" data-v="${k}" aria-pressed="${cat===k}">${l}</button>`).join('')}</div></div>`;
   if(!resOn().length) return h+`<div class="empty">予約できるもの（車両・資器材・会議室）がまだ登録されていません。${canRes()?'<br><button class="btn pri" data-act="resEdit" style="margin-top:8px">＋ 登録する</button>':'<br>責任者・事務の方に登録を依頼してください。'}</div>`;
   const items=resItems();
@@ -4026,7 +4027,7 @@ VIEWS.reserve=()=>{
           ${os.map(o=>{ const l=(Math.max(o.sp[0],b0)-b0)/W*100, w=(Math.min(o.sp[1],b1)-Math.max(o.sp[0],b0))/W*100; return `<button class="rv-b ${o.it.col==='visits'?'v':''}" style="left:${l}%;width:${Math.max(w,2)}%;top:${4+o.lane*30}px" data-act="rvOpen" data-key="${o.it.key}" title="${esc(timeRange(o.it.start,o.it.end)+' '+o.it.title+' '+whoOf(o.it))}"><b>${esc(o.it.start||'')}</b> ${esc(whoOf(o.it)||o.it.title)}</button>`; }).join('')}</div></div>`; }).join('')}
     </div></div><div class="small muted" style="margin-top:6px">空いている所を押すと、その時間で予約できます。青＝予定、緑＝作業予定（日程・差配）。</div>`;
   } else {
-    const days=[...Array(7)].map((_,i)=>addDays(weekMon(d),i));
+    const days=[...Array(7)].map((_,i)=>addDays(wkFirst(d,1),i));
     h+=`<div class="rv-wrap"><table class="rv-week"><thead><tr><th></th>${days.map(x=>`<th class="${x===today()?'td':''} ${holName(x)||wdOf(x)===0?'hol':''}">${jd(x)}</th>`).join('')}</tr></thead><tbody>
       ${rs.map(r=>`<tr><th><button class="linkbtn" data-act="resInfo" data-id="${r.id}">${esc(resLabel(r))}</button></th>${days.map(x=>{ const blk=resBlock(r,x); const os=items.filter(it=>it.date===x&&it.res.some(y=>y.id===r.id)).sort(by(it=>it.start||''));
         return `<td class="${blk?'blk':''}" ${blk?`title="${esc(blk)}"`:`data-act="rvBook" data-rid="${r.id}" data-d="${x}"`}>${blk?`<small>${esc(blk.replace(/（.*$/,''))}</small>`:''}${os.map(it=>`<button class="rv-c ${it.col==='visits'?'v':''}" data-act="rvOpen" data-key="${it.key}">${esc(it.start||'終日')} ${esc(whoOf(it)||it.title)}</button>`).join('')}</td>`; }).join('')}</tr>`).join('')}
@@ -4540,7 +4541,7 @@ const rpFor=(sid,date)=>all('reports').filter(r=>r.date===date&&(r.staffId===sid
 function rpFirst(r){ const b=String(r.body||'').replace(/^[・\s]+/,'').split(/\n|。/)[0].trim(); return b.length>28?b.slice(0,28)+'…':b; }
 function rpWhere(r){ const t=(r.tags||[]).find(x=>x.k==='site')||(r.tags||[]).find(x=>x.k==='customer'); return t?tagName(t):''; }
 /* 予定の一覧に報告を混ぜる（1人を表示しているときだけ） */
-function calMix(evs,date,ids){
+let calMix=function(evs,date,ids){
   if(!ids||ids.length!==1) return evs;
   const sid=ids[0], rs=rpFor(sid,date); if(!rs.length) return evs;
   const linked=new Map(); rs.forEach(r=>(r.eventIds||[]).forEach(id=>{ if(!linked.has(id)) linked.set(id,r); }));
@@ -4606,8 +4607,8 @@ Object.assign(ACT_S,{
 function cwRange(){
   const d=VS.calDate||today(), v=P.calView||'month';
   if(v==='day') return [d,d];
-  if(v==='week'){ const m=weekMon(d); return [m,addDays(m,6)]; }
-  const ym=ymOf(d); return [ym+'-01',addDays(ymOf(addDays(ym+'-28',7))+'-01',-1)];
+  if(v==='week'){ const m=wkFirst(d,1); return [m,addDays(m,6)]; }
+  const ym=ymOf(d), a=wkFirst(ym+'-01',0); let b=addDays(a,41); if(ymOf(addDays(a,35))!==ym) b=addDays(a,34); return [a,b];
 }
 function cwLabel(w){ w=w||'me'; return w==='me'?'自分':w==='all'?'全員':w==='emp'?'社員のみ':w==='ptn'?'協力会社のみ':String(w).startsWith('dept:')?'所属：'+w.slice(5):staffName(w)||'自分'; }
 function cwCounts(){
@@ -4651,6 +4652,29 @@ Object.assign(ACT_S,{
 docOn('input',e=>{ if(e.target.id==='cw-q'&&sheet?.kind==='cwPick'){ sheet.q=e.target.value; const l=byId('cw-list'); if(l) l.innerHTML=cwListHtml(); } });
 docOn('toggle',e=>{ const d=e.target; if(d.dataset&&d.dataset.cwsec&&sheet?.kind==='cwPick') sheet.open[d.dataset.cwsec]=d.open; },true);
 
+/* =========================================================
+   週の始まり（個人ごと・どの端末でも同じ）と、カレンダーの「予定／報告」表示切り替え
+   ・prefs/<自分>.weekStart（0＝日〜6＝土）。未設定なら今まで通り（月表示は日曜、週表示・差配は月曜）
+   ・P.calEv / P.calRp（この端末）。false で非表示
+   ========================================================= */
+function wsDay(){ const p=get('prefs',meId()); if(p&&p.weekStart!=null&&p.weekStart!=='') return +p.weekStart; if(P.weekStart!=null&&P.weekStart!=='') return +P.weekStart; return null; }
+function wkFirst(d,def){ const ws=wsDay()??def; const x=parseD(d); return addDays(d,-((x.getDay()-ws+7)%7)); }
+async function setWeekStart(v){ P.weekStart=v; savePrefs(); try{ const p=get('prefs',meId())||{}; await put('prefs',meId(),{...p,weekStart:v}); }catch(_){} }
+function weekStartSec(){
+  const v=wsDay(); const o=(val,l)=>`<option value="${val}" ${String(v??'')===String(val)?'selected':''}>${l}</option>`;
+  return `<div class="panel"><h2>週の始まり（あなたの設定・どの端末でも同じ）</h2><div class="pbody"><label class="fld"><span>週の始まりの曜日</span><select class="inp auto" data-ws="1">${o('','今まで通り（月表示は日曜・週表示は月曜）')}${[...WD].map((w,i)=>o(i,w+'曜日')).join('')}</select></label>
+    <div class="hint">カレンダーの月・週表示、日常報告の「週」、設備・車両の予約の週表示、日程・差配の週・月表示に使います。シフト表と週の型は今まで通り月曜始まりです。</div></div></div>`;
+}
+docOn('change',async e=>{ if(e.target.dataset&&e.target.dataset.ws){ await setWeekStart(e.target.value===''?'':+e.target.value); render(); toast('週の始まりを変更しました'); } });
+function cwToggles(){
+  const ev=P.calEv!==false, rp=P.calRp!==false;
+  return `<div class="seg cw-tg" role="group" aria-label="表示するもの"><button type="button" data-act="calTg" data-k="calEv" aria-pressed="${ev}">${ev?'✓ ':''}予定</button><button type="button" data-act="calTg" data-k="calRp" aria-pressed="${rp}">${rp?'✓ ':''}報告</button></div>`;
+}
+ACT_S.calTg=el=>{ const k=el.dataset.k; P[k]=P[k]===false; if(P.calEv===false&&P.calRp===false){ P[k==='calEv'?'calRp':'calEv']=true; } savePrefs(); render(); };
+calMix=(cm0=>function(evs,date,ids){ const ev=P.calEv!==false, rp=P.calRp!==false;
+  if(!rp||!ids||ids.length!==1) return ev?evs:[];
+  const out=cm0(evs,date,ids); return ev?out:out.filter(e=>e.rp); })(calMix);
+
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
   route:()=>VS.route,
@@ -4676,6 +4700,7 @@ window.S_API={
   put:(c,id,d)=>put(c,id,d),
   setTab:t=>{ VS.setTab=t; },
   modes:()=>MODES,
+  weekStartDay:()=>wsDay(),
   resProblems:(x,col,id)=>resProblems(x,exclOf(col,id,'')),
   resPickHtml:(x,col,id,act)=>resPickHtml(x,exclOf(col,id,''),act),
   resAny:()=>all('resources').length>0,
@@ -4967,7 +4992,7 @@ let forceSheet=false;
 let renderQueued=false, shellRoute=null;
 function requestRender(){ if(renderQueued) return; renderQueued=true; requestAnimationFrame(()=>{renderQueued=false;render();}); }
 
-function weekMonday(s){const d=parseD(s);const k=(d.getDay()+6)%7;d.setDate(d.getDate()-k);return ymd(d);}
+function weekMonday(s){const ws=window.S_API&&S_API.weekStartDay?S_API.weekStartDay():null;const d=parseD(s);const k=(d.getDay()-(ws??1)+7)%7;d.setDate(d.getDate()-k);return ymd(d);}
 
 /* ---------- render ---------- */
 function counts(){
@@ -5258,7 +5283,7 @@ function monthCalendar(vs){
   const set=VS.schedStaff;
   const col=v=>{const ids=v.staffIds||[]; const id=set?ids.find(i=>set.includes(i)):ids[0]; return staffColor(id||'');};
   const ev=v=>{const c=col(v), n=(v.staffIds||[]).length; return `<button class="cev ${v.status==='完了'?'done':isLate(v)?'late':''} ${isSelV(v.id)?'sel':''}" style="--c:var(--${c});--cs:var(--${c}s)" draggable="true" data-drag-visit="${v.id}" data-act="chip" data-id="${v.id}" data-fitem title="${esc((v.start?v.start+' ':'')+visitTitle(v)+'（'+((v.staffIds||[]).map(staffName).join('・')||'担当未定')+'）')}">${v.start?`<span class="tm">${esc(timeRange(v.start,v.end))}</span> `:''}${esc(shortTitle(v))}${n>1?` <span class="plus">+${n-1}</span>`:''}</button>`;};
-  const head=['月','火','水','木','金','土','日'].map((w,i)=>`<div class="dh ${i===6?'sun':i===5?'sat':''}">${w}</div>`).join('');
+  const head=cells.slice(0,7).map(d=>{ const w=parseD(d).getDay(); return `<div class="dh ${w===0?'sun':w===6?'sat':''}">${'日月火水木金土'[w]}</div>`; }).join('');
   const body=cells.map(d=>{
     const l=vs.filter(v=>v.date===d).sort(by(v=>v.start||'')); const w=parseD(d).getDay();
     return `<div class="cd ${ymOf(d)!==m?'out':''} ${d===t?'today':''} ${d===VS.calSel?'sel':''} ${tgtMode()?'target':''}" data-drop-d="${d}" data-act="${tgtMode()?'place':'calday'}" data-d="${d}" data-fit>
