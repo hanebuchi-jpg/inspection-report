@@ -868,7 +868,7 @@ const SHELL=(()=>{
     }).subscribe();
     async function refetch(c,id){ const {data}=await SB.from('docs').select('data').eq('col',c).eq('id',id).maybeSingle(); if(data) col(c).set(id,data.data); else col(c).delete(id); notify(c); }
     return {archive:{ // 1年より前の日常報告（reports_archive）。起動時には読まず、必要な分だけ取りに行く
-        async query(p){ const {data,error}=await SB.rpc('report_archive_query',{p_from:p.from||null,p_to:p.to||null,p_q:p.q||null,p_staff:p.staff||null,p_tags:p.tags&&p.tags.length?p.tags:null,p_limit:p.limit||300,p_offset:p.offset||0});
+        async query(p){ const {data,error}=await SB.rpc('report_archive_query',{p_from:p.from||null,p_to:p.to||null,p_q:p.q||null,p_staff:p.staff||null,p_tags:p.tags&&p.tags.length?p.tags:null,p_limit:p.limit||300,p_offset:p.offset||0,p_qtags:p.qtags&&p.qtags.length?p.qtags:null,p_qstaff:p.qstaff&&p.qstaff.length?p.qstaff:null});
           if(error) throw sbMapErr(error); return {rows:(data||[]).map(r=>({...r.data,id:r.id})),total:data&&data.length?+data[0].total:0}; },
         async del(id){ const {error}=await SB.from('reports_archive').delete().eq('id',id); if(error) throw sbMapErr(error); },
       },
@@ -1736,7 +1736,10 @@ VIEWS.reports=()=>{
     const staff=simple||P.repWho==='me'?meId():P.repWho&&P.repWho!=='all'?P.repWho:null;
     let tags=null; if(VS.repTag){ const [k,id]=VS.repTag.split(':'); tags=[{k,id}]; if(k==='customer') sitesOf(id).forEach(x=>tags.push({k:'site',id:x.id})); }
     const q=archQDeb((VS.repQ||'').trim());
-    arch=archPages({from:R.from||null,to:R.to||null,q:q.length>=2?q:null,staff,tags,limit:R.from&&R.to&&daysBetween(R.from,R.to)<=62?1000:300},VS.archPg);
+    const qq=q.length>=2?q:null; const qn=qq?normQ(qq):'';
+    const qtags=qq?[...all('customers').filter(c=>normQ(c.name).includes(qn)).map(c=>({k:'customer',id:c.id})),...all('sites').filter(x=>normQ(x.name).includes(qn)).map(x=>({k:'site',id:x.id}))].slice(0,50):null;
+    const qstaff=qq?all('staff').filter(x=>normQ(x.name).includes(qn)).map(x=>x.id).slice(0,30):null;
+    arch=archPages({from:R.from||null,to:R.to||null,q:qq,qtags,qstaff,staff,tags,limit:R.from&&R.to&&daysBetween(R.from,R.to)<=62?1000:300},VS.archPg);
   }
   let list=all('reports').filter(r=>inRp(r.date,R));
   if(simple) list=list.filter(r=>r.staffId===meId());
