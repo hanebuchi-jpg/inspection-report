@@ -1550,12 +1550,12 @@ function mtop(){ const opts=staffList().map(s=>`<option value="${s.id}" ${s.id==
 const VIEWS={};
 function render(){
   if(!navItems().some(n=>n[0]===VS.route)&&!(VS.route==='shiftset'&&!isSimple())&&!(VS.route==='settings'&&VS.setTab==='view')) VS.route='home';
-  renderNav(); SHELL.sync();
+  const _t0=performance.now(); renderNav(); const _t1=performance.now(); SHELL.sync(); const _t2=performance.now();
   const ae=document.activeElement; const fid=ae&&ae.id&&$('#main').contains(ae)?ae.id:null; const sel=fid&&ae.selectionStart;
   let h=mtop();
   if(false) h+=`<div class="banner a">まだデータがありません。使用感を見るためのサンプル（担当者・顧客・予定・報告・打刻）を入れられます。<button class="btn sm pri" data-act="seed">サンプルデータを入れる</button><button class="btn sm" data-act="go" data-r="settings">自分で登録する</button></div>`;
-  h+=VIEWS[VS.route]();
-  $('#main').innerHTML=h;
+  h+=VIEWS[VS.route](); const _t3=performance.now();
+  $('#main').innerHTML=h; const _t4=performance.now(); console.log('[PERF] nav',Math.round(_t1-_t0),'sync',Math.round(_t2-_t1),'view',Math.round(_t3-_t2),'dom',Math.round(_t4-_t3),VS.route);
   if(fid){const el=byId(fid); if(el){el.focus(); try{el.setSelectionRange(sel,sel);}catch(_){}}}
 }
 
