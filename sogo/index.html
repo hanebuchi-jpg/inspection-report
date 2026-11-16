@@ -1353,7 +1353,7 @@ const ROLE_L={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営�
    予定（個人＋差配）・日常報告（タグ連動）・出退勤/タイムカード・顧客/担当別ビュー
    データ: 共有DB（db capability）。使えない環境ではメモリ上のサンプルで動作。
    ========================================================= */
-const COLS=['staff','customers','sites','jobs','events','reports','punches','wishes','fixreqs','meta','areas','patterns','shifts','bizlib','porders','resources','bookings','reslogs'];
+const COLS=['staff','customers','sites','jobs','events','reports','punches','wishes','fixreqs','meta','areas','patterns','shifts','bizlib','porders','resources','bookings','reslogs','prefs'];
 const TYPES=['作業','訪問・営業','社内・会議','休み・私用','シフト'];
 const R_KINDS=['日報','訪問報告','要対応・クレーム','その他'];
 const MODES={full:'フル機能',simple:'報告＋勤怠',report:'報告のみ',time:'勤怠のみ'};
@@ -1746,7 +1746,7 @@ VIEWS.reports=()=>{
   }
   let list=all('reports').filter(r=>inRp(r.date,R));
   if(simple) list=list.filter(r=>r.staffId===meId());
-  else if(P.repWho!=='all') list=list.filter(r=>P.repWho==='me'?r.staffId===meId():r.staffId===P.repWho);
+  else if(P.repWho!=='all'){ const w=P.repWho==='me'?meId():P.repWho; list=list.filter(r=>r.staffId===w||(r.tags||[]).some(t=>t.k==='staff'&&t.id===w)); }
   if(VS.repKind) list=list.filter(r=>VS.repKind==='need'?(r.kind==='要対応・クレーム'&&!r.resolved):r.kind===VS.repKind);
   if(VS.repTag){ const [k,id]=VS.repTag.split(':'); list=list.filter(r=>matchesEntity(reportTags(r),k,id)); }
   if(VS.repWork) list=list.filter(r=>(r.work||'')===VS.repWork);
@@ -2009,7 +2009,8 @@ SHEETS.report=()=>{
     </div>
     ${repVisitBox(r)}
     <label class="fld"><span>作業内容<span class="muted" style="font-weight:400"> — 一覧から選ぶか、そのまま入力</span></span>${workInput('data-rf="work"',r.work,'例：施工作業')}</label>
-    <div class="fld"><span>その他のタグ<span class="muted" style="font-weight:400"> — 担当・協力会社・案件など。本文から候補が出ます</span></span>
+    <div class="fld"><span>一緒に行った人<span class="muted" style="font-weight:400"> — いれば。その人の報告の絞り込みにも出ます</span></span>${rmWithHtml(r)}</div>
+    <div class="fld"><span>その他のタグ<span class="muted" style="font-weight:400"> — 協力会社・案件など。本文から候補が出ます</span></span>
       <div class="tags" id="rep-tags">${tagsEditHtml(r,sugs)}</div></div>
   </div>
   <details class="more" ${detailOpen?'open':''}><summary>詳細 <span class="s muted">タイトル・区分・関連する予定</span></summary><div class="in">
@@ -2030,7 +2031,7 @@ function addTag(r,t){
   if(t.k==='job'){ const st=get('jobs',t.id)?.siteId; if(st&&!has({k:'site',id:st})) r.tags.push({k:'site',id:st}); }
 }
 function tagsEditHtml(r,sugs){
-  const other=r.tags.filter(t=>t.k!=='customer'&&t.k!=='site');
+  const other=r.tags.filter(t=>t.k!=='customer'&&t.k!=='site'&&t.k!=='staff');
   return other.map(t=>tagHtml(t,{act:'repTagRm',x:true})).join('')+sugs.map(t=>tagHtml(t,{act:'repTagAdd',sug:true})).join('')+
     (!other.length&&!sugs.length?'<span class="hint">本文に名前を書くと、ここに候補が出ます</span>':'')+
     (sugs.length>1?`<button class="btn sm ghost" type="button" data-act="repTagAll">候補をすべて追加</button>`:'');
@@ -2038,6 +2039,7 @@ function tagsEditHtml(r,sugs){
 function refreshRepTags(){
   const r=sheet.r; const sugs=detectTags(r.body).filter(t=>!r.tags.some(x=>x.k===t.k&&x.id===t.id)&&!(r.off||[]).includes(t.k+':'+t.id));
   const el=$('#rep-tags'); if(el) el.innerHTML=tagsEditHtml(r,sugs);
+  const w=$('#rm-with'); if(w){ const tmp=document.createElement('div'); tmp.innerHTML=rmWithHtml(r); w.parentNode.replaceChild(tmp.firstElementChild,w); }
   refreshCs();
 }
 /* 顧客・現場の選択（検索＋一覧） */
@@ -4181,7 +4183,7 @@ function rfCond(skip){
   };
 }
 function rfMatch(r,c){
-  if(c.who&&r.staffId!==c.who) return false;
+  if(c.who&&r.staffId!==c.who&&!(r.tags||[]).some(t=>t.k==='staff'&&t.id===c.who)) return false;
   if(c.dept&&deptOf(r.staffId)!==c.dept) return false;
   if(c.tag){ const [k,id]=c.tag.split(':'); if(!matchesEntity(reportTags(r),k,id)) return false; }
   if(c.work&&(r.work||'')!==c.work) return false;
@@ -4194,7 +4196,8 @@ function rfCounts(facet){
   const R=rp(), c=rfCond(facet), cut=archOn()?archCut():null;
   const m=new Map(), add=(k,n)=>{ if(k==null) return; m.set(k,(m.get(k)||0)+(n||1)); };
   const keysOf=r=>{
-    if(facet==='who'||facet==='dept') return [r.staffId];
+    if(facet==='who') return [...new Set([r.staffId,...(r.tags||[]).filter(t=>t.k==='staff').map(t=>t.id)])];
+    if(facet==='dept') return [r.staffId];
     if(facet==='work') return [r.work||''];
     const out=new Set(); reportTags(r).forEach(t=>{ out.add(t.k+':'+t.id); const cu=custOfTag(t); if(cu&&t.k!=='customer') out.add('customer:'+cu); }); return [...out];
   };
@@ -4344,6 +4347,184 @@ docOn('toggle',e=>{ const d=e.target; if(d.dataset&&d.dataset.rfsec&&sheet?.kind
 #S .rcard .rf-by:hover{text-decoration-color:currentColor}
 `; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
 Object.assign(ACT_S,ACT_RF);
+/* =========================================================
+   日常報告：携帯で書きやすく
+   ・携帯（幅700px以下）では「日付・報告者は1行 → どこで（チップ）→ 何を（チップ）→ 一緒に行った人 → 内容」の順
+   ・本文を押すと「書くモード」（本文が画面いっぱい・キーボードの上に定型文バー）
+   ・定型文は人ごと（prefs/<自分のID>.phrases。未作成なら初期セット）
+   ・書いている途中は自動で下書き保存（この端末）。提出後は「続けてもう1件」
+   ・一緒に行った人（関連担当）は tags の staff として保存（PCの画面にも欄を追加）
+   ========================================================= */
+const rmNarrow=()=>matchMedia('(max-width:700px)').matches;
+const PH_DEF=['異常なし','作業完了','次回対応：','お客様より：','気づいたこと：'];
+function myPhrases(){ const p=get('prefs',meId()); return p&&Array.isArray(p.phrases)?p.phrases:(Array.isArray(P.phrases)?P.phrases:PH_DEF); }
+async function savePhrases(l){ P.phrases=l; savePrefs(); try{ const p=get('prefs',meId())||{}; await put('prefs',meId(),{...p,phrases:l}); }catch(_){} }
+/* --- どこで：今日の予定 → 自分の担当現場 → 最近の現場 --- */
+function rmPlaces(r){
+  const ids=[]; const add=id=>{ if(id&&get('sites',id)&&!ids.includes(id)) ids.push(id); };
+  evAll().filter(e=>e.date===r.date&&(e.staffIds||[]).includes(r.staffId)).sort(by(e=>e.start||'')).forEach(e=>add(e.siteId));
+  mySites().forEach(add); csRecent().forEach(add);
+  r.tags.filter(t=>t.k==='site').forEach(t=>{ if(!ids.includes(t.id)) ids.unshift(t.id); });
+  return ids.slice(0,6);
+}
+/* --- 何を：自分がよく使う作業内容 --- */
+function rmWorks(r){
+  const cnt={}; all('reports').filter(x=>x.staffId===meId()&&x.work).sort(by(x=>x.date,-1)).slice(0,120).forEach(x=>cnt[x.work]=(cnt[x.work]||0)+1);
+  const l=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]); workNames().forEach(n=>{ if(!l.includes(n)) l.push(n); });
+  const top=l.slice(0,5); if(r.work&&!top.includes(r.work)) top.unshift(r.work);
+  return top;
+}
+/* --- 一緒に行った人 --- */
+const rmWith=r=>r.tags.filter(t=>t.k==='staff'&&t.id!==r.staffId);
+function rmWithCands(r,q){
+  const cnt={}; all('reports').filter(x=>x.staffId===meId()).slice(-200).forEach(x=>(x.tags||[]).filter(t=>t.k==='staff').forEach(t=>cnt[t.id]=(cnt[t.id]||0)+1));
+  const dep=String(me()?.dept||''), today=evAll().filter(e=>e.date===r.date&&(e.staffIds||[]).includes(r.staffId)).flatMap(e=>e.staffIds||[]);
+  return staffList().filter(s=>s.id!==r.staffId&&s.kind!=='協力会社'&&(!q||nameHit(s,q)))
+    .map(s=>({s,w:(today.includes(s.id)?1000:0)+(cnt[s.id]||0)*10+(dep&&s.dept===dep?5:0)})).sort((a,b)=>b.w-a.w||a.s.name.localeCompare(b.s.name,'ja')).slice(0,q?20:8).map(x=>x.s);
+}
+function rmWithHtml(r){
+  const w=rmWith(r);
+  return `<div class="chips" id="rm-with">${w.map(t=>`<button type="button" data-act="rmWith" data-id="${t.id}" aria-pressed="true">✓ ${esc(staffName(t.id))}</button>`).join('')}<button type="button" data-act="rmWithOpen">${sheet.withOpen?'閉じる':'＋ 追加'}</button></div>
+    ${sheet.withOpen?`<div class="rm-wpick"><input class="inp" id="rm-wq" placeholder="名前で探す" value="${esc(sheet.wq||'')}" autocomplete="off"><div class="chips" id="rm-wlist">${rmWithListHtml(r)}</div></div>`:''}`;
+}
+function rmWithListHtml(r){ const on=id=>rmWith(r).some(t=>t.id===id); const l=rmWithCands(r,sheet.wq||''); return l.map(s=>`<button type="button" data-act="rmWith" data-id="${s.id}" aria-pressed="${on(s.id)}">${on(s.id)?'✓ ':''}${esc(s.name)}</button>`).join('')||'<span class="small muted">見つかりません</span>'; }
+function rmWithToggle(id){ const r=sheet.r, has=r.tags.some(t=>t.k==='staff'&&t.id===id); if(has){ r.tags=r.tags.filter(t=>!(t.k==='staff'&&t.id===id)); r.off=[...(r.off||[]),'staff:'+id]; } else { r.off=(r.off||[]).filter(x=>x!=='staff:'+id); r.tags.push({k:'staff',id}); } }
+
+/* --- 下書きの自動保存（この端末） --- */
+const DRAFT_KEY=()=>'rep-draft-'+meId();
+let draftT=null;
+function draftSave(){ const r=sheet?.r; if(!r||r.id||sheet.kind!=='report') return; clearTimeout(draftT); draftT=setTimeout(()=>{ try{ if(!String(r.body||'').trim()&&!r.tags.length&&!r.work){ localStorage.removeItem(DRAFT_KEY()); return; } localStorage.setItem(DRAFT_KEY(),JSON.stringify({r,at:Date.now()})); sheet.draftAt=Date.now(); const el=byId('rm-draft'); if(el) el.textContent='下書き保存済み '+nowHM(); }catch(_){} },600); }
+function draftGet(){ try{ const d=JSON.parse(localStorage.getItem(DRAFT_KEY())||'null'); if(d&&d.r&&Date.now()-d.at<7*864e5) return d; }catch(_){} return null; }
+const draftClear=()=>{ try{ localStorage.removeItem(DRAFT_KEY()); }catch(_){} };
+
+/* --- 携帯の報告画面 --- */
+function rmReportSheet(){
+  const r=sheet.r, isNew=!r.id;
+  const sugs=detectTags(r.body).filter(t=>t.k!=='staff'&&!r.tags.some(x=>x.k===t.k&&x.id===t.id)&&!(r.off||[]).includes(t.k+':'+t.id));
+  const dayEvs=evAll().filter(e=>e.date===r.date&&(e.staffIds||[]).includes(r.staffId)).sort(by(e=>e.start||''));
+  const on=(k,id)=>r.tags.some(t=>t.k===k&&t.id===id);
+  const places=rmPlaces(r), works=rmWorks(r), wOther=r.work&&!works.includes(r.work);
+  const otherTags=r.tags.filter(t=>!['customer','site','staff'].includes(t.k));
+  const custOnly=r.tags.filter(t=>t.k==='customer'&&!r.tags.some(x=>x.k==='site'&&get('sites',x.id)?.customerId===t.id));
+  const detailOpen=r.title||(r.kind&&r.kind!=='日報')||(r.eventIds||[]).length;
+  const body=`<div class="rm">
+    <div class="rm-top">${sheet.dateOpen?`<input class="inp" type="date" data-rf="date" value="${r.date}" style="max-width:170px">`:`<span>${jd(r.date)}・${esc(staffName(r.staffId))}</span>`}<button type="button" class="linkbtn" data-act="rmDate">${sheet.dateOpen?'閉じる':'日付を変更'}</button></div>
+    <div class="rm-h">どこで</div>
+    <div class="chips">${places.map(id=>`<button type="button" data-act="csPick" data-k="site" data-id="${id}" aria-pressed="${on('site',id)}">${on('site',id)?'✓ ':''}${esc(get('sites',id).name)}</button>`).join('')}${custOnly.map(t=>`<button type="button" data-act="csPick" data-k="customer" data-id="${t.id}" aria-pressed="true">✓ ${esc(tagName(t))}</button>`).join('')}${unregSelHtml(r)}<button type="button" data-act="csToggle">${sheet.pick?'閉じる':'＋ 探す'}</button></div>
+    ${sheet.pick?`<div id="cs-sel" hidden></div>${csPickHtml()}`:''}
+    <div class="rm-h">何を</div>
+    <div class="chips">${works.map(w=>`<button type="button" data-act="rmWork" data-v="${esc(w)}" aria-pressed="${r.work===w}">${r.work===w?'✓ ':''}${esc(w)}</button>`).join('')}<button type="button" data-act="rmWorkOther" aria-pressed="${!!(sheet.workOther||wOther)}">その他 ▾</button></div>
+    ${sheet.workOther||wOther?`<div style="margin-top:6px">${workInput('data-rf="work"',r.work,'作業内容を入力・選択')}</div>`:''}
+    <div class="rm-h">一緒に行った人 <span class="muted" style="font-weight:400">（いれば）</span></div>
+    ${rmWithHtml(r)}
+    <div class="rm-h" style="display:flex;align-items:center;gap:8px">内容${dayEvs.length&&!r.body?`<button type="button" class="btn sm" style="margin-left:auto" data-act="repDraft">今日の予定から下書き</button>`:''}</div>
+    <div class="rm-write mention">
+      <div class="rm-wh"><span class="small muted grow">${esc([r.tags.filter(t=>t.k==='site'||t.k==='customer').map(tagName)[0],r.work].filter(Boolean).join('・')||'内容')}</span><button type="button" class="btn sm pri" data-act="rmDone">完了</button></div>
+      <textarea class="inp" id="rep-body" data-rf="body" placeholder="例：作業内容、気づいたこと、お客様からの要望&#10;マイクのボタンで話して入力もできます">${esc(r.body)}</textarea>
+      <div id="mpop"></div>
+      <div class="rm-bar">${myPhrases().map((p,i)=>`<button type="button" data-act="rmPh" data-i="${i}">${esc(p)}</button>`).join('')}<button type="button" data-act="rmPrev" title="同じ現場の前回の報告をコピー">前回をコピー</button><button type="button" data-act="rmPhEdit" aria-label="定型文を編集">✎</button></div>
+    </div>
+    ${repVisitBox(r)}
+    ${otherTags.length||sugs.length?`<div class="rm-h">関連（本文から見つかった候補）</div><div class="tags" id="rep-tags">${tagsEditHtml(r,sugs)}</div>`:'<div id="rep-tags" hidden></div>'}
+    <div class="small muted" id="rm-draft">${isNew&&sheet.draftAt?'下書き保存済み':''}</div>
+  </div>
+  <details class="more" ${detailOpen?'open':''}><summary>詳細 <span class="s muted">タイトル・区分・関連する予定</span></summary><div class="in">
+    <div class="form">
+      <label class="fld"><span>タイトル</span><input class="inp" data-rf="title" value="${esc(r.title)}" placeholder="任意"></label>
+      <label class="fld"><span>区分</span><select class="inp" data-rf="kind">${R_KINDS.map(k=>`<option ${r.kind===k?'selected':''}>${k}</option>`).join('')}</select></label>
+    </div>
+    ${r.kind==='要対応・クレーム'&&!isNew?`<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-rf="resolved" ${r.resolved?'checked':''}> 対応済みにする</label>`:''}
+    ${dayEvs.length?`<div class="fld"><span>関連する予定（${jd(r.date)}）</span><div class="chips">${dayEvs.map(e=>`<button type="button" data-act="repEv" data-id="${e.id}" aria-pressed="${(r.eventIds||[]).includes(e.id)}">${e.start?e.start+' ':''}${esc(e.title)}</button>`).join('')}</div></div>`:''}
+  </div></details>`;
+  const foot=`${!isNew?'<button class="btn danger l" data-act="repDel">削除</button>':`${draftGet()&&String(r.body||'').trim()?'<button class="btn l ghost" data-act="rmDraftDel">下書きを消す</button>':''}`}<button class="btn" data-act="close">${isNew?'閉じる':'キャンセル'}</button><button class="btn pri" data-act="repSave">${isNew?'提出':'保存'}</button>`;
+  return {title:isNew?'報告を書く':'報告',body,foot,after:()=>rmAfter()};
+}
+/* 書くモード：本文に入ったら本文を画面いっぱいに（キーボードの分だけ高さを合わせる） */
+function rmAfter(){
+  const ta=byId('rep-body'); if(!ta) return; const sh=ROOT.querySelector('#overlay .sheet');
+  ta.addEventListener('focus',()=>{ sh&&sh.classList.add('wmode'); rmFit(); });
+  if(sheet.wmode){ sh&&sh.classList.add('wmode'); rmFit(); }
+}
+function rmFit(){ const sh=ROOT.querySelector('#overlay .sheet.wmode'); if(!sh) return; const vv=window.visualViewport; if(vv){ sh.style.height=vv.height+'px'; sh.style.top=vv.offsetTop+'px'; sh.style.bottom='auto'; } }
+function rmExit(){ const sh=ROOT.querySelector('#overlay .sheet'); if(sh){ sh.classList.remove('wmode'); sh.style.height=''; sh.style.top=''; sh.style.bottom=''; } sheet&&(sheet.wmode=false); byId('rep-body')?.blur(); }
+window.visualViewport&&window.visualViewport.addEventListener('resize',rmFit);
+window.visualViewport&&window.visualViewport.addEventListener('scroll',rmFit);
+function rmInsert(txt){
+  const ta=byId('rep-body'); if(!ta) return; const s=ta.selectionStart??ta.value.length, e=ta.selectionEnd??s, v=ta.value;
+  const pre=v.slice(0,s), needNl=pre&&!/\n$/.test(pre)&&/[：:]$/.test(txt)?'\n':'';
+  const ins=needNl+txt+(/[：:]$/.test(txt)?'':'。');
+  ta.value=pre+ins+v.slice(e); const pos=(pre+ins).length; ta.focus(); ta.setSelectionRange(pos,pos);
+  sheet.r.body=ta.value; refreshRepTags(); draftSave();
+}
+/* 前回の報告（同じ現場 → なければ自分の最新） */
+function rmPrevReport(r){
+  const site=r.tags.find(t=>t.k==='site')?.id, cust=r.tags.find(t=>t.k==='customer')?.id;
+  const mine=all('reports').filter(x=>x.staffId===meId()&&x.id!==r.id&&String(x.body||'').trim()).sort(by(x=>x.date+(x.time||''),-1));
+  return (site&&mine.find(x=>(x.tags||[]).some(t=>t.k==='site'&&t.id===site)))||(cust&&mine.find(x=>matchesEntity(x.tags||[],'customer',cust)))||(!site&&!cust?mine[0]:null);
+}
+SHEETS.rmPhrases=()=>{
+  const l=sheet.l;
+  return {title:'定型文の編集',body:`<div class="sec"><div class="small muted" style="margin-bottom:8px">報告の本文を書くときにワンタップで入れられる言葉です。あなた専用です。末尾が「：」のものは改行してから入ります。</div>
+    ${l.map((p,i)=>`<div class="toolbar" style="margin:0 0 6px"><input class="inp" data-phf="${i}" value="${esc(p)}"><button class="btn sm ghost" data-act="phMove" data-i="${i}" data-d="-1" ${i?'':'disabled'} aria-label="上へ">↑</button><button class="btn sm ghost" data-act="phMove" data-i="${i}" data-d="1" ${i<l.length-1?'':'disabled'} aria-label="下へ">↓</button><button class="btn sm ghost" data-act="phDel" data-i="${i}" aria-label="削除">✕</button></div>`).join('')}
+    <div class="toolbar" style="margin:6px 0 0"><button class="btn sm" data-act="phAdd">＋ 追加</button><button class="btn sm ghost" data-act="phReset">初期の内容に戻す</button></div></div>`,
+    foot:`<button class="btn" data-act="phBack">戻る</button><button class="btn pri" data-act="phSave">保存</button>`};
+};
+SHEETS.rmDone=()=>({title:'提出しました',body:`<div class="sec"><div class="callout" style="display:block">${esc(sheet.msg||'')}</div></div>`,
+  foot:`<button class="btn" data-act="close">閉じる</button><button class="btn pri" data-act="rmNext">続けてもう1件</button>`});
+Object.assign(ACT_S,{
+  rmDate(){ sheet.dateOpen=!sheet.dateOpen; renderOverlay(); },
+  rmWork(el){ const v=el.dataset.v; sheet.r.work=sheet.r.work===v?'':v; sheet.workOther=false; draftSave(); renderOverlay(); },
+  rmWorkOther(){ sheet.workOther=!sheet.workOther; renderOverlay(); if(sheet.workOther) setTimeout(()=>ROOT.querySelector('#overlay [data-rf="work"]')?.focus(),30); },
+  rmWith(el){ rmWithToggle(el.dataset.id); draftSave(); const a=byId('rm-with'); if(a){ const tmp=document.createElement('div'); tmp.innerHTML=rmWithHtml(sheet.r); a.parentNode.replaceChild(tmp.firstElementChild,a); const b=byId('rm-wlist'); if(b) b.innerHTML=rmWithListHtml(sheet.r); } else renderOverlay(); },
+  rmWithOpen(){ sheet.withOpen=!sheet.withOpen; sheet.wq=''; renderOverlay(); },
+  rmDone(){ rmExit(); },
+  rmPh(el){ const p=myPhrases()[+el.dataset.i]; if(p) rmInsert(p); },
+  rmPrev(){ const r=sheet.r, x=rmPrevReport(r); if(!x) return toast(r.tags.some(t=>t.k==='site'||t.k==='customer')?'この現場の前回の報告がありません':'前回の報告がありません');
+    const ta=byId('rep-body'); const add=String(x.body||'').trim(); r.body=r.body.trim()?r.body.replace(/\s*$/,'')+'\n'+add:add; if(ta){ ta.value=r.body; ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
+    if(!r.work&&x.work) r.work=x.work; refreshRepTags(); draftSave(); toast(`${jd(x.date)}の報告をコピーしました`); },
+  rmPhEdit(){ const keep=sheet; keep.wmode=!!ROOT.querySelector('#overlay .sheet.wmode'); openSheet({kind:'rmPhrases',l:[...myPhrases()],back:keep}); },
+  phAdd(){ sheet.l.push(''); renderOverlay(); setTimeout(()=>{ const a=ROOT.querySelectorAll('#overlay [data-phf]'); a[a.length-1]?.focus(); },30); },
+  phDel(el){ sheet.l.splice(+el.dataset.i,1); renderOverlay(); },
+  phMove(el){ const i=+el.dataset.i, j=i+(+el.dataset.d), l=sheet.l; if(j<0||j>=l.length) return; [l[i],l[j]]=[l[j],l[i]]; renderOverlay(); },
+  phReset(){ sheet.l=[...PH_DEF]; renderOverlay(); },
+  async phSave(){ const l=sheet.l.map(x=>String(x).trim()).filter(Boolean); await savePhrases(l); const b=sheet.back; sheet=b; renderOverlay(); toast('定型文を保存しました'); },
+  phBack(){ const b=sheet.back; sheet=b; renderOverlay(); },
+  rmDraftDel(){ draftClear(); sheet.r.body=''; sheet.r.tags=[]; sheet.r.work=''; sheet.draftAt=0; renderOverlay(); toast('下書きを消しました'); },
+  rmNext(){ const d=sheet.date; closeSheet(); newReport({date:d}); },
+});
+docOn('input',e=>{ const t=e.target;
+  if(t.id==='rm-wq'&&sheet?.kind==='report'){ sheet.wq=t.value; const b=byId('rm-wlist'); if(b) b.innerHTML=rmWithListHtml(sheet.r); }
+  if(t.dataset&&t.dataset.phf!=null&&sheet?.kind==='rmPhrases') sheet.l[+t.dataset.phf]=t.value;
+  if(sheet?.kind==='report'&&t.dataset&&t.dataset.rf) draftSave();
+});
+docOn('change',e=>{ if(sheet?.kind==='report'&&e.target.dataset&&e.target.dataset.rf) draftSave(); });
+(function(){ const css=`
+#S .rm{display:flex;flex-direction:column;gap:6px}
+#S .rm-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:14px;color:var(--muted);padding-bottom:2px}
+#S .rm-h{font-size:13px;font-weight:700;margin-top:8px}
+#S .rm .chips button{min-height:36px;font-size:14px}
+#S .rm-wpick{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+#S .rm-write{display:flex;flex-direction:column;gap:6px;position:relative}
+#S .rm-write textarea{min-height:150px;font-size:16px;line-height:1.6}
+#S .rm-wh{display:none;align-items:center;gap:8px}
+#S .rm-bar{display:flex;gap:6px;overflow-x:auto;padding:2px 0;-webkit-overflow-scrolling:touch}
+#S .rm-bar button{flex:none;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;cursor:pointer;white-space:nowrap}
+#S .sheet.wmode .sh,#S .sheet.wmode .sf,#S .sheet.wmode details.more{display:none}
+#S .sheet.wmode .sb{padding:8px 10px;gap:0}
+#S .sheet.wmode .rm>:not(.rm-write){display:none!important}
+#S .sheet.wmode .rm{flex:1;height:100%}
+#S .sheet.wmode .rm-write{flex:1;height:100%}
+#S .sheet.wmode .rm-wh{display:flex}
+#S .sheet.wmode .rm-write textarea{flex:1;min-height:0;height:auto;resize:none}
+#S .sheet.wmode #mpop{position:absolute;left:0;right:0;bottom:48px;z-index:3}
+`; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
+/* --- 既存の処理につなぐ --- */
+{ const rs0=SHEETS.report; SHEETS.report=()=>{ const r=sheet.r; if(rmNarrow()&&repMine(r)) return rmReportSheet(); return rs0(); }; }
+newReport=(nr0=>function(opt={}){ const d=!opt.body&&!(opt.tags||[]).length?draftGet():null;
+  if(d&&(!opt.date||opt.date===d.r.date)){ openSheet({kind:'report',r:{...d.r,id:null,off:d.r.off||[]},mp:null,draftAt:d.at}); toast('書きかけの下書きを開きました'); return; }
+  nr0(opt); })(newReport);
+saveReport=(sr0=>async function(){ const isNew=!sheet?.r?.id, d=sheet?.r?.date, k=sheet?.kind; await sr0(); if(k==='report'&&!sheet){ if(isNew) draftClear(); if(isNew&&rmNarrow()) openSheet({kind:'rmDone',date:d,msg:'報告を提出しました。別の現場の報告も続けて書けます。'}); } })(saveReport);
+ACT_S.csPick=el=>{ csPick(el.dataset.k,el.dataset.id); draftSave(); if(rmNarrow()){ const q=byId('cs-q')?.value; renderOverlay(); if(q!=null&&sheet.pick){ const i=byId('cs-q'); if(i){ i.value=q; } } } };
 
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
