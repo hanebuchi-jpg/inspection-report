@@ -1400,6 +1400,7 @@ const loaded=new Set(); const chains=new Map();
 const ARCH=new Map(), ARCH_Q=new Map();
 const all=c=>c==='reports'&&ARCH.size?[...D.reports.values(),...[...ARCH.values()].filter(r=>!D.reports.has(r.id))]:[...D[c].values()];
 const get=(c,id)=>id?(D[c].get(id)||(c==='reports'?ARCH.get(id):undefined)):undefined;
+const daysBetween=(a,b)=>Math.round((parseD(b)-parseD(a))/864e5);
 function archCut(){ const d=parseD(today()); d.setFullYear(d.getFullYear()-1); return ymd(d); }
 const archOn=()=>MODE==='db'&&!!(db&&db.archive);
 function archLoad(p){ // p:{from,to,q,staff,tags,limit} → 状態 {state,total,n}
@@ -1419,11 +1420,15 @@ let wkDlN=0;
 function workInput(attr,val,ph){ const id='dl-work-'+(++wkDlN); return `<input class="inp" ${attr} list="${id}" value="${esc(val||'')}" placeholder="${esc(ph||'')}" autocomplete="off"><datalist id="${id}">${workNames().map(n=>`<option value="${esc(n)}">`).join('')}</datalist>`; }
 async function workSave(l){ const m=get('meta','worktypes')||{}; await put('meta','worktypes',{...m,list:l}); }
 window.WORK={names:()=>workNames()};
+function archPages(p,pages){ // 新しい順に limit 件ずつ pages ページ分
+  const st=[]; for(let i=0;i<Math.max(1,pages||1);i++){ const x=archLoad({...p,offset:i*p.limit}); if(!x) return null; st.push(x); if(x.state!=='done'||x.n<p.limit) break; }
+  return {state:st.some(x=>x.state==='loading')?'loading':st.some(x=>x.state==='err')?'err':'done',err:(st.find(x=>x.err)||{}).err,total:st[0].total,n:st.reduce((a,x)=>a+x.n,0)};
+}
 function archNote(s,more){ // 一覧の下に出す一行
   if(!s) return '';
   if(s.state==='loading') return `<div class="small muted" style="margin:10px 2px">1年より前の報告を読み込み中…</div>`;
   if(s.state==='err') return `<div class="small muted" style="margin:10px 2px">1年より前の報告を読み込めませんでした（${esc(s.err)}）</div>`;
-  if(s.total>s.n) return `<div class="small muted" style="margin:10px 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">1年より前の報告は新しい順に${s.n}件まで表示しています（該当 ${s.total}件）<button class="btn sm" data-act="archMore" data-v="${more}">さらに読み込む</button></div>`;
+  if(s.state==='done'&&s.total>s.n) return `<div class="small muted" style="margin:10px 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">1年より前の報告は新しい順に${s.n}件まで表示しています（該当 ${s.total}件）<button class="btn sm" data-act="archMore" data-v="${more}">さらに読み込む</button></div>`;
   return '';
 }
 function chain(key,fn){const p=(chains.get(key)||Promise.resolve()).then(fn,fn);chains.set(key,p.catch(()=>{}));return p;}
@@ -1698,7 +1703,7 @@ function dayView(ids){
 function repCard(r){
   const need=r.kind==='要対応・クレーム';
   return `<button class="rcard" data-act="openReport" data-id="${r.id}"><div class="rh"><span class="dot" style="background:${pc(get('staff',r.staffId))}"></span><b>${esc(staffName(r.staffId))}</b>${r.kind&&r.kind!=='日報'?`<span class="pill ${need?(r.resolved?'g':'r'):''}">${esc(r.kind)}${need&&r.resolved?' 対応済':''}</span>`:''}${r.work?`<span class="pill">${esc(r.work)}</span>`:''}${r.title?`<b>${esc(r.title)}</b>`:''}<span class="small muted" style="margin-left:auto">${r.time||''}</span></div>
-    <div class="rb">${esc(r.body)}</div>${reportTags(r).length||(r.unreg||[]).length?`<div class="tags">${reportTags(r).map(t=>`<span class="tag t-${t.k}"><span class="k">${TAGK[t.k]}</span>${esc(tagName(t))}</span>`).join('')}${(r.unreg||[]).map(u=>`<span class="tag" style="border:1px dashed var(--line,#ccc)"><span class="k">${u.k==='site'?'現場':'顧客'}（未登録）</span>${esc(u.name)}</span>`).join('')}</div>`:''}</button>`;
+    <div class="rb">${esc(String(r.body||'').length>300?String(r.body).slice(0,300)+'…':r.body)}</div>${reportTags(r).length||(r.unreg||[]).length?`<div class="tags">${reportTags(r).map(t=>`<span class="tag t-${t.k}"><span class="k">${TAGK[t.k]}</span>${esc(tagName(t))}</span>`).join('')}${(r.unreg||[]).map(u=>`<span class="tag" style="border:1px dashed var(--line,#ccc)"><span class="k">${u.k==='site'?'現場':'顧客'}（未登録）</span>${esc(u.name)}</span>`).join('')}</div>`:''}</button>`;
 }
 /* 報告の期間 */
 const wkStart=d=>{ const x=parseD(d); return addDays(d,-((x.getDay()+6)%7)); };
@@ -1731,7 +1736,7 @@ VIEWS.reports=()=>{
     const staff=simple||P.repWho==='me'?meId():P.repWho&&P.repWho!=='all'?P.repWho:null;
     let tags=null; if(VS.repTag){ const [k,id]=VS.repTag.split(':'); tags=[{k,id}]; if(k==='customer') sitesOf(id).forEach(x=>tags.push({k:'site',id:x.id})); }
     const q=archQDeb((VS.repQ||'').trim());
-    arch=archLoad({from:R.from||null,to:R.to||null,q:q.length>=2?q:null,staff,tags,limit:VS.archLim||300});
+    arch=archPages({from:R.from||null,to:R.to||null,q:q.length>=2?q:null,staff,tags,limit:R.from&&R.to&&daysBetween(R.from,R.to)<=62?1000:300},VS.archPg);
   }
   let list=all('reports').filter(r=>inRp(r.date,R));
   if(simple) list=list.filter(r=>r.staffId===meId());
@@ -1756,7 +1761,7 @@ VIEWS.reports=()=>{
   </div>`;
   h+=`<div class="small muted" style="margin:-4px 0 10px">${R.u==='all'?'全期間':R.from===R.to?jd(R.from):`${jd(R.from)}〜${jd(R.to)}`}　${list.length}件</div>`;
   if(!list.length) return h+(arch&&arch.state==='loading'?archNote(arch,'rep'):`<div class="panel"><div class="pbody empty">この条件の報告はありません${R.u!=='all'&&VS.repQ?'<br><button class="btn sm" data-act="rpU" data-u="all" style="margin-top:8px">全期間で探す</button>':''}</div></div>`+archNote(arch,'rep'));
-  const shown=list.slice(0,VS.repShow||400);
+  const shown=list.slice(0,VS.repShow||200);
   let cur=''; h+=`<div class="rcards">`;
   shown.forEach(r=>{ if(r.date!==cur){cur=r.date; h+=`<div class="rdate">${jd(r.date)}</div>`;} h+=repCard(r); });
   h+=`</div>`;
@@ -2139,7 +2144,7 @@ SHEETS.rel=()=>{
   const {k,id}=sheet; const rec=get(TAGC[k],id); if(!rec) return {title:'見つかりません',body:'<div class="empty">削除された可能性があります</div>'};
   const f0=sheet.f||'all'; let arch=null;
   if(archOn()&&(f0==='all'||f0==='rep')){ const tags=[{k,id}]; if(k==='customer') sitesOf(id).forEach(x=>tags.push({k:'site',id:x.id})); if(k==='staff') tags.push({k:'partner',id}); if(k==='partner') tags.push({k:'staff',id});
-    arch=archLoad({staff:(k==='staff'||k==='partner')?id:null,tags,limit:sheet.archLim||100}); }
+    arch=archPages({staff:(k==='staff'||k==='partner')?id:null,tags,limit:100},sheet.archPg); }
   const a=relActivity(k,id); const t=today(); const f=sheet.f||'all';
   const items=[...(f==='all'||f==='ev'?a.evs.map(e=>({d:e.date,s:e.start||'',ty:'ev',x:e})):[]),...(f==='all'||f==='rep'?a.reps.map(r=>({d:r.date,s:r.time||'',ty:'rep',x:r})):[])];
   const fut=items.filter(i=>i.d>=t&&i.ty==='ev').sort(by(i=>i.d+i.s));
@@ -2747,8 +2752,8 @@ docOn('click',async ev=>{
     case 'repDel': if(!repMine(sheet.r)){ toast('自分の報告だけ削除できます'); break; } if(el.dataset.ok){ const rid=sheet.r.id;
         if(ARCH.has(rid)){ try{ if(D.reports.has(rid)) await del('reports',rid); await db.archive.del(rid); ARCH.delete(rid); dataVer++; }catch(e){ onWriteErr(e); break; } } else await del('reports',rid);
         closeSheet(); toast('削除しました'); } else { el.dataset.ok='1'; el.textContent='本当に削除'; } break;
-    case 'archMore': if(el.dataset.v==='rel'){ sheet.archLim=(sheet.archLim||100)*3; sheet.pastN=(sheet.pastN||60)+300; renderOverlay(); } else { VS.archLim=(VS.archLim||300)*3; VS.repShow=(VS.repShow||400)+900; render(); } break;
-    case 'repShowMore': VS.repShow=(VS.repShow||400)+400; render(); break;
+    case 'archMore': if(el.dataset.v==='rel'){ sheet.archPg=(sheet.archPg||1)+1; sheet.pastN=(sheet.pastN||60)+100; renderOverlay(); } else { VS.archPg=(VS.archPg||1)+1; VS.repShow=(VS.repShow||200)+300; render(); } break;
+    case 'repShowMore': VS.repShow=(VS.repShow||200)+200; render(); break;
     case 'relPastMore': sheet.pastN=(sheet.pastN||60)+100; renderOverlay(); break;
     case 'repMonth': VS.repMonth=ymAdd(VS.repMonth,+el.dataset.n); render(); break;
     case 'rpU': { const u=el.dataset.u; const cur=rp(); VS.rp=(u==='c'&&cur.u!=='all'&&cur.from)?{u:'c',from:cur.from,to:cur.to}:rpAt(u); render(); break; }
