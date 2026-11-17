@@ -6118,11 +6118,11 @@ function monthCalendar(vs){
 /* ---- 定期契約 ---- */
 VIEWS.contracts={
   shell:()=>`<div class="vhead"><h1>定期契約</h1><button class="btn" data-act="import">Excel（契約台帳）から取り込む</button><button class="btn" data-act="gen-all">日程をまとめて作成</button><button class="btn" data-act="new-daily">＋ 日常清掃</button><button class="btn pri" data-act="new-contract">＋ 定期契約</button></div>
-    <div class="toolbar"><div class="seg">${[['','すべて'],['regular','定期清掃'],['daily','日常清掃']].map(([k,l])=>`<button data-act="ctr-cat" data-v="${k}" aria-pressed="${(VS.ctrCat||'')===k}">${l}</button>`).join('')}</div><input class="inp search" id="ctrQ" placeholder="顧客・現場・作業内容で検索" value="${esc(VS.ctrQ)}">
+    <div class="toolbar"><div class="seg">${[['','すべて'],['regular','定期清掃'],['daily','日常清掃'],['chk','要確認']].map(([k,l])=>`<button data-act="ctr-cat" data-v="${k}" aria-pressed="${(VS.ctrCat||'')===k}">${l}</button>`).join('')}</div><input class="inp search" id="ctrQ" placeholder="顧客・現場・作業内容で検索" value="${esc(VS.ctrQ)}">
     <select class="inp filt" id="ctrCust" style="width:auto">${opt('','顧客：すべて',VS.ctrCust)}${all('customers').sort(by(c=>c.kana||c.name)).map(c=>opt(c.id,c.name,VS.ctrCust)).join('')}</select></div>`,
   body(){
     const q=VS.ctrQ.trim(), tm=ymOf(today());
-    const cs=all('contracts').filter(c=>(!VS.ctrCat||(VS.ctrCat==='daily')===isDaily(c))&&(!VS.ctrCust||c.customerId===VS.ctrCust)&&(!q||[custName(c.customerId),siteName(c.siteId),c.service,c.note].join(' ').includes(q)))
+    const cs=all('contracts').filter(c=>(!VS.ctrCat||(VS.ctrCat==='chk'?(c.chk||c.needsReview):(VS.ctrCat==='daily')===isDaily(c)))&&(!VS.ctrCust||c.customerId===VS.ctrCust)&&(!q||[custName(c.customerId),siteName(c.siteId),c.service,c.note].join(' ').includes(q)))
       .sort(by(c=>custName(c.customerId)+siteName(c.siteId)+(c.service||'')));
     if(!cs.length&&(VS.ctrCat||q||VS.ctrCust)) return `<div class="panel"><div class="pbody empty">${VS.ctrCat==='daily'?'日常清掃の契約はまだありません。「＋ 日常清掃」で登録します。':'該当する契約がありません'}</div></div>`;
     if(!cs.length) return `<div class="panel"><div class="pbody"><p>定期契約がまだありません。</p><p class="small muted">「＋ 定期契約」で1件ずつ登録するか、契約台帳のExcelから取り込めます。取り込んだあと「日程をまとめて作成」で、今後12か月分の作業予定ができます。</p></div></div>`;
@@ -6131,7 +6131,7 @@ VIEWS.contracts={
     return `<p class="small muted" style="margin:0 0 10px">${cs.length}件　今後12か月の売上見込み <b class="num">${man(annual)}</b></p>
     <div class="panel scroll"><table class="t"><thead><tr><th>顧客／現場</th><th>作業内容</th><th>周期</th><th class="r">単価×数量</th><th class="r">1回の金額</th><th class="r">原価・粗利率</th><th>担当</th><th>今後の予定</th></tr></thead><tbody>${
       cs.map(c=>{const mine=vs.filter(v=>v.contractId===c.id&&vMonth(v)>=tm&&isOpenVisit(v));const un=mine.filter(v=>!v.date).length;
-        return `<tr class="click" data-act="contract" data-id="${c.id}" style="${c.active===false?'opacity:.55':''}"><td>${esc(custName(c.customerId))}${exMark(c)}<div class="small muted">${esc(siteName(c.siteId))}</div></td><td>${esc(c.service)}${isOut(c)?' <span class="pill">外注</span>':''}${nextChange(c)?` <span class="pill a">${+nextChange(c).from.slice(5)}月〜 改定</span>`:''}${c.active===false?' <span class="pill r">停止</span>':''}${c.needsReview?' <span class="pill w">周期を確認</span>':''}</td><td>${esc(isDaily(c)?dailyLabel(c):cycleText(c.cycle))}${c.recog==='next'?'<div><span class="pill a">翌月計上</span></div>':''}</td><td class="r num" style="white-space:nowrap">${isHourly(c)?`${yen(c.unitPrice)}/h`:`${yen(c.unitPrice)}×${esc(c.qty||1)}${esc(c.unit||'')}`}</td><td class="r num">${yen(contractUnit(c))}</td><td class="r num small">${num(c.cost)||(isDaily(c)&&dailyCost(c)!=null)?`${yen(contractCostUnit(c))}<div class="muted">${contractUnit(c)?Math.round((1-contractCostUnit(c)/contractUnit(c))*100):0}%${/推定/.test(c.costNote||'')?' 推定':''}</div>`:'<span class="muted">未入力</span>'}</td><td class="small">${esc((c.staffIds||[]).map(staffName).join('・'))}</td><td class="small">${isDaily(c)?`<span class="muted">${esc(dailyNow(c))}</span>`:c.cycle?.kind==='flat'?'<span class="muted">月額</span>':mine.length?`${mine.length}件${un?` <span class="pill w">未定${un}</span>`:''}`:'<span class="muted">未作成</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
+        return `<tr class="click" data-act="contract" data-id="${c.id}" style="${c.active===false?'opacity:.55':''}"><td>${esc(custName(c.customerId))}${exMark(c)}<div class="small muted">${esc(siteName(c.siteId))}</div></td><td>${esc(c.service)}${isOut(c)?' <span class="pill">外注</span>':''}${nextChange(c)?` <span class="pill a">${+nextChange(c).from.slice(5)}月〜 改定</span>`:''}${c.active===false?' <span class="pill r">停止</span>':''}${c.needsReview?' <span class="pill w">周期を確認</span>':''}${c.chk?' <span class="pill w">要確認</span>':''}</td><td>${esc(isDaily(c)?dailyLabel(c):cycleText(c.cycle))}${c.recog==='next'?'<div><span class="pill a">翌月計上</span></div>':''}</td><td class="r num" style="white-space:nowrap">${isHourly(c)?`${yen(c.unitPrice)}/h`:`${yen(c.unitPrice)}×${esc(c.qty||1)}${esc(c.unit||'')}`}</td><td class="r num">${yen(contractUnit(c))}</td><td class="r num small">${num(c.cost)||(isDaily(c)&&dailyCost(c)!=null)?`${yen(contractCostUnit(c))}<div class="muted">${contractUnit(c)?Math.round((1-contractCostUnit(c)/contractUnit(c))*100):0}%${/推定/.test(c.costNote||'')?' 推定':''}</div>`:'<span class="muted">未入力</span>'}</td><td class="small">${esc((c.staffIds||[]).map(staffName).join('・'))}</td><td class="small">${isDaily(c)?`<span class="muted">${esc(dailyNow(c))}</span>`:c.cycle?.kind==='flat'?'<span class="muted">月額</span>':mine.length?`${mine.length}件${un?` <span class="pill w">未定${un}</span>`:''}`:'<span class="muted">未作成</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
   }
 };
 
@@ -6639,7 +6639,7 @@ SHEETS.siteView=({id})=>{
   ${s.note?`<div class="callout w">${esc(s.note)}</div>`:''}
   <div class="money"><div><div class="l">定期契約</div><div class="v num">${ks.filter(x=>x.active!==false).length}件</div></div><div><div class="l">今後12か月の定期売上</div><div class="v num">${man(yr)}</div></div><div><div class="l">スポット案件</div><div class="v num">${spot.length}件</div></div><div><div class="l">スポット売上（受注済み）</div><div class="v num">${man(spot.filter(j=>['受注','施工','完了'].includes(j.stage)).reduce((a,j)=>a+jobMoney(j).sales,0))}</div></div></div>
   ${dailySecList(dlyS,s.customerId,id)}<section class="sec"><h3>定期契約 <span class="num muted">${ks.length}</span><span class="sp"><button class="btn sm" data-act="new-contract" data-cust="${s.customerId}" data-site="${id}">＋ 定期契約</button></span></h3>
-    ${ks.length?`<div class="list">${ks.map(x=>`<div class="li" data-act="contract" data-id="${x.id}" style="${x.active===false?'opacity:.55':''}"><div class="grow">${esc(x.service)}${x.active===false?' <span class="pill r">停止</span>':''}${x.needsReview?' <span class="pill w">周期を確認</span>':''}<div class="small muted">${esc(cycleText(x.cycle))}　${esc((x.staffIds||[]).map(staffName).join('・'))}</div></div><span class="num">${yen(contractUnit(x))}${x.cycle?.kind==='flat'?'/月':'/回'}</span></div>`).join('')}</div>`:'<p class="empty">定期契約はありません。</p>'}</section>
+    ${ks.length?`<div class="list">${ks.map(x=>`<div class="li" data-act="contract" data-id="${x.id}" style="${x.active===false?'opacity:.55':''}"><div class="grow">${esc(x.service)}${x.active===false?' <span class="pill r">停止</span>':''}${x.needsReview?' <span class="pill w">周期を確認</span>':''}${x.chk?' <span class="pill w">要確認</span>':''}<div class="small muted">${esc(cycleText(x.cycle))}　${esc((x.staffIds||[]).map(staffName).join('・'))}</div></div><span class="num">${yen(contractUnit(x))}${x.cycle?.kind==='flat'?'/月':'/回'}</span></div>`).join('')}</div>`:'<p class="empty">定期契約はありません。</p>'}</section>
   <section class="sec"><h3>スポット案件 <span class="num muted">${spot.length}</span><span class="sp"><button class="btn sm" data-act="new-job" data-cust="${s.customerId}" data-site="${id}">＋ 案件</button></span></h3>
     ${spot.length?`<div class="list">${spot.map(jobRow).join('')}</div>`:'<p class="empty">スポット案件はありません。</p>'}
     ${regJobs.length?`<h3 style="margin:12px 0 6px">定期関連の案件 <span class="num muted">${regJobs.length}</span></h3><div class="list">${regJobs.map(jobRow).join('')}</div>`:''}</section>
@@ -8375,6 +8375,98 @@ docOn('change',async e=>{ const t=e.target;
     try{ const img=await sealFromFile(t.files[0]); await S_API.put('seals','kakuin',{img,size:21,by:SHELL.meId(),at:new Date().toISOString()}); toast('角印を登録しました'); render(); }catch(err){ toast('登録できませんでした（'+(err.message||err)+'）'); } }
   if(t.id==='seal-size'){ const d=sealDoc(); if(d) { await S_API.put('seals','kakuin',{...d,size:Math.max(10,Math.min(40,+t.value||21))}); render(); } } });
 Object.assign(ACT_G,{ async 'seal-del'(){ if(roleOf(meStaff())!=='admin') return; if(!confirm('角印の登録を消しますか？')) return; await S_API.del('seals','kakuin'); toast('消しました'); render(); } });
+
+/* =========================================================
+   売上・仕入の照合CSV（2026年度）の取り込み
+   ・取り込む行：区分が「売仕入一致」「売仕入一致（資料差替）」「資料追加（マンション収支表…）」
+   ・取り込まない行：「資料追加（契約資料）」（すでに定期契約にある）、「施工月分」（月ごとの請求合計で作業内容がない）
+   ・顧客は名前で照合（株式会社などを除いて比較）。なければ追加。現場は顧客ごとに追加
+   ・発注業者は協力会社と名前で照合し、なければ協力会社として追加。発注金額を原価に
+   ・要確認は契約に印（chk）。周期が読み取れないものは「周期を確認」
+   ・同じ行をもう一度取り込んでも重ならない（IDが同じ・既にあるものは上書きしない）
+   ========================================================= */
+function csvParse(text){ const out=[]; let row=[],f='',q=false;
+  for(let i=0;i<text.length;i++){ const ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){ f+='"'; i++; } else q=false; } else f+=ch; }
+    else if(ch==='"') q=true; else if(ch===','){ row.push(f); f=''; } else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&text[i+1]==='\n') i++; row.push(f); out.push(row); row=[]; f=''; } else f+=ch; }
+  if(f!==''||row.length){ row.push(f); out.push(row); } return out.filter(r=>r.some(x=>x!=='')); }
+const nk=s=>String(s??'').normalize('NFKC').trim();
+const ckey=s=>nk(s).replace(/株式会社|\(株\)|（株）|有限会社|\(有\)|合同会社|医療法人(社団)?|社会福祉法人|一般社団法人|\s/g,'').toLowerCase();
+function h10(s){ let h1=0x811c9dc5,h2=0x1000193; for(const c of s){ const x=c.codePointAt(0); h1=Math.imul(h1^x,16777619)>>>0; h2=Math.imul(h2+x,2246822519)>>>0; } return (h1.toString(16).padStart(8,'0')+h2.toString(16).padStart(8,'0')).slice(0,10); }
+const PART_ALIAS={'インプ':'インプレスサービス','住宅ケンコウ':'住宅ケンコウ社中部','豊真メンテナンス(伊藤真二郎)':'豊真メンテナンス','カメガイ':'カメガイ防災設備','カメガイ防災':'カメガイ防災設備','三和シヤッター':'三和シャッター','三和シャッター工業株式会社':'三和シャッター','ALSOCK':'ALSOK','綜合警備保障':'ALSOK','綜合警備保障株式会社':'ALSOK','トライアングル':'トライアングル東海','リンデン':'リンデンクリーナー'};
+const IMP_KINDS=['売仕入一致（資料差替）','売仕入一致','資料追加（マンション収支表41期）'];
+function csvCycle(r){
+  const p=nk(r['周期']), mt=nk(r['施工月/実績月']);
+  const ms=[...new Set([...mt.matchAll(/(\d{1,2})月/g)].map(m=>+m[1]))].sort((a,b)=>a-b);
+  let pm=[...new Set([...p.replace(/\d+ヶ月|\d+年|年\d+回|週\d+回|\d+回/g,'').matchAll(/(\d{1,2})(?=[・月）)]|$)/g)].map(m=>+m[1]).filter(x=>x>=1&&x<=12))].sort((a,b)=>a-b);
+  if(p.includes('偶数月')) pm=[2,4,6,8,10,12]; if(p.includes('奇数月')) pm=[1,3,5,7,9,11];
+  if(/週\d+回|常駐|毎日/.test(p)) return [{kind:'flat'},false];
+  let m=p.match(/(\d+)年に1回/); if(m){ const a=(ms[0]||pm[0]); return [{kind:'interval',every:12*+m[1],anchor:a?`2026-${String(a).padStart(2,'0')}`:''},!a]; }
+  if(p.includes('毎月')) return [{kind:'months',months:[1,2,3,4,5,6,7,8,9,10,11,12]},false];
+  const cand=pm.length?pm:ms; if(cand.length) return [{kind:'months',months:cand},/推定|？|\?/.test(p)];
+  m=p.match(/(\d+)ヶ月/); if(m) return [{kind:'interval',every:+m[1],anchor:''},true];
+  const a=parseFloat(r['年額(受注)']), u=parseFloat(r['受注金額(税抜/1回)']); if(a&&u&&Math.abs(a/u-12)<0.01) return [{kind:'months',months:[1,2,3,4,5,6,7,8,9,10,11,12]},true];
+  return [{kind:'months',months:[]},true];
+}
+function csvPlan(text){
+  const t=csvParse(text.replace(/^﻿/,'')); const head=t[0]; const rows=t.slice(1).map(a=>Object.fromEntries(head.map((h,i)=>[h,a[i]??''])));
+  if(!head.includes('受注金額(税抜/1回)')||!head.includes('区分')) throw new Error('この形式のCSVではありません（「区分」「受注金額(税抜/1回)」の列が必要です）');
+  const now=new Date().toISOString(), imp=today();
+  const custByKey=new Map(); all('customers').forEach(c=>{ const k=ckey(c.name); if(!custByKey.has(k)) custByKey.set(k,c.id); });
+  const partByKey=new Map(); all('staff').filter(s=>s.kind==='協力会社').forEach(s=>partByKey.set(ckey(s.name),s.id));
+  const items=[], newC=new Map(), newS=new Map(), newP=new Map(); const st={rows:rows.length,target:0,skipped:{},custMatch:new Set(),chk:0,rev:0,inactive:0,exists:0};
+  const num=v=>{ const x=parseFloat(v); return isFinite(x)?Math.round(x*100)/100:null; };
+  const custId=n=>{ const k=ckey(n); if(custByKey.has(k)){ st.custMatch.add(nk(n)); return custByKey.get(k); } const id='cc26_'+h10(k); if(!newC.has(id)) newC.set(id,{name:nk(n),src:'csv2026',imp,note:'2026年度 売上・仕入の照合CSVから取り込み',createdAt:now}); return id; };
+  const siteId=(cid,n)=>{ n=nk(n)||'（現場名なし）'; const id='sc26_'+h10(cid+'|'+ckey(n)); if(!newS.has(id)&&!get('sites',id)){ const ex=all('sites').find(s=>s.customerId===cid&&ckey(s.name)===ckey(n)); if(ex) return ex.id; newS.set(id,{name:n,customerId:cid,imp,createdAt:now}); } return id; };
+  const partId=n=>{ n=nk(n); n=PART_ALIAS[n]||n; if(!n||n==='自社'||n==='管理人') return null; const k=ckey(n); if(partByKey.has(k)) return partByKey.get(k); const id='pc26_'+h10(k); newP.set(id,{name:n,company:n,kind:'協力会社',role:'',mode:'report',contacts:[],imp,createdAt:now}); partByKey.set(k,id); return id; };
+  rows.forEach((r,i)=>{
+    if(!IMP_KINDS.includes(r['区分'])){ st.skipped[r['区分']||'（区分なし）']=(st.skipped[r['区分']||'（区分なし）']||0)+1; return; }
+    st.target++;
+    const cid=custId(r['顧客']), sid=siteId(cid,r['現場']);
+    let svc=nk(r['作業内容'])||'（作業内容なし）', end='', active=true, start='';
+    let m=svc.match(/(\d{4})\.(\d{1,2})\s*解約/); if(m){ end=`${m[1]}-${String(m[2]).padStart(2,'0')}-28`; active=(+m[1]*100+ +m[2])>=(+today().slice(0,4)*100+ +today().slice(5,7)); }
+    m=svc.match(/契約開始\s*(\d{4})\.(\d{1,2})/); if(m) start=`${m[1]}-${String(m[2]).padStart(2,'0')}-01`;
+    if(nk(r['テナント'])) svc=nk(r['テナント'])+' '+svc;
+    const [cy,rev]=csvCycle(r); const price=num(r['受注金額(税抜/1回)']), cost=num(r['発注金額(1回)']); const pid=partId(r['発注業者']);
+    const chk=[nk(r['要確認'])].filter(Boolean); if(price==null) chk.push('受注金額なし（仕入のみの行）');
+    const notes=[]; if(nk(r['周期'])) notes.push('周期（元の記載）：'+nk(r['周期'])); if(nk(r['施工月/実績月'])) notes.push('施工月：'+nk(r['施工月/実績月']));
+    if(nk(r['発注業者'])) notes.push('発注業者：'+nk(r['発注業者'])+(nk(r['仕入周期'])?`（仕入周期：${nk(r['仕入周期'])}）`:''));
+    if(nk(r['補正内容'])) notes.push('補正：'+nk(r['補正内容'])+(r['発注金額(補正前)']?`（補正前の発注金額 ${r['発注金額(補正前)']}）`:''));
+    if(nk(r['年額(受注)'])) notes.push('年額（受注）：'+nk(r['年額(受注)']));
+    notes.push('出典：'+nk(r['出典'])+'／'+nk(r['区分'])+(r['コード']?`／コード ${r['コード']}`:''));
+    const id='kc26_'+String(i).padStart(4,'0')+'_'+h10(cid+sid+svc+(price??'')+(cost??''));
+    if(get('contracts',id)){ st.exists++; return; }
+    if(rev) st.rev++; if(chk.length) st.chk++; if(!active) st.inactive++;
+    items.push({col:'contracts',id,data:{customerId:cid,siteId:sid,service:svc,unitPrice:price??0,qty:1,unit:cy.kind==='flat'?'月':'回',cost:cost??'',cycle:cy,start,end,active,recog:'same',staffIds:pid?[pid]:[],partnerType:pid?'外注':'自社',needsReview:!!rev,cycleRaw:nk(r['周期']),chk:chk.join('・'),note:notes.join('\n'),imp,src:'csv2026',createdAt:now}});
+  });
+  const pre=[...[...newC].filter(([id])=>!get('customers',id)).map(([id,data])=>({col:'customers',id,data})),...[...newS].filter(([id])=>!get('sites',id)).map(([id,data])=>({col:'sites',id,data})),...[...newP].filter(([id])=>!get('staff',id)).map(([id,data])=>({col:'staff',id,data}))];
+  return {items:[...pre,...items],st,newC:pre.filter(x=>x.col==='customers').length,newS:pre.filter(x=>x.col==='sites').length,newP:pre.filter(x=>x.col==='staff'),nCtr:items.length};
+}
+SHEETS.csvImp=(st)=>{ const p=st.plan;
+  if(st.done) return {title:'取り込み完了',body:`<p>${st.done}件を取り込みました。</p><p class="small muted">定期契約の一覧で「要確認」「周期を確認」の印が付いた契約を確認してください。作業予定（日程）はまだ作っていません。確認後に「日程をまとめて作成」で作れます。</p>`,foot:`<button class="btn pri" data-act="close-sheet">閉じる</button>`};
+  if(!p) return {title:'売上・仕入の照合CSVを取り込む',body:`<p class="small">2026年度の「売上・仕入の照合CSV」を選んでください。中身を確認してから取り込みます。</p><input type="file" accept=".csv,text/csv" id="ci-file">${st.err?`<div class="callout w" style="margin-top:8px">${esc(st.err)}</div>`:''}`,foot:`<button class="btn" data-act="close-sheet">閉じる</button>`};
+  const s=p.st; const sk=Object.entries(s.skipped);
+  return {title:'取り込みの確認',body:`<div class="money"><div><div class="l">取り込む契約</div><div class="v num">${p.nCtr}件</div></div><div><div class="l">新しい顧客</div><div class="v num">${p.newC}社</div></div><div><div class="l">新しい現場</div><div class="v num">${p.newS}</div></div><div><div class="l">新しい協力会社</div><div class="v num">${p.newP.length}社</div></div></div>
+    <ul class="small" style="line-height:1.8">
+      <li>CSV ${s.rows}行のうち、契約の明細 ${s.target}行が対象です${s.exists?`（うち${s.exists}件は取り込み済みのため飛ばします）`:''}。</li>
+      <li>既存の顧客と名前が一致：${s.custMatch.size}社（${esc([...s.custMatch].slice(0,8).join('、'))}${s.custMatch.size>8?' ほか':''}）</li>
+      <li>「要確認」の印を付ける契約：${s.chk}件／周期を確認する契約：${s.rev}件／解約済みで停止にする契約：${s.inactive}件</li>
+      ${sk.length?`<li>取り込まない行：${sk.map(([k,v])=>`${esc(k)} ${v}行`).join('、')}（契約資料はすでに定期契約にあり、施工月分は月ごとの請求合計で作業内容がないため）</li>`:''}
+      ${p.newP.length?`<li>追加する協力会社：${esc(p.newP.map(x=>x.data.name).join('、'))}</li>`:''}
+    </ul>${st.prog?`<div class="callout"><span>取り込み中… ${st.prog}</span></div>`:''}`,
+    foot:`<button class="btn" data-act="close-sheet">やめる</button><button class="btn pri" data-act="ci-go" ${st.prog?'disabled':''}>${p.items.length}件を取り込む</button>`}; };
+Object.assign(ACT_G,{
+  'ci-open'(){ if(!can('import')) return toast('取り込みは管理者だけができます'); openSheet({kind:'csvImp',live:false}); },
+  async 'ci-go'(){ const st=sheet; if(!st?.plan||st.prog) return; st.prog='0/'+st.plan.items.length; refreshSheet();
+    await putMany(st.plan.items,(d,n)=>{ st.prog=`${d}/${n}`; if(d%25===0||d===n) refreshSheet(); });
+    st.done=st.plan.nCtr; refreshSheet(); toast('取り込みました'); },
+});
+docOn('change',async e=>{ const t=e.target; if(t.id!=='ci-file'||sheet?.kind!=='csvImp'||!t.files[0]) return;
+  try{ const txt=await t.files[0].text(); sheet.plan=csvPlan(txt); sheet.err=''; }catch(err){ sheet.err=err.message||String(err); } refreshSheet(); });
+{ const d0=MTABS.data; MTABS.data=()=>`<section class="sec"><h3>売上・仕入の照合CSV（2026年度）</h3><p class="small muted" style="margin:0 0 8px">契約の明細（売仕入一致・マンション収支表）を定期契約として取り込みます。顧客・現場・協力会社は名前で照合し、ないものは追加します。</p><button class="btn" data-act="ci-open">CSVを選んで取り込む</button></section>`+d0(); }
+/* 要確認の印 */
+{ const sc0=SHEETS.contract; SHEETS.contract=st=>{ const o=sc0(st); const c=st.draft; return c&&c.chk?{...o,body:`<div class="callout w"><span><b>要確認</b>：${esc(c.chk)}（取り込み元のCSVで確認が必要とされた項目です。確認したら下のボタンで印を外してください）</span><button class="btn sm" data-act="chk-clear">確認した</button></div>`+o.body}:o; }; }
+Object.assign(ACT_G,{ 'chk-clear'(){ readDraftForm(); sheet.draft.chk=''; refreshSheet(); toast('印を外しました（保存で確定）'); } });
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
