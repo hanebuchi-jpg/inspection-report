@@ -5621,7 +5621,7 @@ const jobNo=()=>{const d=new Date();return `J${String(d.getFullYear()).slice(2)}
 const D={}; COLS.forEach(c=>D[c]=new Map());
 let db=null, MODE='loading', viewerId=null, downloads=null, assets=null, readOnly=false;
 const loaded=new Set(); const chains=new Map();
-const all=c=>[...D[c].values()];
+const all=c=>{ const a=[...D[c].values()]; return (typeof ANA_CTX!=='undefined'&&ANA_CTX&&typeof anaScope==='function')?anaScope(c,a):a; };
 const get=(c,id)=>id?D[c].get(id):undefined;
 const S=()=>({...DEFAULT_SETTINGS,...(D.settings.get('main')||{})});
 
@@ -7521,7 +7521,7 @@ function poOrderExtras(o,st){
    ========================================================= */
 const LV={admin:1,lead:2,manager:3,staff:4,part:5,kiosk:8,partner:9};
 const DEFAULT_MODE={admin:'full',lead:'full',manager:'full',staff:'simple',part:'time',partner:'report',kiosk:'time'};
-const EXTRA_L={'cost.view':'原価・粗利を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
+const EXTRA_L={'cost.view':'原価・粗利を見る','ana.all':'全員の分析を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
 const roleOf=s=>s?.kind==='協力会社'?'partner':(s?.role&&LV[s.role]?s.role:'staff');
 const meStaff=()=>get('staff',SHELL.meId());
 function approverFor(rid){
@@ -8194,6 +8194,7 @@ const PERM_ROWS=[
   ['利用者の追加・編集','staff.edit','段階・区分の変更は管理者だけ'],
   ['勤怠の締め','time.close','締めの解除は管理者だけ'],
   ['予約できるもの・予定の種別の設定','res.edit',''],
+  ['分析で全員分を見る（ほかの人は自分が営業担当の分だけ）',['admin','lead'],'ほかの人にも個別に付与できます'],
   ['時給・人件費（現場別費用）を見る','wage.view','個別に付与（管理者は常に可）'],
   ['時給の変更','wage.edit','個別に付与（管理者は常に可）'],
   ['見積書・発注書に角印を押す',['admin','lead'],'ほかの人にも個別に付与できます。承認前でも押せ、押したかどうかは記録されます'],
@@ -8201,7 +8202,7 @@ const PERM_ROWS=[
   ['会社設定・承認ルールの変更','settings.edit',''],
   ['データの取り込み・バックアップ・削除','import',''],
 ];
-const SET_EXTRA_L={'cost.view':'原価・粗利を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
+const SET_EXTRA_L={'cost.view':'原価・粗利を見る','ana.all':'全員の分析を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
 MTABS.auth=()=>{
   const me=meStaff(), myRole=roleOf(me);
   const rows=PERM_ROWS.map(([l,k,n])=>{ const rs=Array.isArray(k)?k:(PERMS[k]||[]); return `<tr><td>${esc(l)}${n?`<div class="small muted">${esc(n)}</div>`:''}</td>${SET_ROLES.map(r=>`<td class="c" style="text-align:center">${rs.includes(r)?'<b style="color:var(--good)">○</b>':'<span class="muted">－</span>'}</td>`).join('')}</tr>`; }).join('');
@@ -8467,6 +8468,119 @@ docOn('change',async e=>{ const t=e.target; if(t.id!=='ci-file'||sheet?.kind!=='
 /* 要確認の印 */
 { const sc0=SHEETS.contract; SHEETS.contract=st=>{ const o=sc0(st); const c=st.draft; return c&&c.chk?{...o,body:`<div class="callout w"><span><b>要確認</b>：${esc(c.chk)}（取り込み元のCSVで確認が必要とされた項目です。確認したら下のボタンで印を外してください）</span><button class="btn sm" data-act="chk-clear">確認した</button></div>`+o.body}:o; }; }
 Object.assign(ACT_G,{ 'chk-clear'(){ readDraftForm(); sheet.draft.chk=''; refreshSheet(); toast('印を外しました（保存で確定）'); } });
+
+/* =========================================================
+   営業担当（顧客ごと）と、分析の絞り込み
+   ・顧客 ownerIds（複数可）。契約 ownerIds があればそちらを優先（空欄＝顧客の担当）。案件は ownerId → なければ顧客の担当
+   ・分析：担当／施工担当／顧客／現場／区分／月で絞り込み。表示中は all() が絞り込んだデータを返す
+   ・全員分を見られるのは 権限1・2 と「全員の分析を見る」を付けた人。それ以外は自分の担当分に固定（画面上の固定）
+   ========================================================= */
+const canAllAna=()=>{ const m=meStaff(), r=roleOf(m); return r==='admin'||r==='lead'||(m?.extra||[]).includes('ana.all'); };
+const custOwners=cid=>get('customers',cid)?.ownerIds||[];
+const ctrOwners=c=>(c.ownerIds&&c.ownerIds.length)?c.ownerIds:custOwners(c.customerId);
+const jobOwners=j=>j.ownerId?[j.ownerId]:custOwners(j.customerId);
+function anaF(){ const f={owner:'',worker:'',cust:'',site:'',cat:'',month:'',...(VS.anaF||{})}; if(!canAllAna()) f.owner=SHELL.meId(); return f; }
+const anaActive=f=>!!(f.owner||f.worker||f.cust||f.site||f.cat||f.month);
+var ANA_CTX=null;
+function anaBuild(){ const f=anaF(); if(!anaActive(f)) return null;
+  const raw=c=>D[c]?[...D[c].values()]:[];
+  const vs=raw('visits'), os=raw('orders');
+  const vByCtr=new Map(), vByJob=new Map(); vs.forEach(v=>{ if(v.contractId) (vByCtr.get(v.contractId)||vByCtr.set(v.contractId,[]).get(v.contractId)).push(v); if(v.jobId) (vByJob.get(v.jobId)||vByJob.set(v.jobId,[]).get(v.jobId)).push(v); });
+  const w=f.worker;
+  const ctr=new Set(raw('contracts').filter(c=>(!f.cust||c.customerId===f.cust)&&(!f.site||c.siteId===f.site)
+    &&(!f.cat||(f.cat==='daily'?isDaily(c):f.cat==='regular'?!isDaily(c):false))
+    &&(!f.owner||ctrOwners(c).includes(f.owner))
+    &&(!w||(c.staffIds||[]).includes(w)||(vByCtr.get(c.id)||[]).some(v=>(v.staffIds||[]).includes(w)))).map(c=>c.id));
+  const job=new Set(raw('jobs').filter(j=>(!f.cust||j.customerId===f.cust)&&(!f.site||j.siteId===f.site)
+    &&(!f.cat||f.cat==='spot')&&(!f.owner||jobOwners(j).includes(f.owner))
+    &&(!w||os.some(o=>o.jobId===j.id&&o.supplierId===w)||(vByJob.get(j.id)||[]).some(v=>(v.staffIds||[]).includes(w)))).map(j=>j.id));
+  const mon=x=>!f.month||x===f.month;
+  return {f,ctr,job,
+    contracts:x=>x.filter(c=>ctr.has(c.id)),
+    jobs:x=>x.filter(j=>job.has(j.id)),
+    visits:x=>x.filter(v=>(v.contractId?ctr.has(v.contractId):v.jobId?job.has(v.jobId):!f.cust&&!f.owner&&!f.cat)&&(!w||(v.staffIds||[]).includes(w)||(v.contractId&&!(v.staffIds||[]).length&&(get('contracts',v.contractId)?.staffIds||[]).includes(w)))&&mon(vMonth(v))),
+    quotes:x=>x.filter(q=>job.has(q.jobId)),
+    orders:x=>x.filter(o=>job.has(o.jobId)&&(!w||o.supplierId===w)),
+    customers:x=>x.filter(c=>(!f.cust||c.id===f.cust)&&(!f.owner||(c.ownerIds||[]).includes(f.owner)||raw('contracts').some(k=>k.customerId===c.id&&ctr.has(k.id)))) };
+}
+function anaScope(c,arr){ const x=ANA_CTX; return x&&x[c]?x[c](arr):arr; }
+/* 絞り込みの部品 */
+function anaOwnerList(){ const ids=new Set(salesStaff().map(s=>s.id)); all('customers').forEach(c=>(c.ownerIds||[]).forEach(i=>ids.add(i))); all('jobs').forEach(j=>j.ownerId&&ids.add(j.ownerId)); return staffList().filter(s=>ids.has(s.id)&&s.kind!=='協力会社'); }
+function anaWorkerList(){ const ids=new Set(); all('contracts').forEach(c=>(c.staffIds||[]).forEach(i=>ids.add(i))); all('visits').forEach(v=>(v.staffIds||[]).forEach(i=>ids.add(i))); all('orders').forEach(o=>o.supplierId&&ids.add(o.supplierId)); return staffList().filter(s=>ids.has(s.id)).sort(by(s=>(s.kind==='協力会社'?'1':'0')+s.name)); }
+function anaCustList(){ const ids=new Set(); all('contracts').forEach(c=>ids.add(c.customerId)); all('jobs').forEach(j=>ids.add(j.customerId)); return all('customers').filter(c=>ids.has(c.id)).sort(by(c=>c.kana||c.name)); }
+const anaSaved=()=>{ try{ return JSON.parse(localStorage.getItem('ana-saved')||'[]'); }catch(_){ return []; } };
+const anaSaveList=l=>{ try{ localStorage.setItem('ana-saved',JSON.stringify(l)); }catch(_){ } };
+function anaBar(){ const f=anaF(), all_=canAllAna(), fs=anaFy();
+  const sel=(k,opts,label,dis)=>`<select class="inp auto ${f[k]?'on':''}" style="width:auto;max-width:230px" data-af="${k}" aria-label="${label}" ${dis?'disabled':''}>${opts.map(([v,l])=>`<option value="${esc(v)}" ${String(f[k])===String(v)?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
+  const months=[...Array(12)].map((_,i)=>ymAdd(fs,i));
+  const sites=f.cust?all('sites').filter(s=>s.customerId===f.cust).sort(by(siteLabel)):[];
+  const sv=anaSaved();
+  return `<div class="toolbar anabar" style="margin:0 0 12px;flex-wrap:wrap">
+    ${sel('owner',[['','営業担当：全員'],...anaOwnerList().map(s=>[s.id,s.name])],'営業担当',!all_)}
+    ${sel('worker',[['','施工担当：すべて'],...anaWorkerList().map(s=>[s.id,s.name+(s.kind==='協力会社'?'（協力会社）':'')])],'施工担当')}
+    ${sel('cust',[['','顧客：すべて'],...anaCustList().map(c=>[c.id,c.name])],'顧客')}
+    ${f.cust?sel('site',[['','現場：すべて'],...sites.map(s=>[s.id,siteLabel(s)])],'現場'):''}
+    <div class="seg">${[['','すべて'],['regular','定期'],['daily','日常'],['spot','スポット']].map(([k,l])=>`<button data-act="ana-cat" data-v="${k}" aria-pressed="${(f.cat||'')===k}">${l}</button>`).join('')}</div>
+    ${sel('month',[['','期の全体'],...months.map(m=>[m,ymLabel(m)])],'月')}
+    ${anaActive({...f,owner:all_?f.owner:''})?'<button class="btn sm" data-act="ana-clear">絞り込みを外す</button>':''}
+    <button class="btn sm" data-act="ana-save">この条件を保存</button>
+    ${sv.map((s,i)=>`<span class="pill" style="cursor:pointer"><span data-act="ana-use" data-i="${i}">★ ${esc(s.name)}</span> <span data-act="ana-del" data-i="${i}" aria-label="削除">×</span></span>`).join('')}
+    ${can('master.edit')||roleOf(meStaff())==='lead'||roleOf(meStaff())==='manager'?'<button class="btn sm" data-act="owner-bulk" style="margin-left:auto">営業担当をまとめて設定</button>':''}
+  </div>
+  ${!all_?`<div class="callout" style="margin:-4px 0 12px"><span>あなた（${esc(staffName(SHELL.meId()))}）が営業担当の顧客・案件だけを表示しています。${anaCtxEmpty()?'<b>担当の顧客がまだありません。</b>顧客の画面で営業担当を設定してください。':''}</span></div>`:''}`;
+}
+const anaCtxEmpty=()=>!all('customers').some(c=>(c.ownerIds||[]).includes(SHELL.meId()))&&!all('jobs').some(j=>j.ownerId===SHELL.meId());
+{ const a=VIEWS.analytics, b0=a.body.bind(a);
+  a.body=function(){ const bar=anaBar(); let h; ANA_CTX=anaBuild(); try{ h=b0(); } finally{ ANA_CTX=null; } const f=anaF();
+      if(f.owner) h=h.replace(/(<section class="panel"><h2>営業担当者別<\/h2>[\s\S]*?<tbody>)([\s\S]*?)(<\/tbody>)/,(m,p1,p2,p3)=>p1+p2.split('</tr>').filter(r=>!r.includes('<td>')||r.includes(`>${esc(staffName(f.owner))}<`)).join('</tr>')+p3);
+      return bar+h; }; }
+docOn('change',e=>{ const t=e.target; if(!t.dataset||!t.dataset.af) return; const f={...(VS.anaF||{})}; f[t.dataset.af]=t.value; if(t.dataset.af==='cust') f.site=''; VS.anaF=f; render(); });
+
+/* ---------- 営業担当の設定 ---------- */
+function ownerChips(sel,act,extra=''){ return `<div style="display:flex;flex-wrap:wrap;gap:6px">${salesPool().map(s=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-act="${act}" data-sid="${s.id}" ${extra} ${sel.includes(s.id)?'checked':''}> ${esc(s.name)}</label>`).join('')}</div>`; }
+const salesPool=()=>{ const ids=new Set([...salesStaff().map(s=>s.id),...all('customers').flatMap(c=>c.ownerIds||[])]); return employees().filter(s=>ids.has(s.id)||['admin','lead','manager'].includes(s.role)); };
+{ const s0=SHEETS.customer; SHEETS.customer=st=>{ const o=s0(st); const c=get('customers',st.id); if(!c) return o;
+  const sec=`<section class="sec"><h3>営業担当<span class="sp small muted">複数選べます。分析・定期契約・案件の絞り込みに使います</span></h3>${ownerChips(c.ownerIds||[],'cust-owner')}</section>`;
+  const i=o.body.indexOf('<section class="sec"><h3>現場・店舗'); return {...o,body:i>=0?o.body.slice(0,i)+sec+o.body.slice(i):o.body+sec}; }; }
+{ const s0=SHEETS.contract; SHEETS.contract=st=>{ const o=s0(st); const c=st.draft; if(!c) return o; const inh=custOwners(c.customerId);
+  const sec=`<section class="sec"><h3>営業担当<span class="sp small muted">${(c.ownerIds||[]).length?'この契約だけ別の担当':'空欄のときは顧客の担当（'+(inh.map(staffName).join('・')||'未設定')+'）'}</span></h3>${ownerChips(c.ownerIds||[],'ctr-owner')}</section>`;
+  const i=o.body.indexOf('<section class="sec"><h3>標準の担当</h3>'); const j=i>=0?i:o.body.indexOf('<section class="sec"><h3>担当（パート・社員）</h3>');
+  return {...o,body:j>=0?o.body.slice(0,j)+sec+o.body.slice(j):o.body+sec}; }; }
+SHEETS.ownerBulk=(st)=>{
+  const q=st.q||'', only=st.only!==false, un=!!st.un, of=st.of||'';
+  const hasWork=new Set([...all('contracts').map(c=>c.customerId),...all('jobs').map(j=>j.customerId)]);
+  const list=all('customers').filter(c=>(!only||hasWork.has(c.id))&&(!un||!(c.ownerIds||[]).length)&&(!of||(c.ownerIds||[]).includes(of))&&(!q||(c.name+(c.kana||'')).includes(q))).sort(by(c=>c.kana||c.name));
+  const nC=id=>all('contracts').filter(k=>k.customerId===id&&k.active!==false).length;
+  const selN=(st.sel||new Set()).size;
+  return {title:'営業担当をまとめて設定',body:`<div class="toolbar" style="flex-wrap:wrap"><input class="inp search" id="ob-q" placeholder="顧客名で検索" value="${esc(q)}" style="max-width:220px">
+      <label class="small"><input type="checkbox" id="ob-only" ${only?'checked':''}> 契約・案件がある顧客だけ</label>
+      <label class="small"><input type="checkbox" id="ob-un" ${un?'checked':''}> 担当が未設定だけ</label>
+      <select class="inp auto" style="width:auto" id="ob-of"><option value="">担当：すべて</option>${salesPool().map(s=>`<option value="${s.id}" ${of===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select></div>
+    <div class="small muted" style="margin:4px 0 8px">${list.length}社　<button class="btn sm" data-act="ob-all">表示中をすべて選ぶ</button> <button class="btn sm" data-act="ob-none">選択を外す</button>　選択中 <b>${selN}</b>社</div>
+    <div class="list" style="max-height:46vh;overflow:auto">${list.slice(0,400).map(c=>`<label class="li" style="cursor:pointer"><input type="checkbox" data-act="ob-pick" data-id="${c.id}" ${(st.sel||new Set()).has(c.id)?'checked':''}><span class="grow">${esc(c.name)}<span class="small muted">　契約 ${nC(c.id)}件</span></span><span class="small">${esc((c.ownerIds||[]).map(staffName).join('・'))||'<span class="muted">未設定</span>'}</span></label>`).join('')||'<p class="empty">該当なし</p>'}${list.length>400?'<p class="small muted">400社まで表示しています。検索で絞り込んでください。</p>':''}</div>
+    <section class="sec"><h3>選んだ顧客の営業担当を</h3><div class="toolbar"><select class="inp auto" style="width:auto" id="ob-who"><option value="">担当者を選ぶ</option>${salesPool().map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
+      <button class="btn pri" data-act="ob-do" data-m="set">この人にする（置き換え）</button><button class="btn" data-act="ob-do" data-m="add">この人を追加</button><button class="btn" data-act="ob-do" data-m="del">この人を外す</button></div></section>`,
+    foot:`<button class="btn pri" data-act="close-sheet">閉じる</button>`};
+};
+Object.assign(ACT_G,{
+  'ana-cat'(el){ VS.anaF={...(VS.anaF||{}),cat:el.dataset.v}; render(); },
+  'ana-clear'(){ VS.anaF={}; render(); },
+  'ana-save'(){ const f=anaF(); if(!anaActive(f)) return toast('条件を選んでから保存してください'); const n=prompt('この条件の名前','')||''; if(!n.trim()) return; const l=anaSaved(); l.push({name:n.trim(),f:{...(VS.anaF||{})}}); anaSaveList(l); render(); },
+  'ana-use'(el){ const s=anaSaved()[+el.dataset.i]; if(s){ VS.anaF={...s.f}; render(); } },
+  'ana-del'(el){ const l=anaSaved(); l.splice(+el.dataset.i,1); anaSaveList(l); render(); },
+  async 'cust-owner'(el){ const c=get('customers',sheet?.id); if(!c) return; const a=new Set(c.ownerIds||[]); el.checked?a.add(el.dataset.sid):a.delete(el.dataset.sid); await patch('customers',c.id,{ownerIds:[...a]}); toast('営業担当を保存しました'); },
+  'ctr-owner'(el){ readDraftForm(); const d=sheet.draft; const a=new Set(d.ownerIds||[]); el.checked?a.add(el.dataset.sid):a.delete(el.dataset.sid); d.ownerIds=[...a]; refreshSheet(); },
+  'owner-bulk'(){ openSheet({kind:'ownerBulk',live:false,sel:new Set(),q:'',only:true}); },
+  'ob-pick'(el){ const s=sheet.sel||(sheet.sel=new Set()); el.checked?s.add(el.dataset.id):s.delete(el.dataset.id); const b=ROOT.querySelector('#overlay .small.muted b'); if(b) b.textContent=s.size; },
+  'ob-all'(){ const q=sheet.q||'', only=sheet.only!==false, un=!!sheet.un, of=sheet.of||''; const hasWork=new Set([...all('contracts').map(c=>c.customerId),...all('jobs').map(j=>j.customerId)]);
+    all('customers').filter(c=>(!only||hasWork.has(c.id))&&(!un||!(c.ownerIds||[]).length)&&(!of||(c.ownerIds||[]).includes(of))&&(!q||(c.name+(c.kana||'')).includes(q))).slice(0,400).forEach(c=>sheet.sel.add(c.id)); refreshSheet(); },
+  'ob-none'(){ sheet.sel=new Set(); refreshSheet(); },
+  async 'ob-do'(el){ const who=$('#ob-who')?.value; if(!who) return toast('担当者を選んでください'); const ids=[...(sheet.sel||[])]; if(!ids.length) return toast('顧客を選んでください'); const m=el.dataset.m;
+    for(const id of ids){ const c=get('customers',id); if(!c) continue; let a=new Set(c.ownerIds||[]); if(m==='set') a=new Set([who]); else if(m==='add') a.add(who); else a.delete(who); await patch('customers',id,{ownerIds:[...a]}); }
+    toast(`${ids.length}社の営業担当を${m==='set'?staffName(who)+'さんにしました':m==='add'?'追加しました':'外しました'}`); sheet.sel=new Set(); refreshSheet(); },
+});
+docOn('input',e=>{ const t=e.target; if(t.id==='ob-q'&&sheet?.kind==='ownerBulk'){ sheet.q=t.value; const pos=t.selectionStart; refreshSheet(); const n=$('#ob-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } } });
+docOn('change',e=>{ const t=e.target; if(sheet?.kind!=='ownerBulk') return; if(t.id==='ob-only'){ sheet.only=t.checked; refreshSheet(); } if(t.id==='ob-un'){ sheet.un=t.checked; refreshSheet(); } if(t.id==='ob-of'){ sheet.of=t.value; refreshSheet(); } });
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
