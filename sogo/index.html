@@ -7772,4 +7772,8 @@ boot();
 
 </script>
 <script>SHELL.start();</script>
+<script>
+(()=>{ window.addEventListener('input',e=>{ if(e.isComposing) e.stopImmediatePropagation(); },true);
+  window.addEventListener('compositionend',e=>{ const t=e.target; if(t&&('value' in t)) setTimeout(()=>t.dispatchEvent(new Event('input',{bubbles:true})),0); },true); })();
+</script>
 </body></html>
