@@ -804,6 +804,7 @@ const SHELL=(()=>{
     more:'M5 12h.01M12 12h.01M19 12h.01',
     po:'M6 3h9l4 4v14H6zM14 3v5h5M9 14l2 2 4-4',
     car:'M3 13l2-6h14l2 6v5h-2M3 13v5h2M3 13h18M7 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0M13 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0',
+    box:'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10',
   };
   // [モジュール, 画面, 表示名, アイコン, タブバー用の短い名前]
   const NAVDEF=[
@@ -815,6 +816,7 @@ const SHELL=(()=>{
       ['S','shift','シフト',I.shift],
       ['S','genba','現場予定',I.pin],
       ['S','reserve','設備・車両の予約',I.car,'予約'],
+      ['S','stock','備品・物品の在庫',I.box,'在庫'],
     ]],
     ['営業・現場管理',[
       ['G','home','業務ダッシュボード',I.dash,'業務'],
@@ -848,25 +850,70 @@ const SHELL=(()=>{
   const SB=(window.SB_CONFIG&&window.supabase)?window.supabase.createClient(SB_CONFIG.url,SB_CONFIG.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}):null;
   let sbUser=null, sbStaffId='', sbRole='', sbReadyResolve; const sbReady=new Promise(r=>{ sbReadyResolve=r; });
   const sbMapErr=e=>{ const m=String(e?.message||''); if(e?.code==='42501'||/row-level security|violates/.test(m)) return {code:/管理者|変更できません/.test(m)?m:'権限がありません'}; return {code:m||'通信エラー'}; };
+  const SB_CACHE_V=1;
+  const sbCacheName=()=>'shin-cache-'+(sbUser?.id||'x')+'-'+(sbStaffId||'')+'-'+(sbRole||'');
+  const sbIdbCache={};
+  function sbIdb(name){ return sbIdbCache[name]??=new Promise(res=>{ try{ if(!window.indexedDB) return res(null); const r=indexedDB.open(name,1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore('docs'); r.result.createObjectStore('meta'); }; r.onsuccess=()=>res(r.result); r.onerror=()=>res(null); r.onblocked=()=>res(null); }catch(_){ res(null); } }); }
+  const sbReq=q=>new Promise((res,rej)=>{ q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); });
+  const sbIdbGet=(db,st,k)=>sbReq(db.transaction(st).objectStore(st).get(k));
+  const sbIdbAll=(db,st)=>sbReq(db.transaction(st).objectStore(st).getAll());
+  const sbIdbPut=(db,st,k,v)=>sbReq(db.transaction(st,'readwrite').objectStore(st).put(v,k));
+  async function sbCacheClear(){ try{ const ls=indexedDB.databases?await indexedDB.databases():[]; await Promise.all(ls.filter(d=>String(d.name).startsWith('shin-cache-')).map(d=>new Promise(r=>{ const q=indexedDB.deleteDatabase(d.name); q.onsuccess=q.onerror=q.onblocked=r; }))); }catch(_){ } }
   function sbDb(){
     const cache={}, subs={}, q=new Set();
     const col=c=>(cache[c]??=new Map());
     const snap=c=>({docs:[...col(c)].map(([id,d])=>({id,data:()=>d}))});
     const notify=c=>{ if(q.has(c)) return; q.add(c); setTimeout(()=>{ q.delete(c); const s=snap(c); (subs[c]||[]).forEach(f=>{ try{ f(s); }catch(e){ console.error(e); } }); },0); };
-    const load=(async()=>{
-      const step=1000; let from=0;
+    const ck=sbCacheName();
+    const dirty=new Map(); let dirtyT=0;
+    const keep=(c,id,d)=>{ dirty.set(c+'\u0000'+id,d===undefined?null:{c,i:id,d}); clearTimeout(dirtyT); dirtyT=setTimeout(flushCache,1500); };
+    async function flushCache(){ if(!dirty.size) return; const db=await sbIdb(ck); if(!db) return; const items=[...dirty]; dirty.clear();
+      try{ const tx=db.transaction('docs','readwrite'), s=tx.objectStore('docs'); items.forEach(([k,v])=>v?s.put(v,k):s.delete(k)); }catch(_){ } }
+    const maxTs=(a,b)=>!a?b:!b?a:(a>b?a:b);
+    async function fullLoad(){
+      const step=1000; let from=0, since=null;
       for(;;){
-        const {data,error}=await SB.from('docs').select('col,id,data').order('col').order('id').range(from,from+step-1);
-        if(error){ sbToast('データを読み込めませんでした（'+error.message+'）'); break; }
-        data.forEach(r=>col(r.col).set(r.id,r.data));
+        const {data,error}=await SB.from('docs').select('col,id,data,updated_at').order('col').order('id').range(from,from+step-1);
+        if(error){ sbToast('データを読み込めませんでした（'+error.message+'）'); return null; }
+        data.forEach(r=>{ col(r.col).set(r.id,r.data); since=maxTs(since,r.updated_at); });
         if(data.length<step) break; from+=step;
       }
+      const {data:td}=await SB.from('docs_deleted').select('deleted_at').order('deleted_at',{ascending:false}).limit(1);
+      return {since:since||new Date(0).toISOString(),tsince:maxTs(td&&td[0]?.deleted_at,since)||new Date(0).toISOString(),at:Date.now()};
+    }
+    async function delta(m){ // 前回からの変更・削除だけ
+      const changed=new Set(); let since=m.since, tsince=m.tsince;
+      const {data:del,error:e1}=await SB.from('docs_deleted').select('col,id,deleted_at').gt('deleted_at',m.tsince).order('deleted_at').limit(20000);
+      if(e1) throw e1;
+      (del||[]).forEach(r=>{ if(col(r.col).delete(r.id)){ changed.add(r.col); keep(r.col,r.id); } tsince=maxTs(tsince,r.deleted_at); });
+      const step=1000; let from=0;
+      for(;;){ const {data,error}=await SB.from('docs').select('col,id,data,updated_at').gt('updated_at',m.since).order('updated_at').order('col').order('id').range(from,from+step-1);
+        if(error) throw error;
+        data.forEach(r=>{ col(r.col).set(r.id,r.data); changed.add(r.col); keep(r.col,r.id,r.data); since=maxTs(since,r.updated_at); });
+        if(data.length<step) break; from+=step; }
+      return {changed,meta:{...m,since,tsince}};
+    }
+    const load=(async()=>{
+      const db=await sbIdb(ck); let m=null;
+      if(db){ try{ m=await sbIdbGet(db,'meta','m'); if(m&&(m.v!==SB_CACHE_V||Date.now()-m.at>7*864e5)) m=null; // 1週間ごとに全部取り直す（見えなくなったデータを消すため）
+        if(m){ const rows=await sbIdbAll(db,'docs'); rows.forEach(r=>col(r.c).set(r.i,r.d)); } }catch(_){ m=null; } }
+      if(m){ // 端末の保存分ですぐ開き、差分は後から
+        (async()=>{ try{ const r=await delta(m); await sbIdbPut(db,'meta','m',r.meta); r.changed.forEach(notify); flushCache(); }
+          catch(e){ console.warn('差分の取得に失敗、全部読み直します',e); [...Object.keys(cache)].forEach(c=>col(c).clear()); const f=await fullLoad(); if(f){ await sbSaveAll(db,f); Object.keys(cache).forEach(notify); } } })();
+        return;
+      }
+      const f=await fullLoad();
+      if(f&&db) sbSaveAll(db,f).catch(()=>{});
     })();
+    async function sbSaveAll(db,f){ const tx=db.transaction(['docs','meta'],'readwrite'); const s=tx.objectStore('docs'); s.clear();
+      Object.entries(cache).forEach(([c,mp])=>mp.forEach((d,i)=>s.put({c,i,d},c+'\u0000'+i))); tx.objectStore('meta').put({...f,v:SB_CACHE_V},'m');
+      await new Promise(r=>{ tx.oncomplete=r; tx.onerror=r; }); }
     SB.channel('docs-all').on('postgres_changes',{event:'*',schema:'public',table:'docs'},p=>{
-      if(p.eventType==='DELETE'){ const o=p.old||{}; if(o.col){ col(o.col).delete(o.id); notify(o.col); } }
-      else { const n=p.new; if(n&&n.col){ col(n.col).set(n.id,n.data); notify(n.col); } }
+      if(p.eventType==='DELETE'){ const o=p.old||{}; if(o.col){ col(o.col).delete(o.id); keep(o.col,o.id); notify(o.col); } }
+      else { const n=p.new; if(n&&n.col){ col(n.col).set(n.id,n.data); keep(n.col,n.id,n.data); notify(n.col); } }
     }).subscribe();
-    async function refetch(c,id){ const {data}=await SB.from('docs').select('data').eq('col',c).eq('id',id).maybeSingle(); if(data) col(c).set(id,data.data); else col(c).delete(id); notify(c); }
+    async function refetch(c,id){ const {data}=await SB.from('docs').select('data').eq('col',c).eq('id',id).maybeSingle(); if(data){ col(c).set(id,data.data); keep(c,id,data.data); } else { col(c).delete(id); keep(c,id); } notify(c); }
     return {archive:{ // 1年より前の日常報告（reports_archive）。起動時には読まず、必要な分だけ取りに行く
         async query(p){ const {data,error}=await SB.rpc('report_archive_query',{p_from:p.from||null,p_to:p.to||null,p_q:p.q||null,p_staff:p.staff||null,p_tags:p.tags&&p.tags.length?p.tags:null,p_limit:p.limit||300,p_offset:p.offset||0,...(p.staffs&&p.staffs.length?{p_staffs:p.staffs}:{}),...(p.work?{p_work:p.work}:{}),p_qtags:p.qtags&&p.qtags.length?p.qtags:null,p_qstaff:p.qstaff&&p.qstaff.length?p.qstaff:null});
           if(error) throw sbMapErr(error); return {rows:(data||[]).map(r=>({...r.data,id:r.id})),total:data&&data.length?+data[0].total:0}; },
@@ -877,9 +924,9 @@ const SHELL=(()=>{
       collection(c){ return {
       onSnapshot(f){ (subs[c]??=[]).push(f); load.then(()=>f(snap(c))); return ()=>{ subs[c]=(subs[c]||[]).filter(x=>x!==f); }; },
       doc(id){ return {
-        async set(d){ col(c).set(id,d); const {error}=await SB.from('docs').upsert({col:c,id,data:d}); if(error){ refetch(c,id); throw sbMapErr(error); } },
+        async set(d){ col(c).set(id,d); const {error}=await SB.from('docs').upsert({col:c,id,data:d}); if(error){ refetch(c,id); throw sbMapErr(error); } keep(c,id,d); },
         async delete(){ const prev=col(c).get(id); col(c).delete(id); const {data,error}=await SB.from('docs').delete().eq('col',c).eq('id',id).select('id');
-          if(error||!data||!data.length){ if(prev!==undefined){ col(c).set(id,prev); notify(c); } throw error?sbMapErr(error):{code:'権限がありません'}; } },
+          if(error||!data||!data.length){ if(prev!==undefined){ col(c).set(id,prev); notify(c); } throw error?sbMapErr(error):{code:'権限がありません'}; } keep(c,id); },
       }; },
     }; }};
   }
@@ -939,7 +986,7 @@ const SHELL=(()=>{
   }
   async function sbInit(){
     const needSet=/type=(invite|recovery|signup)/.test(location.hash);
-    SB.auth.onAuthStateChange((ev,s)=>{ if(ev==='PASSWORD_RECOVERY'){ sbUser=s?.user||sbUser; sbSetPwForm(); } if(ev==='SIGNED_OUT') location.reload(); });
+    SB.auth.onAuthStateChange((ev,s)=>{ if(ev==='PASSWORD_RECOVERY'){ sbUser=s?.user||sbUser; sbSetPwForm(); } if(ev==='SIGNED_OUT') sbCacheClear().then(()=>location.reload()); });
     const {data:{session}}=await SB.auth.getSession();
     if(!session){ sbLoginForm(); return; }
     sbUser=session.user;
@@ -1353,12 +1400,12 @@ const ROLE_L={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営�
    予定（個人＋差配）・日常報告（タグ連動）・出退勤/タイムカード・顧客/担当別ビュー
    データ: 共有DB（db capability）。使えない環境ではメモリ上のサンプルで動作。
    ========================================================= */
-const COLS=['staff','customers','sites','jobs','events','reports','punches','wishes','fixreqs','meta','areas','patterns','shifts','bizlib','porders','resources','bookings','reslogs','prefs','leaves'];
+const COLS=['staff','customers','sites','jobs','events','reports','punches','wishes','fixreqs','meta','areas','patterns','shifts','bizlib','porders','resources','bookings','reslogs','prefs','leaves','wages','items','stockmoves','purchases','supplyreqs','seals','seallogs'];
 const TYPES=['作業','訪問・営業','社内・会議','休み・私用','シフト'];
 const R_KINDS=['日報','訪問報告','要対応・クレーム','その他'];
 const MODES={full:'フル機能',simple:'報告＋勤怠',report:'報告のみ',time:'勤怠のみ'};
 const MODE_DESC={full:'すべての機能（カレンダー・シフト・差配・全員の報告と勤怠・修正申請の承認・顧客別・設定）',simple:'出退勤・日常報告・自分の予定・タイムカード',report:'日常報告・自分の予定（出退勤ボタンは出ません）',time:'出退勤・自分の予定・タイムカード（報告は出ません）'};
-const MODE_ROUTES={simple:['home','calendar','reports','time','reserve'],report:['home','calendar','reports'],time:['home','calendar','time']};
+const MODE_ROUTES={simple:['home','calendar','reports','time','reserve','stock'],report:['home','calendar','reports'],time:['home','calendar','time']};
 const usesTime=s=>!s||['full','simple','time'].includes(s.mode||'full');
 const usesReport=s=>!s||(s.kind!=='協力会社'&&['full','simple','report'].includes(s.mode||'full'));
 const modeTag=s=>(s.mode&&s.mode!=='full')?`（${MODES[s.mode]}）`:'';
@@ -1520,6 +1567,7 @@ const NAV_FULL=[
   ['shift','シフト','M3 5h18v15H3zM3 10h18M8 10v10M13 10v10M18 10v10'],
   ['genba','現場予定','M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z'],
   ['reserve','設備・車両の予約','M3 13l2-6h14l2 6v5h-2M3 13v5h2M3 13h18M7 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0M13 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0'],
+  ['stock','備品・物品の在庫','M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10'],
   ['porders','協力会社の発注確認','M6 3h9l4 4v14H6zM14 3v5h5M9 14l2 2 4-4'],
   ['reports','日常報告','M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7'],
   ['time','出退勤・勤怠','M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2'],
@@ -1785,12 +1833,13 @@ VIEWS.time=()=>{
   let h=`<div class="vhead"><h1>${simple?'タイムカード':'出退勤・勤怠'}</h1></div>`;
   const pf=pendingFix().length;
   const plv=pendingLv().length;
-  if(!simple) h+=`<div class="tabs" role="tablist">${[['today','今日の出退勤'],['card','タイムカード'],['fix',`修正申請${pf?` <span class="badge">${pf}</span>`:''}`],['leave',`休暇・申請${plv?` <span class="badge">${plv}</span>`:''}`],['paid','有給'],['sum','月次集計・CSV']].map(([k,l])=>`<button role="tab" aria-selected="${tab===k}" data-act="tTab" data-v="${k}">${l}</button>`).join('')}</div>`;
+  if(!simple) h+=`<div class="tabs" role="tablist">${[['today','今日の出退勤'],['card','タイムカード'],['fix',`修正申請${pf?` <span class="badge">${pf}</span>`:''}`],['leave',`休暇・申請${plv?` <span class="badge">${plv}</span>`:''}`],['paid','有給'],['sum','月次集計・CSV'],...(costTabOk()?[['cost','現場別費用']]:[])].map(([k,l])=>`<button role="tab" aria-selected="${tab===k}" data-act="tTab" data-v="${k}">${l}</button>`).join('')}</div>`;
   if(tab==='fix'){ const done=all('fixreqs').filter(f=>f.status!=='申請中').sort(by(f=>f.reviewedAt||'',-1)).slice(0,30);
     return h+`<div class="stack"><div class="panel"><h2>承認待ち</h2><div class="pbody">${fixListHtml(pendingFix(),true)}</div></div><div class="panel"><h2>処理済み</h2><div class="pbody">${fixListHtml(done,false)}</div></div></div>`; }
   if(tab==='leave') return h+attLeaveTab();
   if(tab==='paid') return h+attPaidTab();
   if(tab==='sum') return h+attSumTab();
+  if(tab==='cost') return h+(costTabOk()?costTab():'');
   if(tab==='today'){
     const t=today();
     const allS=staffList(); const q=F('t_q'), fst=F('t_st'), fsi=F('t_site',siteDef()), fk=F('t_kind');
@@ -4959,6 +5008,487 @@ function lvVirtuals(date,ids){ const set=new Set(ids); return all('leaves').filt
 SHEETS.lvShow=()=>({title:'休暇・勤務の申請',body:`<div class="sec">${lvListHtml([get('leaves',sheet.id)].filter(Boolean),true)}</div>`,foot:`<button class="btn pri" data-act="close">閉じる</button>`});
 ACT_S.lvShow=el=>openSheet({kind:'lvShow',id:el.dataset.id});
 
+/* =========================================================
+   日常清掃・現場別費用（人件費＋資材）
+   ・時給は wages（id=担当者ID）に分けて保存。見られるのは管理者と「時給・人件費を見る」権限の人だけ
+   ・予定＝シフト×時給、実績＝打刻×時給（残業・深夜・休日の割増と法定福利費を含む概算）
+   ・締めた月は、時給を見られる人が最初に開いたときに確定値を保存（wages の cost_YYYY-MM）
+   ========================================================= */
+const COSTCFG_DEF={welfare:15,ot:25,night:25,hol:35};
+const costCfg=()=>({...COSTCFG_DEF,...(get('meta','costcfg')||{})});
+const canWage=()=>roleS()==='admin'||hasEx('wage.view')||hasEx('wage.edit');
+const canWageEdit=()=>roleS()==='admin'||hasEx('wage.edit');
+const costTabOk=()=>!isSimple()&&(canWage()||['admin','lead','manager'].includes(roleS()));
+const yenC=n=>'¥'+Math.round(+n||0).toLocaleString('ja-JP');
+const hrs=m=>m?(Math.round(m/6)/10).toLocaleString('ja-JP')+'h':'';
+function wageOf(sid,date){ const w=get('wages',sid); if(!w) return null;
+  const h=(w.hist||[]).filter(x=>!x.from||x.from<=date).sort(by(x=>x.from||''));
+  const c=h[h.length-1]; return c?{hourly:+c.hourly||0,transport:+c.transport||0}:null; }
+/* 日常清掃の契約（G 側のデータ） */
+const ctrList=()=>{ try{ return window.G_API&&G_API.list?G_API.list('contracts'):[]; }catch(_){ return []; } };
+const dailyOfSite=sid=>ctrList().filter(c=>c.cat==='daily'&&c.siteId===sid&&c.active!==false);
+const ctrActiveIn=(c,ym)=>!(c.start&&ym<String(c.start).slice(0,7))&&!(c.end&&ym>String(c.end).slice(0,7));
+function ctrPrice(c,ym){ let p=+c.unitPrice||0; (c.priceChanges||[]).filter(x=>x.from&&x.from<=ym).sort(by(x=>x.from)).forEach(x=>{ if(x.unitPrice!==''&&x.unitPrice!=null) p=+x.unitPrice||0; }); return p; }
+
+/* その人・その日の時間を、どの現場に付けるか（打刻の現場 → その日のシフトの割合 → 担当現場） */
+let SDM=null,SDMk=-1;
+function shiftDayMap(){ if(SDMk===dataVer&&SDM) return SDM; const m=new Map();
+  for(const d of all('shifts')) for(const [k,arr] of Object.entries(d.cells||{})){ const [sid,day]=k.split('|'); const date=`${d.ym}-${pad(day)}`;
+    (arr||[]).forEach(c=>{ const p=patOfCell(c); const n=patMin(p); if(!n) return; const key=sid+'|'+date; const o=m.get(key)||{}; o[d.siteId]=(o[d.siteId]||0)+n; m.set(key,o); }); }
+  SDM=m; SDMk=dataVer; return m; }
+function siteSplit(s,date){
+  const p=punchOf(s.id,date); if(p?.siteId) return [[p.siteId,1]];
+  const o=shiftDayMap().get(s.id+'|'+date); if(o){ const tot=Object.values(o).reduce((a,b)=>a+b,0); return Object.entries(o).map(([k,v])=>[k,v/tot]); }
+  const d=(s.shiftSites||[])[0]||(s.mySites||[])[0]||''; return [[d,1]];
+}
+/* 1か月・全現場の集計（データが変わらない限り使い回す） */
+const SCM={};
+function siteCostMonth(ym){
+  const key=ym+'|'+dataVer+'|'+(window.G_API&&G_API.dataVer?G_API.dataVer():''); if(SCM[ym]?.key===key) return SCM[ym].v;
+  const cfg=costCfg(), wf=1+(+cfg.welfare||0)/100, R={}, noWage=new Set();
+  const row=sid=>R[sid]??={siteId:sid,planMin:0,planCost:0,planDays:0,actMin:0,actCost:0,actDays:0,mat:0,people:{}};
+  const person=(r,s)=>r.people[s.id]??={id:s.id,name:s.name,planMin:0,planCost:0,actMin:0,actCost:0,days:0};
+  // 予定（シフト）
+  for(const d of all('shifts').filter(d=>d.ym===ym)){ const r=row(d.siteId);
+    for(const [k,arr] of Object.entries(d.cells||{})){ const [sid,day]=k.split('|'); const s=get('staff',sid); if(!s) continue; const date=`${ym}-${pad(day)}`;
+      let min=0,nt=0; (arr||[]).forEach(c=>{ const p=patOfCell(c); const n=patMin(p); if(!n) return; min+=n; let a=toMin(p.start),b=toMin(p.end); if(b<=a) b+=1440; nt+=Math.min(n,nightMin(a,b)); });
+      if(!min) continue; const w=wageOf(sid,date); const pr=person(r,s); r.planMin+=min; r.planDays++; pr.planMin+=min;
+      if(!w){ noWage.add(sid); continue; }
+      const sites=Object.keys(shiftDayMap().get(sid+'|'+date)||{}).length||1;
+      const c=(w.hourly*(min+nt*(+cfg.night||0)/100)/60)*wf+w.transport/sites; r.planCost+=c; pr.planCost+=c; } }
+  // 実績（打刻）
+  const pm=new Set(); all('punches').forEach(p=>{ if(ymOf(p.date)===ym&&p.in&&p.out) pm.add(p.staffId); });
+  pm.forEach(sid=>{ const s=get('staff',sid); if(!s) return;
+    daysOfMonth(ym).forEach(date=>{ const p=punchOf(sid,date); if(!p||!p.in||!p.out) return; const o=attDay(s,date); if(!o.work) return;
+      const w=wageOf(sid,date); if(!w) noWage.add(sid);
+      const base=w?(w.hourly*(o.work+o.outOT*(+cfg.ot||0)/100+o.night*(+cfg.night||0)/100+o.hol*(+cfg.hol||0)/100)/60)*wf:0;
+      siteSplit(s,date).forEach(([site,share])=>{ const r=row(site), pr=person(r,s); r.actMin+=o.work*share; r.actDays+=share; pr.actMin+=o.work*share; pr.days+=share;
+        if(w){ const c=base*share+w.transport*share; r.actCost+=c; pr.actCost+=c; } }); }); });
+  // 資材（在庫から現場へ出したもの）
+  if(typeof matCostMonth==='function') Object.entries(matCostMonth(ym)).forEach(([sid,v])=>{ row(sid).mat+=v; });
+  // 契約（日常清掃）
+  Object.values(R).forEach(r=>{ const cs=dailyOfSite(r.siteId).filter(c=>ctrActiveIn(c,ym)); r.ctrs=cs;
+    r.hourly=cs.some(c=>c.billing==='hourly');
+    r.budget=cs.reduce((a,c)=>a+(+c.laborBudget||0),0); r.capMin=cs.reduce((a,c)=>a+(+c.hoursCap||0)*60,0);
+    r.revPlan=cs.reduce((a,c)=>a+(c.billing==='hourly'?ctrPrice(c,ym)*r.planMin/60:ctrPrice(c,ym)*(+c.qty||1)),0);
+    r.revAct=cs.reduce((a,c)=>a+(c.billing==='hourly'?ctrPrice(c,ym)*r.actMin/60:ctrPrice(c,ym)*(+c.qty||1)),0); });
+  // 契約はあるが、まだシフトも打刻もない現場
+  ctrList().filter(c=>c.cat==='daily'&&c.active!==false&&ctrActiveIn(c,ym)&&!R[c.siteId]).forEach(c=>{ const r=row(c.siteId); r.ctrs=[c]; r.hourly=c.billing==='hourly'; r.budget=+c.laborBudget||0; r.capMin=(+c.hoursCap||0)*60; r.revPlan=r.revAct=c.billing==='hourly'?0:ctrPrice(c,ym)*(+c.qty||1); });
+  const v={rows:R,noWage:[...noWage]}; SCM[ym]={key,v}; return v;
+}
+/* 締めた月は確定値（保存済み）を使う */
+function siteCostFinal(ym){
+  const snap=get('wages','cost_'+ym);
+  if(snap&&closeOf(ym)) return {rows:snap.rows,noWage:snap.noWage||[],snap:true,at:snap.at};
+  const v=siteCostMonth(ym);
+  if(closeOf(ym)&&canWage()&&!siteCostFinal.saving){ siteCostFinal.saving=true; // 締め後に最初に開いた人が保存
+    const rows=JSON.parse(JSON.stringify(v.rows,(k,x)=>k==='ctrs'?undefined:x));
+    put('wages','cost_'+ym,{kind:'cost',ym,rows,noWage:v.noWage,at:new Date().toISOString(),by:meId()}).finally(()=>{ siteCostFinal.saving=false; }); }
+  return {...v,snap:false};
+}
+/* 時間だけ（時給を見られない人・G 側の時間単価の計算用） */
+function siteHours(siteId,ym){ const r=siteCostMonth(ym).rows[siteId]||{}; return {plan:r.planMin||0,act:r.actMin||0}; }
+
+/* ---------- シフト表の上の「今月の費用」 ---------- */
+function shiftCostBar(site,ym){
+  if(!site) return '';
+  const cs=dailyOfSite(site.id).filter(c=>ctrActiveIn(c,ym)); const r=siteCostMonth(ym).rows[site.id]||{planMin:0,planCost:0,mat:0};
+  if(!cs.length&&!canWage()) return '';
+  const cap=cs.reduce((a,c)=>a+(+c.hoursCap||0)*60,0), budget=cs.reduce((a,c)=>a+(+c.laborBudget||0),0);
+  const rev=cs.reduce((a,c)=>a+(c.billing==='hourly'?ctrPrice(c,ym)*r.planMin/60:ctrPrice(c,ym)*(+c.qty||1)),0);
+  const over=(cap&&r.planMin>cap)||(budget&&canWage()&&r.planCost>budget);
+  const cost=r.planCost+(r.mat||0), gp=rev-cost;
+  const it=(l,v,cls='')=>`<div class="${cls}"><div class="l">${l}</div><div class="v num">${v}</div></div>`;
+  return `<div class="costbar ${over?'over':''}">
+    <div class="ttl">${ymLabel(ym)}の予定${cs.length?`<span class="pill a">日常清掃 ${cs.map(c=>c.billing==='hourly'?'時間単価':'月額').join('・')}</span>`:'<span class="pill">日常清掃の契約なし</span>'}</div>
+    ${it('予定時間',(hrs(r.planMin)||'0h')+(cap?` / 上限 ${hrs(cap)}`:''),cap&&r.planMin>cap?'bad':'')}
+    ${canWage()?it('予定人件費',yenC(r.planCost)+(budget?` / 予算 ${yenC(budget)}`:''),budget&&r.planCost>budget?'bad':''):''}
+    ${cs.length?it('契約金額'+(cs.some(c=>c.billing==='hourly')?'（予定時間で計算）':''),yenC(rev)):''}
+    ${canWage()&&cs.length?it('予定粗利',`${yenC(gp)}${rev?`（${Math.round(gp/rev*100)}%）`:''}`,gp<0?'bad':''):''}
+    ${canWage()&&r.mat?it('資材（払い出し済み）',yenC(r.mat)):''}
+    ${over?'<div class="msg">上限・予算を超えています</div>':''}
+  </div>`;
+}
+{ const vs0=VIEWS.shift; VIEWS.shift=()=>{ const h=vs0(); if(VS.shView==='person') return h; const site=get('sites',VS.shSite); const bar=shiftCostBar(site,VS.sMonth); if(!bar) return h;
+  const k=h.indexOf('<div class="scroll" id="shScroll">'); const k2=h.indexOf('<div class="small muted" style="margin-bottom:8px">希望'); const at=k2>=0?k2:k; return at>=0?h.slice(0,at)+bar+h.slice(at):h+bar; }; }
+
+/* ---------- 勤怠：現場別費用タブ ---------- */
+function costTab(){
+  const m=VS.tMonth, F_=siteCostFinal(m), W=canWage(), q=VS.ctQ||'', only=VS.ctOnly!=='all';
+  let rows=Object.values(F_.rows).filter(r=>!only||(r.ctrs?r.ctrs.length:dailyOfSite(r.siteId).length)||r.revPlan||r.revAct);
+  rows=rows.filter(r=>!q||(siteName(r.siteId)+custName(get('sites',r.siteId)?.customerId)).includes(q)).sort(by(r=>custName(get('sites',r.siteId)?.customerId)+siteName(r.siteId)));
+  const T=rows.reduce((a,r)=>{ ['revPlan','revAct','planMin','actMin','planCost','actCost','mat'].forEach(k=>a[k]+=+r[k]||0); return a; },{revPlan:0,revAct:0,planMin:0,actMin:0,planCost:0,actCost:0,mat:0});
+  const past=m<ymOf(today()); const rev=r=>past?r.revAct:r.revPlan, cost=r=>(past?r.actCost:r.planCost)+(+r.mat||0);
+  const gp=r=>rev(r)-cost(r);
+  return `<div class="toolbar"><span style="display:inline-flex;gap:4px;align-items:center"><button class="btn sm" data-act="tMonth" data-n="-1" aria-label="前月">‹</button><b style="min-width:84px;text-align:center">${ymLabel(m)}</b><button class="btn sm" data-act="tMonth" data-n="1" aria-label="翌月">›</button></span>
+    <input class="inp search" id="ct-q" placeholder="顧客・現場" value="${esc(q)}" style="max-width:180px">
+    <div class="seg"><button data-act="ctOnly" data-v="daily" aria-pressed="${only}">日常清掃の現場</button><button data-act="ctOnly" data-v="all" aria-pressed="${!only}">すべての現場</button></div>
+    <span class="small muted">${F_.snap?'締めた時点の確定値':closeOf(m)?'締め済み（確定値を保存します）':past?'締め前（打刻から計算）':'今月以降は予定（シフト）で計算'}</span>
+    ${W?`<span style="margin-left:auto;display:inline-flex;gap:6px"><button class="btn sm" data-act="wageList">時給の設定</button>${canWageEdit()?'<button class="btn sm" data-act="costCfg">割増・法定福利費</button>':''}</span>`:''}</div>
+  ${W&&F_.noWage.length?`<div class="callout w" style="margin:8px 0"><span>時給が未設定の人が${F_.noWage.length}人います（${esc(F_.noWage.slice(0,6).map(staffName).join('、'))}${F_.noWage.length>6?' ほか':''}）。人件費に入っていません。</span><button class="btn sm" data-act="wageList" data-nw="1">設定する</button></div>`:''}
+  ${!W?'<div class="callout" style="margin:8px 0">時給・人件費は、管理者と「時給・人件費を見る」権限のある人だけに表示されます。</div>':''}
+  <div class="panel scroll"><table class="t"><thead><tr><th>現場</th><th>契約</th><th class="r">${past?'売上（実績）':'売上（予定）'}</th><th class="r">予定時間</th><th class="r">実績時間</th>${W?'<th class="r">人件費（予定）</th><th class="r">人件費（実績）</th><th class="r">資材</th><th class="r">粗利</th>':''}</tr></thead><tbody>
+  ${rows.map(r=>{ const cs=r.ctrs||dailyOfSite(r.siteId); const g=gp(r); return `<tr class="click" data-act="ctOpen" data-site="${esc(r.siteId)}"><td>${r.siteId?esc(siteName(r.siteId)):'<span class="muted">現場の決まっていない勤務</span>'}<div class="small muted">${esc(custName(get('sites',r.siteId)?.customerId))}</div></td>
+    <td class="small">${cs.length?cs.map(c=>c.billing==='hourly'?`時間 ${yenC(ctrPrice(c,m))}/h`:`月額 ${yenC(ctrPrice(c,m)*(+c.qty||1))}`).join('<br>'):'<span class="muted">－</span>'}</td>
+    <td class="r num">${rev(r)?yenC(rev(r)):''}</td><td class="r num ${r.capMin&&r.planMin>r.capMin?'bad':''}">${hrs(r.planMin)}</td><td class="r num">${hrs(r.actMin)}</td>
+    ${W?`<td class="r num ${r.budget&&r.planCost>r.budget?'bad':''}">${r.planCost?yenC(r.planCost):''}</td><td class="r num">${r.actCost?yenC(r.actCost):''}</td><td class="r num">${r.mat?yenC(r.mat):''}</td><td class="r num ${g<0?'bad':''}">${rev(r)||cost(r)?`${yenC(g)}${rev(r)?`<div class="small muted">${Math.round(g/rev(r)*100)}%</div>`:''}`:''}</td>`:''}</tr>`; }).join('')||`<tr><td colspan="9" class="empty">${only?'日常清掃の契約がある現場がありません（定期契約で区分を「日常清掃」にすると出ます）':'該当なし'}</td></tr>`}
+  ${rows.length>1?`<tr class="tot"><td><b>合計</b></td><td></td><td class="r num"><b>${yenC(rows.reduce((a,r)=>a+rev(r),0))}</b></td><td class="r num">${hrs(T.planMin)}</td><td class="r num">${hrs(T.actMin)}</td>${W?`<td class="r num">${yenC(T.planCost)}</td><td class="r num">${yenC(T.actCost)}</td><td class="r num">${yenC(T.mat)}</td><td class="r num"><b>${yenC(rows.reduce((a,r)=>a+gp(r),0))}</b></td>`:''}</tr>`:''}
+  </tbody></table></div>
+  <div class="hint">人件費＝時間×時給（残業${costCfg().ot}%・深夜${costCfg().night}%・法定休日${costCfg().hol}%の割増）×（1＋法定福利費${costCfg().welfare}%）＋交通費。掛け持ちの日は、その日のシフトの時間の割合で現場に分けます。売上・粗利は${past?'実績':'予定'}で計算し、資材は在庫から現場へ出した金額です。</div>`;
+}
+SHEETS.ctSite=()=>{ const m=VS.tMonth, r=siteCostFinal(m).rows[sheet.site]||{people:{}}, W=canWage();
+  const ps=Object.values(r.people||{}).sort(by(p=>-(p.actMin||p.planMin)));
+  return {title:`${esc(siteName(sheet.site)||'現場の決まっていない勤務')}　${ymLabel(m)}`,body:`
+    <div class="scroll"><table class="t"><thead><tr><th>名前</th><th class="r">予定時間</th><th class="r">実績時間</th><th class="r">日数</th>${W?'<th class="r">時給</th><th class="r">人件費（予定）</th><th class="r">人件費（実績）</th>':''}</tr></thead><tbody>
+    ${ps.map(p=>{ const w=W?wageOf(p.id,m+'-15'):null; return `<tr><td>${esc(p.name)}</td><td class="r num">${hrs(p.planMin)}</td><td class="r num">${hrs(p.actMin)}</td><td class="r num">${p.days?Math.round(p.days*10)/10:''}</td>${W?`<td class="r num">${w?yenC(w.hourly):'<span class="pill w">未設定</span>'}</td><td class="r num">${p.planCost?yenC(p.planCost):''}</td><td class="r num">${p.actCost?yenC(p.actCost):''}</td>`:''}</tr>`; }).join('')||'<tr><td colspan="7" class="empty">勤務がありません</td></tr>'}
+    </tbody></table></div>${(r.ctrs||[]).length?`<p class="small muted">契約：${r.ctrs.map(c=>esc(c.service||'日常清掃')).join('、')}</p>`:''}`,
+    foot:`<button class="btn pri" data-act="close">閉じる</button>`}; };
+
+/* ---------- 時給の設定 ---------- */
+SHEETS.wageList=()=>{ const ed=canWageEdit(), q=sheet.q||'', nw=sheet.nw;
+  const need=new Set(siteCostMonth(VS.tMonth).noWage);
+  const list=staffList().filter(s=>s.kind!=='協力会社'&&usesTime(s)).filter(s=>(!q||String(s.name+(s.dept||'')).includes(q))&&(!nw||need.has(s.id)));
+  return {title:'時給の設定',body:`<div class="toolbar"><input class="inp search" id="wg-q" placeholder="名前・所属" value="${esc(q)}"><label class="small"><input type="checkbox" id="wg-nw" ${nw?'checked':''}> 未設定で人件費に入っていない人だけ</label></div>
+    <p class="small muted" style="margin:0 0 8px">時給を変えるときは「適用開始日」を入れて追加します。過去の月は、その時点の時給で計算されます。${ed?'':'（変更できるのは管理者と「時給の変更」権限の人だけです）'}</p>
+    <div class="scroll"><table class="t"><thead><tr><th>名前</th><th>所属</th><th class="r">時給</th><th class="r">交通費/日</th><th>適用開始</th>${ed?'<th></th>':''}</tr></thead><tbody>
+    ${list.slice(0,200).map(s=>{ const w=wageOf(s.id,'9999-12-31'); const h=(get('wages',s.id)?.hist||[]).slice().sort(by(x=>x.from||'')); const cur=h[h.length-1];
+      return `<tr><td>${esc(s.name)}</td><td class="small">${esc(s.dept||'')}</td>${ed?`<td class="r"><input class="inp num" style="width:90px;text-align:right" inputmode="numeric" data-wg="hourly" data-id="${s.id}" value="${w?w.hourly:''}"></td><td class="r"><input class="inp num" style="width:80px;text-align:right" inputmode="numeric" data-wg="transport" data-id="${s.id}" value="${w?w.transport||'':''}"></td><td><input class="inp" type="date" data-wg="from" data-id="${s.id}" value="${esc(cur?.from||'')}" style="width:150px"></td><td><button class="btn sm" data-act="wageSave" data-id="${s.id}">保存</button>${h.length>1?`<div class="small muted">${h.slice(0,-1).map(x=>`${esc(x.from||'当初')} ${yenC(x.hourly)}`).join('<br>')}</div>`:''}</td>`
+        :`<td class="r num">${w?yenC(w.hourly):'<span class="pill w">未設定</span>'}</td><td class="r num">${w&&w.transport?yenC(w.transport):''}</td><td class="small">${esc(cur?.from||'')}</td>`}</tr>`; }).join('')||'<tr><td colspan="6" class="empty">該当なし</td></tr>'}
+    </tbody></table></div>${list.length>200?`<p class="small muted">200人まで表示しています。名前で絞り込んでください。</p>`:''}`,
+    foot:`<button class="btn pri" data-act="close">閉じる</button>`}; };
+async function wageSave(id){ if(!canWageEdit()) return toast('時給を変更できるのは、管理者と「時給の変更」権限の人だけです');
+  const v=k=>ROOT.querySelector(`[data-wg="${k}"][data-id="${id}"]`)?.value||'';
+  const hourly=+v('hourly'), transport=+v('transport')||0, from=v('from')||'';
+  if(!(hourly>0)) return toast('時給を入れてください');
+  const w=get('wages',id)||{hist:[]}; const hist=(w.hist||[]).filter(x=>(x.from||'')!==from).concat([{from,hourly,transport,by:meId(),at:new Date().toISOString()}]).sort(by(x=>x.from||''));
+  await put('wages',id,{kind:'wage',staffId:id,hist}); toast(`${staffName(id)}さんの時給を保存しました`); renderOverlay(); }
+SHEETS.costCfg=()=>{ const c=costCfg(); const f=(k,l,u)=>`<label class="fld"><span>${l}</span><span style="display:flex;gap:6px;align-items:center"><input class="inp num" style="width:90px;text-align:right" inputmode="decimal" id="cc-${k}" value="${esc(c[k])}"> ${u}</span></label>`;
+  return {title:'割増・法定福利費',body:`<div class="form">${f('welfare','法定福利費（会社負担の社会保険など）','%')}${f('ot','時間外（1日8時間・週40時間超）の割増','%')}${f('night','深夜（22〜5時）の割増','%')}${f('hol','法定休日の割増','%')}</div>
+    <p class="small muted">現場別の人件費（概算）の計算に使います。給与の計算は給与ソフトで行ってください。</p>`,
+    foot:`<button class="btn" data-act="close">閉じる</button><button class="btn pri" data-act="costCfgSave">保存</button>`}; };
+
+Object.assign(ACT_S,{
+  ctOnly(el){ VS.ctOnly=el.dataset.v; render(); },
+  ctOpen(el){ openSheet({kind:'ctSite',site:el.dataset.site}); },
+  wageList(el){ if(!canWage()) return toast('時給を見られる権限がありません'); openSheet({kind:'wageList',q:'',nw:!!el.dataset.nw}); },
+  async wageSave(el){ await wageSave(el.dataset.id); },
+  costCfg(){ openSheet({kind:'costCfg'}); },
+  async costCfgSave(){ if(!canWageEdit()) return toast('権限がありません'); const o={}; ['welfare','ot','night','hol'].forEach(k=>{ o[k]=+(byId('cc-'+k)?.value)||0; }); await put('meta','costcfg',{...(get('meta','costcfg')||{}),...o}); closeSheet(); toast('保存しました'); },
+});
+docOn('input',e=>{ const t=e.target;
+  if(t.id==='ct-q'){ VS.ctQ=t.value; const pos=t.selectionStart; render(); const n=byId('ct-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } }
+  if(t.id==='wg-q'&&sheet?.kind==='wageList'){ sheet.q=t.value; const pos=t.selectionStart; renderOverlay(); const n=byId('wg-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } } });
+docOn('change',e=>{ const t=e.target; if(t.id==='wg-nw'&&sheet?.kind==='wageList'){ sheet.nw=t.checked; renderOverlay(); } });
+
+/* =========================================================
+   備品・物品の在庫と発注
+   items（品目）・stockmoves（在庫の動き：入荷／払出／移動／使用／棚卸）
+   purchases（物品の発注書）・supplyreqs（現場からの補充依頼）
+   在庫数は動きの合計。データが変わったときだけ計算し直す
+   場所：'wh'＝本社倉庫、それ以外は現場ID（置き在庫）
+   ========================================================= */
+const canStock=()=>['admin','lead','manager'].includes(roleS())||hasEx('stock.edit');
+const WH='wh';
+const locName=l=>l===WH?(get('meta','stockcfg')?.whName||'本社倉庫'):(siteName(l)||'（削除された現場）');
+const MV_KINDS={in:'入荷',out:'払出',move:'移動',use:'使用',adjust:'棚卸'};
+const PU_ST=['作成中','発注済','一部入荷','入荷済','取消'];
+const PU_TONE={'作成中':'','発注済':'a','一部入荷':'w','入荷済':'g','取消':'r'};
+const items=()=>all('items').filter(x=>!x.inactive).sort(by(x=>(x.cat||'')+(x.kana||x.name)));
+const itemName=id=>get('items',id)?.name||'（削除された品目）';
+let STK=null,STKk=-1;
+function stockMap(){ if(STKk===dataVer&&STK) return STK; const m=new Map();
+  const add=(it,loc,q)=>{ if(!loc) return; const o=m.get(it)||{}; o[loc]=(o[loc]||0)+q; m.set(it,o); };
+  all('stockmoves').forEach(v=>{ const q=+v.qty||0; if(v.kind==='adjust') add(v.itemId,v.to,q); else { add(v.itemId,v.from,-q); add(v.itemId,v.to,q); } });
+  STK=m; STKk=dataVer; return m; }
+const stockAt=(it,loc)=>Math.round(((stockMap().get(it)||{})[loc]||0)*100)/100;
+const siteLocs=it=>Object.entries(stockMap().get(it)||{}).filter(([l,q])=>l!==WH&&q);
+/* 現場に出した資材の金額（現場の費用） */
+function matCostMonth(ym){ const o={};
+  all('stockmoves').forEach(v=>{ if(ymOf(v.date)!==ym||!v.to||v.to===WH) return; if(!['in','out','move'].includes(v.kind)||(v.kind==='move'&&v.from!==WH)) return; o[v.to]=(o[v.to]||0)+(+v.qty||0)*(+v.price||0); });
+  return o; }
+const lowItems=()=>items().filter(x=>x.reorder!==''&&x.reorder!=null&&stockAt(x.id,WH)<=+x.reorder);
+const onOrder=it=>all('purchases').filter(p=>['発注済','一部入荷'].includes(p.status)).reduce((a,p)=>a+(p.lines||[]).filter(l=>l.itemId===it).reduce((b,l)=>b+Math.max(0,(+l.qty||0)-(+l.recv||0)),0),0);
+const siteShort_=id=>(typeof siteShort==='function'?siteShort(get('sites',id)):siteName(id))||'';
+/* 置き在庫の定数を下回っている現場 */
+function siteShortages(siteId){ const out=[]; items().forEach(x=>{ Object.entries(x.siteMin||{}).forEach(([sid,mn])=>{ if(siteId&&sid!==siteId) return; if(!(+mn>0)) return; const q=stockAt(x.id,sid); if(q<+mn) out.push({item:x,siteId:sid,qty:q,min:+mn,need:+mn-q}); }); }); return out; }
+const myStockSites=()=>{ const ss=(typeof mySites==='function'?mySites():[]); return ss.length?ss:(me()?.shiftSites||[]); };
+const openReqs=()=>all('supplyreqs').filter(r=>r.status==='依頼中').sort(by(r=>r.at||''));
+const puNo=()=>{ const y=today().slice(0,7).replace('-',''); const n=all('purchases').filter(p=>String(p.no||'').startsWith('B'+y)).length+1; return `B${y}-${String(n).padStart(3,'0')}`; };
+const canSealS=()=>['admin','lead'].includes(roleS())||hasEx('seal.use');
+const sealOnS=st=>!!(st&&canSealS()&&get('seals','kakuin')?.img&&st.seal!==false);
+async function puLog(p,sealed,how){ await put('seallogs',null,{doc:'purchase',refId:p.id||'',no:p.no||'',title:p.supplier||'',sealed,approved:null,how,by:meId(),at:new Date().toISOString()}); }
+const company=()=>{ try{ return (window.G_API&&G_API.get&&G_API.get('settings','main'))||{}; }catch(_){ return {}; } };
+
+/* ---------- 画面 ---------- */
+VIEWS.stock=()=>{
+  const ed=canStock(), tab=ed?(VS.stTab||'stock'):(VS.stTab==='site'?'site':'req');
+  const nr=openReqs().length, nl=lowItems().length;
+  const tabs=ed?[['stock','在庫'],['site','現場の置き在庫'],['order',`発注${nl?` <span class="badge">${nl}</span>`:''}`],['req',`補充依頼${nr?` <span class="badge">${nr}</span>`:''}`],['moves','入出庫の記録']]:[['req','補充依頼'],['site','現場の置き在庫']];
+  let h=`<div class="vhead"><h1>備品・物品の在庫</h1>${ed?'<span style="margin-left:auto;display:inline-flex;gap:8px"><button class="btn" data-act="mvNew">入出庫を記録</button><button class="btn pri" data-act="itNew">＋ 品目</button></span>':''}</div>
+  <div class="tabs" role="tablist">${tabs.map(([k,l])=>`<button role="tab" data-act="stTab" data-v="${k}" aria-selected="${tab===k}">${l}</button>`).join('')}</div>`;
+  if(tab==='stock') return h+stockTab();
+  if(tab==='site') return h+siteTab();
+  if(tab==='order') return h+orderTab();
+  if(tab==='moves') return h+movesTab();
+  return h+reqTab();
+};
+function stockTab(){
+  const q=VS.skQ||'', cat=VS.skCat||'', low=VS.skLow;
+  const its=items().filter(x=>(!q||(x.name+(x.kana||'')+(x.supplier||'')).includes(q))&&(!cat||x.cat===cat)&&(!low||lowItems().includes(x)));
+  const cats=[...new Set(items().map(x=>x.cat).filter(Boolean))];
+  if(!items().length) return `<div class="panel"><div class="pbody"><p>品目がまだありません。</p><p class="small muted">「＋ 品目」で、洗剤・パッド・ゴミ袋などの消耗品や、モップ・掃除機などの備品を登録します。発注点（倉庫の数がこれ以下になったら発注）と、現場ごとの置き在庫の定数も決められます。</p></div></div>`;
+  return `<div class="toolbar"><input class="inp search" id="sk-q" placeholder="品名・発注先" value="${esc(q)}">
+    <select class="inp auto" data-chg="skCat"><option value="">区分：すべて</option>${cats.map(c=>`<option ${c===cat?'selected':''}>${esc(c)}</option>`).join('')}</select>
+    <button class="tgl" data-act="skLow" aria-pressed="${!!low}">発注点を下回っているものだけ</button></div>
+  <div class="panel scroll"><table class="t"><thead><tr><th>品目</th><th>区分</th><th class="r">単価</th><th class="r">${esc(locName(WH))}</th><th class="r">発注点</th><th class="r">発注中</th><th>現場の置き在庫</th></tr></thead><tbody>
+  ${its.map(x=>{ const w=stockAt(x.id,WH), lw=x.reorder!==''&&x.reorder!=null&&w<=+x.reorder, oo=onOrder(x.id), sl=siteLocs(x.id);
+    return `<tr class="click" data-act="itOpen" data-id="${x.id}"><td>${esc(x.name)}<div class="small muted">${esc(x.supplier||'')}</div></td><td class="small">${esc(x.cat||'')}</td><td class="r num">${x.price?yenC(x.price):''}</td>
+      <td class="r num ${lw?'bad':''}"><b>${w}</b> ${esc(x.unit||'')}</td><td class="r num">${x.reorder??''}</td><td class="r num">${oo||''}</td>
+      <td class="small">${sl.slice(0,4).map(([l,q])=>`${esc(siteShort_(l))} ${q}`).join('・')}${sl.length>4?` ほか${sl.length-4}`:''}</td></tr>`; }).join('')||'<tr><td colspan="7" class="empty">該当なし</td></tr>'}
+  </tbody></table></div>`;
+}
+function siteTab(){
+  const ed=canStock(); const ss=ed?sitesOf().filter(s=>items().some(x=>(x.siteMin||{})[s.id]||stockAt(x.id,s.id))):sitesOf().filter(s=>myStockSites().includes(s.id));
+  if(!VS.skSite||!ss.some(s=>s.id===VS.skSite)) VS.skSite=ss[0]?.id||'';
+  const sid=VS.skSite; const rows=items().filter(x=>(x.siteMin||{})[sid]||stockAt(x.id,sid));
+  const opts=(ed?sitesOf():ss).map(s=>`<option value="${s.id}" ${s.id===sid?'selected':''}>${esc(s.name)}</option>`).join('');
+  const sh=siteShortages(sid);
+  return `<div class="toolbar"><select class="inp auto" data-chg="skSite">${opts||'<option value="">現場がありません</option>'}</select>
+    ${sid?`<button class="btn sm" data-act="reqNew" data-site="${sid}">補充を依頼</button>${ed?`<button class="btn sm" data-act="mvNew" data-kind="adjust" data-loc="${sid}">棚卸を記録</button>`:''}`:''}
+    ${ed&&sh.length?`<button class="btn sm pri" data-act="fillSite" data-site="${sid}">足りない${sh.length}品目を倉庫から補充</button>`:''}</div>
+  ${!sid?'<div class="panel"><div class="pbody empty">担当現場がありません。</div></div>':`<div class="panel scroll"><table class="t"><thead><tr><th>品目</th><th class="r">いまの数</th><th class="r">定数</th><th class="r">不足</th><th class="r">${esc(locName(WH))}</th></tr></thead><tbody>
+  ${rows.map(x=>{ const q=stockAt(x.id,sid), mn=+((x.siteMin||{})[sid]||0); return `<tr ${ed?`class="click" data-act="itOpen" data-id="${x.id}"`:''}><td>${esc(x.name)}</td><td class="r num"><b>${q}</b> ${esc(x.unit||'')}</td><td class="r num">${mn||''}</td><td class="r num ${mn&&q<mn?'bad':''}">${mn&&q<mn?mn-q:''}</td><td class="r num">${stockAt(x.id,WH)}</td></tr>`; }).join('')||'<tr><td colspan="5" class="empty">この現場に置いている物品はありません</td></tr>'}
+  </tbody></table></div>`}
+  <div class="hint">定数は品目ごとに決めます（品目を開く → 現場の置き在庫の定数）。現場に払い出した金額は、その現場の費用（勤怠 → 現場別費用）に入ります。</div>`;
+}
+function orderTab(){
+  const low=lowItems(); const bySup={}; low.forEach(x=>{ (bySup[x.supplier||'（発注先未設定）']??=[]).push(x); });
+  const ps=all('purchases').filter(p=>VS.puAll||p.status!=='入荷済'&&p.status!=='取消').sort(by(p=>(p.status==='作成中'?'0':'1')+(p.issuedAt||p.createdAt||''),-1));
+  return `${low.length?`<div class="panel"><h2>発注点を下回っている品目 <span class="num muted">${low.length}</span></h2><div class="pbody">
+    ${Object.entries(bySup).map(([sup,xs])=>`<div class="li" style="align-items:flex-start"><div class="grow"><b>${esc(sup)}</b><div class="small">${xs.map(x=>`${esc(x.name)}（倉庫 ${stockAt(x.id,WH)}${onOrder(x.id)?`・発注中 ${onOrder(x.id)}`:''}）`).join('、')}</div></div><button class="btn sm pri" data-act="puFromLow" data-sup="${esc(sup)}">発注書を作る</button></div>`).join('')}</div></div>`:''}
+  <div class="toolbar" style="margin-top:12px"><b>物品の発注書</b><button class="tgl" data-act="puAll" aria-pressed="${!!VS.puAll}">入荷済・取消も表示</button><span style="margin-left:auto"><button class="btn sm" data-act="puNew">＋ 発注書</button></span></div>
+  <div class="panel scroll"><table class="t"><thead><tr><th>番号</th><th>発注先</th><th>納品先</th><th>品目</th><th class="r">金額</th><th>状態</th></tr></thead><tbody>
+  ${ps.map(p=>`<tr class="click" data-act="puOpen" data-id="${p.id}"><td class="num">${esc(p.no||'')}<div class="small muted">${esc(p.issuedAt||'')}</div></td><td>${esc(p.supplier||'')}</td><td class="small">${esc(locName(p.to||WH))}</td><td class="small">${(p.lines||[]).slice(0,3).map(l=>esc(l.name||itemName(l.itemId))).join('、')}${(p.lines||[]).length>3?' ほか':''}</td><td class="r num">${yenC(puTotal(p))}</td><td><span class="pill ${PU_TONE[p.status]||''}">${esc(p.status)}</span></td></tr>`).join('')||'<tr><td colspan="6" class="empty">発注書はありません</td></tr>'}
+  </tbody></table></div>`;
+}
+const puTotal=p=>(p.lines||[]).reduce((a,l)=>a+(+l.qty||0)*(+l.price||0),0);
+function reqTab(){
+  const ed=canStock(); const list=all('supplyreqs').filter(r=>ed||r.staffId===meId()||myStockSites().includes(r.siteId)).filter(r=>VS.rqAll||r.status==='依頼中').sort(by(r=>r.at||'',-1));
+  return `<div class="toolbar"><button class="btn pri" data-act="reqNew">＋ 補充を依頼</button><button class="tgl" data-act="rqAll" aria-pressed="${!!VS.rqAll}">対応済みも表示</button></div>
+  <div class="panel"><div class="pbody">${list.length?`<div class="list">${list.map(r=>`<div class="li" style="align-items:flex-start"><div class="grow"><b>${esc(siteName(r.siteId))}</b> <span class="small muted">${esc(staffName(r.staffId))}・${esc(String(r.at||'').slice(5,16).replace('T',' '))}</span>
+    <div class="small">${(r.lines||[]).map(l=>`${esc(itemName(l.itemId))} ${l.qty}${esc(get('items',l.itemId)?.unit||'')}`).join('、')}${r.note?`<div class="muted">${esc(r.note)}</div>`:''}</div>
+    ${r.status!=='依頼中'?`<div class="small muted">${esc(r.status)}${r.doneHow?`（${esc(r.doneHow)}）`:''}</div>`:''}</div>
+    ${r.status==='依頼中'?(ed?`<button class="btn sm pri" data-act="reqOut" data-id="${r.id}">倉庫から出す</button><button class="btn sm" data-act="reqPu" data-id="${r.id}">発注する</button>`:'')+(ed||r.staffId===meId()?`<button class="btn sm" data-act="reqCancel" data-id="${r.id}">取消</button>`:''):''}</div>`).join('')}</div>`:'<p class="empty">補充依頼はありません。</p>'}</div></div>
+  <div class="hint">現場で足りなくなった物品を依頼すると、事務所で倉庫から出すか、まとめて発注します。</div>`;
+}
+function movesTab(){
+  const m=VS.mvMonth||ymOf(today()); const mv=all('stockmoves').filter(v=>ymOf(v.date)===m&&(!VS.mvKind||v.kind===VS.mvKind)).sort(by(v=>(v.date||'')+(v.at||''),-1));
+  return `<div class="toolbar"><span style="display:inline-flex;gap:4px;align-items:center"><button class="btn sm" data-act="mvMonth" data-n="-1" aria-label="前月">‹</button><b style="min-width:84px;text-align:center">${ymLabel(m)}</b><button class="btn sm" data-act="mvMonth" data-n="1" aria-label="翌月">›</button></span>
+    <select class="inp auto" data-chg="mvKind"><option value="">種類：すべて</option>${Object.entries(MV_KINDS).map(([k,l])=>`<option value="${k}" ${VS.mvKind===k?'selected':''}>${l}</option>`).join('')}</select>
+    <span style="margin-left:auto"><button class="btn sm" data-act="mvCsv">CSVを出力</button></span></div>
+  <div class="panel scroll"><table class="t"><thead><tr><th>日付</th><th>種類</th><th>品目</th><th class="r">数量</th><th>出し元 → 行き先</th><th class="r">金額</th><th>記録した人</th></tr></thead><tbody>
+  ${mv.map(v=>`<tr><td class="num">${jd(v.date)}</td><td><span class="pill">${MV_KINDS[v.kind]||v.kind}</span></td><td>${esc(itemName(v.itemId))}</td><td class="r num">${v.qty}</td><td class="small">${v.kind==='adjust'?esc(locName(v.to))+'（差）':`${v.from?esc(locName(v.from)):'仕入'} → ${v.to?esc(locName(v.to)):'使用'}`}</td><td class="r num">${v.price&&v.to&&v.to!==WH&&v.kind!=='adjust'?yenC(v.qty*v.price):''}</td><td class="small">${esc(staffName(v.by))}${v.note?`<div class="muted">${esc(v.note)}</div>`:''}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">記録はありません</td></tr>'}
+  </tbody></table></div>`;
+}
+
+/* ---------- 品目 ---------- */
+SHEETS.item=()=>{ const x=sheet.x, isNew=!x.id; const ed=canStock();
+  const mv=isNew?[]:all('stockmoves').filter(v=>v.itemId===x.id).sort(by(v=>(v.date||'')+(v.at||''),-1)).slice(0,12);
+  const f=(k,l,a='')=>`<label class="fld"><span>${l}</span><input class="inp" data-it="${k}" value="${esc(x[k]??'')}" ${a}></label>`;
+  const sups=[...new Set(all('items').map(i=>i.supplier).filter(Boolean))];
+  return {title:isNew?'品目を登録':esc(x.name),body:`
+    ${isNew?'':`<div class="money"><div><div class="l">${esc(locName(WH))}</div><div class="v num">${stockAt(x.id,WH)} ${esc(x.unit||'')}</div></div><div><div class="l">現場の置き在庫</div><div class="v num">${siteLocs(x.id).reduce((a,[,q])=>a+q,0)} ${esc(x.unit||'')}</div></div><div><div class="l">発注中</div><div class="v num">${onOrder(x.id)}</div></div></div>`}
+    <section class="sec"><div class="form">${f('name','品名')}${f('cat','区分','list="it-cats" placeholder="消耗品／備品"')}<datalist id="it-cats"><option>消耗品</option><option>備品</option>${[...new Set(items().map(i=>i.cat).filter(Boolean))].map(c=>`<option>${esc(c)}</option>`).join('')}</datalist>
+      ${f('unit','単位','placeholder="本／箱／枚"')}${f('price','単価（円）','inputmode="numeric"')}${f('supplier','発注先','list="it-sups"')}<datalist id="it-sups">${sups.map(s=>`<option>${esc(s)}</option>`).join('')}</datalist>
+      ${f('code','品番・JAN（任意）')}${f('reorder',`発注点（${esc(locName(WH))}がこの数以下で発注の候補）`,'inputmode="numeric"')}${f('orderQty','いつもの発注数','inputmode="numeric"')}</div></section>
+    <section class="sec"><h3>現場の置き在庫の定数<span class="sp"><select class="inp auto" id="it-addsite"><option value="">＋ 現場を追加</option>${sitesOf().filter(s=>!(x.siteMin||{})[s.id]).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></span></h3>
+      ${Object.keys(x.siteMin||{}).length?`<div class="list">${Object.entries(x.siteMin).map(([sid,n])=>`<div class="li"><span class="grow">${esc(siteName(sid))}${isNew?'':`<span class="small muted">　いま ${stockAt(x.id,sid)}</span>`}</span><input class="inp num" style="width:80px;text-align:right" inputmode="numeric" data-smin="${sid}" value="${esc(n)}"><button class="btn ghost sm" data-act="itSiteDel" data-site="${sid}" aria-label="削除">✕</button></div>`).join('')}</div>`:'<p class="small muted" style="margin:0">現場に置いておく数を決めると、足りない現場がわかり、倉庫からまとめて補充できます。</p>'}</section>
+    <label class="fld"><span>メモ</span><textarea class="inp" data-it="note" style="min-height:60px">${esc(x.note||'')}</textarea></label>
+    ${mv.length?`<section class="sec"><h3>最近の入出庫</h3><div class="list">${mv.map(v=>`<div class="li small"><span class="num">${jd(v.date)}</span><span class="pill">${MV_KINDS[v.kind]}</span><span class="grow">${v.kind==='adjust'?esc(locName(v.to)):`${v.from?esc(locName(v.from)):'仕入'} → ${v.to?esc(locName(v.to)):'使用'}`}</span><b class="num">${v.qty}</b></div>`).join('')}</div></section>`:''}
+    ${!isNew&&ed?(sheet.delAsk?`<div class="callout w"><span>${all('stockmoves').some(v=>v.itemId===x.id)?'入出庫の記録があるため、一覧から外します（記録は残ります）。':'この品目を削除します。'}</span><button class="btn danger sm" data-act="itDel">はい</button></div>`:'<button class="btn danger sm" data-act="itDelAsk">この品目を削除</button>'):''}`,
+    foot:ed?`${isNew?'':`<button class="btn" data-act="mvNew" data-item="${x.id}">入出庫を記録</button>`}<button class="btn" data-act="close">閉じる</button><button class="btn pri" data-act="itSave">保存</button>`:`<button class="btn pri" data-act="close">閉じる</button>`}; };
+async function itSave(){ const x=sheet.x; if(!String(x.name||'').trim()) return toast('品名を入れてください');
+  ['price','reorder','orderQty'].forEach(k=>{ if(x[k]!==''&&x[k]!=null) x[k]=+x[k]||0; });
+  const id=await put('items',x.id||null,{...x,name:x.name.trim()}); closeSheet(); toast('保存しました'); return id; }
+
+/* ---------- 入出庫の記録 ---------- */
+SHEETS.move=()=>{ const v=sheet.v, k=v.kind; const it=get('items',v.itemId);
+  const locOpts=(sel,withWh=true,blank='')=>`${blank?`<option value="">${blank}</option>`:''}${withWh?`<option value="${WH}" ${sel===WH?'selected':''}>${esc(locName(WH))}</option>`:''}${sitesOf().map(s=>`<option value="${s.id}" ${sel===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}`;
+  const cur=k==='adjust'&&v.to&&v.itemId?stockAt(v.itemId,v.to):null;
+  return {title:'入出庫を記録',body:`<div class="seg" style="margin-bottom:10px">${Object.entries({in:'入荷',out:'払出（倉庫→現場）',move:'移動',use:'使用',adjust:'棚卸'}).map(([x,l])=>`<button data-act="mvKind" data-v="${x}" aria-pressed="${k===x}">${l}</button>`).join('')}</div>
+    <div class="form">
+    <label class="fld"><span>日付</span><input class="inp" type="date" data-mv="date" value="${esc(v.date)}"></label>
+    <label class="fld"><span>品目</span><select class="inp" data-mv="itemId"><option value="">選んでください</option>${items().map(x=>`<option value="${x.id}" ${x.id===v.itemId?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
+    ${k==='in'?`<label class="fld"><span>入れる場所</span><select class="inp" data-mv="to">${locOpts(v.to)}</select></label>`:''}
+    ${k==='out'?`<label class="fld"><span>出す現場</span><select class="inp" data-mv="to">${locOpts(v.to,false,'選んでください')}</select></label>`:''}
+    ${k==='move'?`<label class="fld"><span>出し元</span><select class="inp" data-mv="from">${locOpts(v.from)}</select></label><label class="fld"><span>行き先</span><select class="inp" data-mv="to">${locOpts(v.to)}</select></label>`:''}
+    ${k==='use'?`<label class="fld"><span>使った場所</span><select class="inp" data-mv="from">${locOpts(v.from)}</select></label>`:''}
+    ${k==='adjust'?`<label class="fld"><span>数えた場所</span><select class="inp" data-mv="to">${locOpts(v.to)}</select></label>`:''}
+    <label class="fld"><span>${k==='adjust'?`実際の数${cur!=null?`（記録上は ${cur}）`:''}`:'数量'}${it?.unit?`（${esc(it.unit)}）`:''}</span><input class="inp num" inputmode="decimal" data-mv="qty" value="${esc(v.qty)}"></label>
+    ${['in','out'].includes(k)||(k==='move'&&v.from===WH)?`<label class="fld"><span>単価（円）</span><input class="inp num" inputmode="numeric" data-mv="price" value="${esc(v.price??it?.price??'')}"></label>`:''}
+    <label class="fld" style="grid-column:1/-1"><span>メモ</span><input class="inp" data-mv="note" value="${esc(v.note||'')}"></label></div>
+    ${k==='out'||(k==='move'&&v.from===WH&&v.to&&v.to!==WH)||(k==='in'&&v.to&&v.to!==WH)?'<p class="small muted">現場へ出した金額は、その月の現場の費用になります。</p>':''}
+    ${k==='out'&&v.itemId?`<p class="small muted">${esc(locName(WH))}の在庫：${stockAt(v.itemId,WH)}</p>`:''}`,
+    foot:`<button class="btn" data-act="close">閉じる</button><button class="btn pri" data-act="mvSave">記録する</button>`}; };
+async function addMove(o){ return put('stockmoves',null,{...o,qty:+o.qty||0,price:o.price===''||o.price==null?'':+o.price||0,by:meId(),at:new Date().toISOString()}); }
+async function mvSave(){ const v={...sheet.v}; if(!v.itemId) return toast('品目を選んでください'); if(v.qty===''||isNaN(+v.qty)) return toast('数量を入れてください');
+  if(v.kind==='out'){ v.from=WH; if(!v.to) return toast('出す現場を選んでください'); }
+  if(v.kind==='in'){ v.from=''; v.to=v.to||WH; }
+  if(v.kind==='use'){ v.to=''; v.from=v.from||WH; }
+  if(v.kind==='move'&&(!v.from||!v.to||v.from===v.to)) return toast('出し元と行き先を選んでください');
+  if(v.kind==='adjust'){ if(!v.to) return toast('数えた場所を選んでください'); const d=(+v.qty)-stockAt(v.itemId,v.to); if(!d) { closeSheet(); return toast('記録上の数と同じでした'); } v.note=`${v.note?v.note+' ':''}実数 ${+v.qty}`; v.qty=d; v.from=''; }
+  if(['in','out','move'].includes(v.kind)&&(v.price===''||v.price==null)) v.price=get('items',v.itemId)?.price??'';
+  if(+v.qty<=0&&v.kind!=='adjust') return toast('数量は1以上にしてください');
+  await addMove(v); closeSheet(); toast(`${MV_KINDS[v.kind]}を記録しました`); }
+
+/* ---------- 物品の発注書 ---------- */
+SHEETS.purchase=()=>{ const p=sheet.p, ed=canStock()&&!['入荷済','取消'].includes(p.status); const its=items();
+  const rows=(p.lines||[]).map((l,i)=>`<tr><td>${ed?`<select class="inp" data-pl="${i}" data-k="itemId"><option value="">選ぶ</option>${its.map(x=>`<option value="${x.id}" ${x.id===l.itemId?'selected':''}>${esc(x.name)}</option>`).join('')}</select>`:esc(l.name||itemName(l.itemId))}</td>
+    <td class="r">${ed?`<input class="inp num" style="width:70px;text-align:right" inputmode="decimal" data-pl="${i}" data-k="qty" value="${esc(l.qty)}">`:l.qty}</td><td class="small">${esc(l.unit||get('items',l.itemId)?.unit||'')}</td>
+    <td class="r">${ed?`<input class="inp num" style="width:90px;text-align:right" inputmode="numeric" data-pl="${i}" data-k="price" value="${esc(l.price)}">`:yenC(l.price)}</td><td class="r num">${yenC((+l.qty||0)*(+l.price||0))}</td>
+    <td class="r num">${['発注済','一部入荷','入荷済'].includes(p.status)?`${+l.recv||0}`:''}</td>${ed?`<td><button class="btn ghost sm" data-act="plDel" data-i="${i}" aria-label="行を削除">✕</button></td>`:''}</tr>`).join('');
+  const recv=sheet.recv&&['発注済','一部入荷'].includes(p.status);
+  return {title:p.id?`物品の発注書 ${esc(p.no||'')}`:'物品の発注書を作る',body:`
+    <div class="form">
+      <label class="fld"><span>発注先</span><input class="inp" data-pu="supplier" value="${esc(p.supplier||'')}" list="pu-sups" ${ed?'':'disabled'}><datalist id="pu-sups">${[...new Set(all('items').map(i=>i.supplier).filter(Boolean))].map(s=>`<option>${esc(s)}</option>`).join('')}</datalist></label>
+      <label class="fld"><span>発注書番号</span><input class="inp" data-pu="no" value="${esc(p.no||'')}" ${ed?'':'disabled'}></label>
+      <label class="fld"><span>発行日</span><input class="inp" type="date" data-pu="issuedAt" value="${esc(p.issuedAt||'')}" ${ed?'':'disabled'}></label>
+      <label class="fld"><span>納品先</span><select class="inp" data-pu="to" ${ed?'':'disabled'}><option value="${WH}">${esc(locName(WH))}</option>${sitesOf().map(s=>`<option value="${s.id}" ${p.to===s.id?'selected':''}>${esc(s.name)}（現場に直接）</option>`).join('')}</select></label>
+      <label class="fld"><span>納期（希望）</span><input class="inp" type="date" data-pu="due" value="${esc(p.due||'')}" ${ed?'':'disabled'}></label>
+      <label class="fld"><span>状態</span><input class="inp ro" value="${esc(p.status)}" disabled></label></div>
+    <section class="sec"><h3>明細</h3><div class="scroll"><table class="t lines"><thead><tr><th>品目</th><th class="r">数量</th><th>単位</th><th class="r">単価</th><th class="r">金額</th><th class="r">入荷済</th>${ed?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table></div>
+      ${ed?'<button class="btn sm" data-act="plAdd" style="margin-top:8px">＋ 行を追加</button>':''}
+      <div class="totals"><span>小計</span><span class="num">${yenC(puTotal(p))}</span><span>消費税（10%）</span><span class="num">${yenC(Math.floor(puTotal(p)*0.1))}</span><b>合計</b><b class="num">${yenC(puTotal(p)+Math.floor(puTotal(p)*0.1))}</b></div></section>
+    <label class="fld"><span>備考（発注書に表示）</span><textarea class="inp" data-pu="note" style="min-height:60px" ${ed?'':'disabled'}>${esc(p.note||'')}</textarea></label>
+    ${recv?`<section class="sec"><h3>入荷を記録</h3><div class="list">${(p.lines||[]).map((l,i)=>{ const rest=Math.max(0,(+l.qty||0)-(+l.recv||0)); return `<div class="li"><span class="grow">${esc(l.name||itemName(l.itemId))}<span class="small muted">　残り ${rest}</span></span><input class="inp num" style="width:80px;text-align:right" inputmode="decimal" data-rcv="${i}" value="${rest}"></div>`; }).join('')}</div>
+      <div class="toolbar" style="margin-top:8px"><label class="fld" style="max-width:200px"><span>入荷日</span><input class="inp" type="date" id="pu-rdate" value="${today()}"></label><button class="btn pri" data-act="puRecvDo">入荷を記録（${esc(locName(p.to||WH))}に入れる）</button></div></section>`:''}`,
+    foot:`${p.id&&p.status!=='取消'?'<button class="btn" data-act="puPaper">発注書を表示</button>':''}
+      ${p.id&&['発注済','一部入荷'].includes(p.status)&&canStock()&&!recv?'<button class="btn" data-act="puRecv">入荷を記録</button>':''}
+      ${p.id&&p.status==='作成中'&&canStock()?'<button class="btn danger" data-act="puCancel">取消</button>':''}
+      <button class="btn" data-act="close">閉じる</button>
+      ${ed?`<button class="btn" data-act="puSave">保存</button>${p.status==='作成中'?'<button class="btn pri" data-act="puOrder">発注済にする</button>':''}`:''}`}; };
+function puDraft(o={}){ return {id:null,no:puNo(),supplier:'',issuedAt:today(),to:WH,due:'',status:'作成中',lines:[],note:'',reqIds:[],...o}; }
+const puLine=(x,q)=>({itemId:x.id,name:x.name,unit:x.unit||'',qty:q,price:x.price||0,recv:0});
+async function puSave(status){ const p=sheet.p; p.lines=(p.lines||[]).filter(l=>l.itemId&&+l.qty>0).map(l=>{ const x=get('items',l.itemId)||{}; return {...l,name:x.name||l.name,unit:x.unit||l.unit,qty:+l.qty,price:+l.price||0,recv:+l.recv||0}; });
+  if(!p.supplier) return toast('発注先を入れてください'); if(!p.lines.length) return toast('明細を入れてください');
+  if(status) p.status=status; if(status==='発注済') p.orderedAt=new Date().toISOString(), p.orderedBy=meId();
+  const id=await put('purchases',p.id||null,{...p,id:undefined}); p.id=id;
+  for(const rid of p.reqIds||[]){ const r=get('supplyreqs',rid); if(r&&r.status==='依頼中') await put('supplyreqs',rid,{...r,status:'対応済',doneHow:`発注 ${p.no}`,doneBy:meId(),doneAt:new Date().toISOString()}); }
+  toast(status==='発注済'?'発注済にしました':'保存しました'); renderOverlay(); }
+async function puRecvDo(){ const p=sheet.p, date=byId('pu-rdate')?.value||today(); let n=0;
+  for(const [i,l] of (p.lines||[]).entries()){ const q=+(ROOT.querySelector(`[data-rcv="${i}"]`)?.value)||0; if(q<=0) continue;
+    await addMove({kind:'in',date,itemId:l.itemId,from:'',to:p.to||WH,qty:q,price:l.price,purchaseId:p.id,note:`発注 ${p.no}`}); l.recv=(+l.recv||0)+q; n++; }
+  if(!n) return toast('入荷数を入れてください');
+  p.status=p.lines.every(l=>(+l.recv||0)>=(+l.qty||0))?'入荷済':'一部入荷';
+  await put('purchases',p.id,{...p,id:undefined}); sheet.recv=false; toast(`入荷を記録しました（${p.status}）`); renderOverlay(); }
+function puPaperHtml(p,sealed){ const s=company(), sub=puTotal(p), tax=Math.floor(sub*0.1); const sd=sealed?get('seals','kakuin'):null;
+  return `<div class="paper" style="background:#fff;color:#111;padding:24px;max-width:720px;margin:auto;font-size:12px;line-height:1.6"><div style="text-align:right;font-size:11px">発注書番号 ${esc(p.no||'')}<br>${esc(p.issuedAt||today())}</div><h1 style="text-align:center;letter-spacing:.4em;font-size:22px">発注書</h1>
+  <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap"><div><div style="font-size:15px;border-bottom:1px solid #111;padding-bottom:2px;min-width:220px">${esc(p.supplier||'')}　御中</div><p>下記の通り発注いたします。</p>
+  <div>納品先：${esc(p.to&&p.to!==WH?siteName(p.to)+(get('sites',p.to)?.address?'（'+get('sites',p.to).address+'）':''):(s.companyAddr?locName(WH)+'（'+s.companyAddr+'）':locName(WH)))}</div>${p.due?`<div>納期：${esc(p.due)}</div>`:''}
+  <div style="font-size:16px;margin-top:8px;font-weight:700">合計金額　${yenC(sub+tax)}（税込）</div></div>
+  <div style="text-align:right;position:relative;${sd?.img?'min-height:28mm;':''}">${sd?.img?`<img src="${sd.img}" alt="" style="position:absolute;right:0;top:-8px;width:${+sd.size||21}mm;height:auto;opacity:.93">`:''}${esc(s.companyName||'')}<br>${esc(s.companyAddr||'')}<br>${s.companyTel?'TEL '+esc(s.companyTel):''}</div></div>
+  <table style="width:100%;border-collapse:collapse;margin-top:12px" border="1" cellpadding="4"><thead><tr><th style="text-align:left">品名</th><th>数量</th><th>単位</th><th style="text-align:right">単価</th><th style="text-align:right">金額</th></tr></thead><tbody>${(p.lines||[]).map(l=>`<tr><td>${esc(l.name||itemName(l.itemId))}</td><td style="text-align:center">${l.qty}</td><td style="text-align:center">${esc(l.unit||'')}</td><td style="text-align:right">${yenC(l.price)}</td><td style="text-align:right">${yenC(l.qty*l.price)}</td></tr>`).join('')}</tbody></table>
+  <table style="width:auto;margin-left:auto;margin-top:8px"><tr><td>小計</td><td style="text-align:right">${yenC(sub)}</td></tr><tr><td>消費税（10%）</td><td style="text-align:right">${yenC(tax)}</td></tr><tr><td><b>合計</b></td><td style="text-align:right"><b>${yenC(sub+tax)}</b></td></tr></table>
+  ${p.note?`<p style="margin-top:12px;white-space:pre-wrap">備考：${esc(p.note)}</p>`:''}</div>`; }
+SHEETS.puPaper=()=>{ const st=sheet, on=sealOnS(st), has=!!get('seals','kakuin')?.img; const logs=all('seallogs').filter(l=>l.doc==='purchase'&&l.refId===st.p.id).sort(by(l=>l.at||'',-1)).slice(0,3);
+  return {title:'発注書',body:`<div class="callout" style="display:block;margin-bottom:10px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>角印</b>${canSealS()&&has?`<div class="seg">${[['1','押す'],['0','押さない']].map(([v,l])=>`<button data-act="puSeal" data-v="${v}" aria-pressed="${on===(v==='1')}">${l}</button>`).join('')}</div>`:`<span class="small">${has?'押さずに出します（押せるのは権限1・2と、個別に許可された人）':'印影がまだ登録されていません'}</span>`}</div>
+    ${logs.length?`<div class="small muted" style="margin-top:4px">出した記録：${logs.map(l=>`${esc(String(l.at||'').slice(5,16).replace('T',' '))} ${esc(staffName(l.by))} ${l.sealed?'角印あり':'角印なし'}・${esc(l.how)}`).join('　／　')}</div>`:''}</div>`
+    +puPaperHtml(st.p,on)+'<p class="small muted">「印刷・PDF」か「ファイルに保存」で出すと、角印の有無が記録されます。</p>',
+  foot:`<button class="btn" data-act="puBack">編集に戻る</button><button class="btn" data-act="puPrint">印刷・PDF</button><button class="btn pri" data-act="puDl">ファイルに保存</button>`}; };
+
+/* ---------- 補充依頼 ---------- */
+SHEETS.supplyReq=()=>{ const r=sheet.r; const ss=canStock()?sitesOf():sitesOf().filter(s=>myStockSites().includes(s.id));
+  const its=items().filter(x=>!sheet.q||(x.name+(x.kana||'')).includes(sheet.q));
+  const mins=Object.fromEntries(items().map(x=>[x.id,(x.siteMin||{})[r.siteId]]));
+  return {title:'補充を依頼',body:`<label class="fld"><span>現場</span><select class="inp" data-rq="siteId">${ss.map(s=>`<option value="${s.id}" ${s.id===r.siteId?'selected':''}>${esc(s.name)}</option>`).join('')||'<option value="">担当現場がありません</option>'}</select></label>
+    <input class="inp search" id="rq-q" placeholder="品名で探す" value="${esc(sheet.q||'')}" style="margin:10px 0">
+    <div class="list">${its.sort(by(x=>mins[x.id]?0:1)).slice(0,60).map(x=>{ const l=(r.lines||[]).find(l=>l.itemId===x.id); return `<div class="li"><span class="grow">${esc(x.name)}${mins[x.id]?`<span class="small muted">　定数 ${mins[x.id]}・いま ${stockAt(x.id,r.siteId)}</span>`:''}</span><input class="inp num" style="width:72px;text-align:right" inputmode="numeric" data-rql="${x.id}" value="${l?l.qty:''}" placeholder="0"> <span class="small">${esc(x.unit||'')}</span></div>`; }).join('')||'<p class="empty">品目がありません。事務所に登録を頼んでください。</p>'}</div>
+    <label class="fld" style="margin-top:10px"><span>メモ（急ぎ・ほかに欲しい物など）</span><input class="inp" data-rq="note" value="${esc(r.note||'')}"></label>`,
+    foot:`<button class="btn" data-act="close">閉じる</button><button class="btn pri" data-act="reqSend">依頼する</button>`}; };
+
+/* ---------- 操作 ---------- */
+Object.assign(ACT_S,{
+  stTab(el){ VS.stTab=el.dataset.v; render(); },
+  skLow(){ VS.skLow=!VS.skLow; render(); },
+  puAll(){ VS.puAll=!VS.puAll; render(); },
+  rqAll(){ VS.rqAll=!VS.rqAll; render(); },
+  mvMonth(el){ VS.mvMonth=ymAdd(VS.mvMonth||ymOf(today()),+el.dataset.n); render(); },
+  itNew(){ if(!canStock()) return; openSheet({kind:'item',x:{id:null,name:'',cat:'消耗品',unit:'',price:'',supplier:'',reorder:'',orderQty:'',siteMin:{},note:''}}); },
+  itOpen(el){ const x=get('items',el.dataset.id); if(x) openSheet({kind:'item',x:structuredClone(x)}); },
+  itSiteDel(el){ delete sheet.x.siteMin[el.dataset.site]; renderOverlay(); },
+  async itSave(){ await itSave(); },
+  itDelAsk(){ sheet.delAsk=true; renderOverlay(); },
+  async itDel(){ const x=sheet.x; if(all('stockmoves').some(v=>v.itemId===x.id)) await put('items',x.id,{...x,inactive:true}); else await del('items',x.id); closeSheet(); toast('削除しました'); },
+  mvNew(el){ if(!canStock()) return toast('入出庫の記録は、在庫を管理する人だけができます'); const k=el.dataset.kind||'out'; openSheet({kind:'move',v:{kind:k,date:today(),itemId:el.dataset.item||'',from:k==='use'?(el.dataset.loc||WH):k==='move'?WH:'',to:k==='adjust'?(el.dataset.loc||WH):k==='in'?WH:(el.dataset.loc||''),qty:'',price:'',note:''}}); },
+  mvKind(el){ const v=sheet.v; v.kind=el.dataset.v; if(v.kind==='in') v.to=v.to||WH; if(v.kind==='adjust') v.to=v.to||WH; if(v.kind==='use'||v.kind==='move') v.from=v.from||WH; renderOverlay(); },
+  async mvSave(){ await mvSave(); },
+  mvCsv(){ const m=VS.mvMonth||ymOf(today()); const rows=all('stockmoves').filter(v=>ymOf(v.date)===m).sort(by(v=>v.date||''));
+    const head=['日付','種類','品目','数量','単位','出し元','行き先','単価','金額','メモ','記録した人'];
+    const line=v=>{ const x=get('items',v.itemId)||{}; return [v.date,MV_KINDS[v.kind],x.name||'',v.qty,x.unit||'',v.from?locName(v.from):'',v.to?locName(v.to):'',v.price??'',v.price?v.qty*v.price:'',v.note||'',staffName(v.by)]; };
+    const csv='﻿'+[head,...rows.map(line)].map(r=>r.map(c=>{ c=c==null?'':String(c); return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c; }).join(',')).join('\r\n');
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`入出庫_${m}.csv`; document.body.appendChild(a); a.click(); a.remove(); },
+  async fillSite(el){ const sid=el.dataset.site; const sh=siteShortages(sid); let n=0,ng=[];
+    for(const s of sh){ const have=stockAt(s.item.id,WH); const q=Math.min(s.need,Math.max(0,have)); if(q<=0){ ng.push(s.item.name); continue; } await addMove({kind:'out',date:today(),itemId:s.item.id,from:WH,to:sid,qty:q,price:s.item.price||0,note:'定数まで補充'}); n++; }
+    toast(`${n}品目を${siteName(sid)}に出しました${ng.length?`（倉庫にない：${ng.slice(0,3).join('、')}${ng.length>3?' ほか':''}）`:''}`); },
+  puNew(){ openSheet({kind:'purchase',p:puDraft()}); },
+  puFromLow(el){ const sup=el.dataset.sup; const xs=lowItems().filter(x=>(x.supplier||'（発注先未設定）')===sup);
+    openSheet({kind:'purchase',p:puDraft({supplier:sup==='（発注先未設定）'?'':sup,lines:xs.map(x=>puLine(x,+x.orderQty||Math.max(1,(+x.reorder||0)*2-stockAt(x.id,WH))))})}); },
+  puOpen(el){ const p=get('purchases',el.dataset.id); if(p) openSheet({kind:'purchase',p:structuredClone(p)}); },
+  plAdd(){ (sheet.p.lines=sheet.p.lines||[]).push({itemId:'',qty:1,price:'',unit:'',recv:0}); renderOverlay(); },
+  plDel(el){ sheet.p.lines.splice(+el.dataset.i,1); renderOverlay(); },
+  async puSave(){ await puSave(); },
+  async puOrder(){ await puSave('発注済'); },
+  async puCancel(){ const p=sheet.p; if(!p.id) return closeSheet(); await put('purchases',p.id,{...p,id:undefined,status:'取消'}); closeSheet(); toast('取消にしました'); },
+  puRecv(){ sheet.recv=true; renderOverlay(); },
+  async puRecvDo(){ await puRecvDo(); },
+  puPaper(){ openSheet({kind:'puPaper',p:sheet.p,back:sheet}); },
+  puBack(){ const b=sheet.back; openSheet(b); },
+  puSeal(el){ sheet.seal=el.dataset.v==='1'; renderOverlay(); },
+  async puPrint(){ const p=sheet.p, on=sealOnS(sheet); const html=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>発注書 ${esc(p.no||'')}</title><style>body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;margin:24px}@media print{body{margin:0}}</style></head><body>${puPaperHtml(p,on)}</body></html>`;
+    const f=document.createElement('iframe'); f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0'; document.body.appendChild(f); const d=f.contentWindow.document; d.open(); d.write(html); d.close();
+    setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(_){ toast('印刷を開けません。「ファイルに保存」してから印刷してください'); } setTimeout(()=>f.remove(),60000); },300); await puLog(p,on,'印刷・PDF'); renderOverlay(); },
+  async puDl(){ const p=sheet.p, on=sealOnS(sheet); await puLog(p,on,'ファイル保存'); const html=`<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>発注書 ${esc(p.no||'')}</title><style>body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;margin:24px}@media print{body{margin:0}}</style></head><body>${puPaperHtml(p,on)}</body></html>`;
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([html],{type:'text/html'})); a.download=`発注書_${p.no||'draft'}.html`; document.body.appendChild(a); a.click(); a.remove(); renderOverlay(); },
+  reqNew(el){ const ss=canStock()?sitesOf().map(s=>s.id):myStockSites(); openSheet({kind:'supplyReq',q:'',r:{siteId:el.dataset.site||VS.skSite||ss[0]||'',lines:[],note:''}}); },
+  async reqSend(){ const r=sheet.r; r.lines=(r.lines||[]).filter(l=>+l.qty>0); if(!r.siteId) return toast('現場を選んでください'); if(!r.lines.length&&!r.note) return toast('数量を入れてください');
+    await put('supplyreqs',null,{...r,staffId:meId(),at:new Date().toISOString(),status:'依頼中'}); closeSheet(); toast('補充を依頼しました'); },
+  async reqCancel(el){ const r=get('supplyreqs',el.dataset.id); if(r) await put('supplyreqs',r.id,{...r,status:'取消',doneBy:meId(),doneAt:new Date().toISOString()}); toast('取消にしました'); },
+  async reqOut(el){ const r=get('supplyreqs',el.dataset.id); if(!r) return; const short=[];
+    for(const l of r.lines||[]){ const x=get('items',l.itemId); if(!x) continue; const have=stockAt(x.id,WH); if(have<+l.qty) short.push(`${x.name}（倉庫 ${have}）`); }
+    if(short.length&&!el.dataset.ok){ el.dataset.ok='1'; el.textContent='足りなくても出す'; return toast(`倉庫に足りません：${short.join('、')}`); }
+    for(const l of r.lines||[]){ const x=get('items',l.itemId); if(x) await addMove({kind:'out',date:today(),itemId:x.id,from:WH,to:r.siteId,qty:+l.qty,price:x.price||0,reqId:r.id,note:'補充依頼'}); }
+    await put('supplyreqs',r.id,{...r,status:'対応済',doneHow:'倉庫から出した',doneBy:meId(),doneAt:new Date().toISOString()}); toast(`${siteName(r.siteId)}に出しました`); },
+  reqPu(el){ const r=get('supplyreqs',el.dataset.id); if(!r) return; const xs=(r.lines||[]).map(l=>({x:get('items',l.itemId),q:+l.qty})).filter(o=>o.x);
+    const sup=xs[0]?.x.supplier||''; openSheet({kind:'purchase',p:puDraft({supplier:sup,to:r.siteId,lines:xs.map(o=>puLine(o.x,o.q)),reqIds:[r.id],note:r.note?`補充依頼：${r.note}`:''})}); },
+});
+docOn('input',e=>{ const t=e.target;
+  if(t.id==='sk-q'){ VS.skQ=t.value; const pos=t.selectionStart; render(); const n=byId('sk-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } return; }
+  if(t.id==='rq-q'&&sheet?.kind==='supplyReq'){ sheet.q=t.value; const pos=t.selectionStart; renderOverlay(); const n=byId('rq-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } return; }
+  if(!sheet) return;
+  if(t.dataset.it&&sheet.kind==='item') sheet.x[t.dataset.it]=t.value;
+  if(t.dataset.smin&&sheet.kind==='item') sheet.x.siteMin[t.dataset.smin]=t.value===''?'':+t.value||0;
+  if(t.dataset.mv&&sheet.kind==='move') sheet.v[t.dataset.mv]=t.value;
+  if(t.dataset.pu&&sheet.kind==='purchase') sheet.p[t.dataset.pu]=t.value;
+  if(t.dataset.pl&&sheet.kind==='purchase'){ const l=sheet.p.lines[+t.dataset.pl]; if(l) l[t.dataset.k]=t.value; }
+  if(t.dataset.rq&&sheet.kind==='supplyReq') sheet.r[t.dataset.rq]=t.value;
+  if(t.dataset.rql&&sheet.kind==='supplyReq'){ const r=sheet.r; r.lines=(r.lines||[]).filter(l=>l.itemId!==t.dataset.rql); if(+t.value>0) r.lines.push({itemId:t.dataset.rql,qty:+t.value}); }
+});
+docOn('change',e=>{ const t=e.target; if(!sheet) return;
+  if(t.id==='it-addsite'&&sheet.kind==='item'&&t.value){ (sheet.x.siteMin=sheet.x.siteMin||{})[t.value]=1; renderOverlay(); }
+  if(t.dataset.mv&&sheet.kind==='move'&&['itemId','to','from'].includes(t.dataset.mv)){ sheet.v[t.dataset.mv]=t.value; if(t.dataset.mv==='itemId') sheet.v.price=''; renderOverlay(); }
+  if(t.dataset.pl&&t.dataset.k==='itemId'&&sheet.kind==='purchase'){ const l=sheet.p.lines[+t.dataset.pl]; const x=get('items',t.value); if(l&&x){ Object.assign(l,{itemId:x.id,name:x.name,unit:x.unit||'',price:x.price||0}); if(!sheet.p.supplier&&x.supplier) sheet.p.supplier=x.supplier; } renderOverlay(); }
+  if(t.dataset.rq==='siteId'&&sheet.kind==='supplyReq'){ sheet.r.siteId=t.value; renderOverlay(); }
+});
+/* 共通の見た目 */
+document.head.insertAdjacentHTML('beforeend',`<style>
+#S .costbar{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:flex-end;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;margin:0 0 10px}
+#S .costbar .ttl{width:100%;font-weight:700;display:flex;gap:8px;align-items:center}
+#S .costbar .l{font-size:11px;color:var(--muted)} #S .costbar .v{font-weight:700}
+#S .costbar .bad .v,#S td.bad{color:var(--danger,#c62828)} #S .costbar.over{border-color:var(--danger,#c62828)}
+#S .costbar .msg{width:100%;color:var(--danger,#c62828);font-size:12px;font-weight:700}
+#S tr.tot td{border-top:2px solid var(--line)}
+</style>`);
+
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
   route:()=>VS.route,
@@ -4973,7 +5503,7 @@ window.S_API={
   openFieldVisit:id=>openFieldVisit(id),
   hol:d=>holName(d),
   unregDue:()=>unregDue().length,
-  get:(c,id)=>get(c,id), list:c=>all(c), patMinOf:c=>patMin(patOfCell(c)), closed:ym=>!!closeOf(ym),
+  get:(c,id)=>get(c,id), list:c=>all(c), siteHours:(s,m)=>siteHours(s,m), siteCost:m=>canWage()?siteCostMonth(m):null, canWage:()=>canWage(), patMinOf:c=>patMin(patOfCell(c)), closed:ym=>!!closeOf(ym),
   ready:()=>loaded.size===COLS.length,
   makeSample:()=>makeSample(),
   demoItems:()=>COLS.flatMap(c=>all(c).filter(r=>r.demo).map(r=>[c,r.id])),
@@ -5044,6 +5574,10 @@ const PERMS={
   'staff.edit':['admin','lead','manager'],
   'time.close':['admin','lead'],
   'res.edit':['admin','lead','manager'],
+  'wage.view':['admin'],
+  'wage.edit':['admin'],
+  'stock.edit':['admin','lead','manager'],
+  'seal.use':['admin','lead'],
   'settings.edit':['admin'],
 };
 const AUTH_ENABLED=true; // 試作では「利用者」の切り替えで本人を決める
@@ -5212,8 +5746,8 @@ function cycleMonths(c,fromYm,n){
   return out;
 }
 function priceAt(c,ym){ let p=num(c.unitPrice), k=num(c.cost); (c.priceChanges||[]).filter(x=>x.from&&x.from<=ym&&!x.pending).sort(by(x=>x.from)).forEach(x=>{ if(x.unitPrice!==''&&x.unitPrice!=null) p=num(x.unitPrice); if(x.cost!==''&&x.cost!=null) k=num(x.cost); }); return {price:p,cost:k}; }
-const contractUnit=(c,ym)=>priceAt(c,ym||ymOf(today())).price*(num(c.qty)||1);
-const contractCostUnit=(c,ym)=>priceAt(c,ym||ymOf(today())).cost*(num(c.qty)||1);
+const contractUnit=(c,ym)=>isHourly(c)?priceAt(c,ym||ymOf(today())).price*hourlyHours(c,ym||ymOf(today())):priceAt(c,ym||ymOf(today())).price*(num(c.qty)||1);
+const contractCostUnit=(c,ym)=>{ if(isDaily(c)){ const v=dailyCost(c,ym||ymOf(today())); if(v!=null) return v; } return priceAt(c,ym||ymOf(today())).cost*(num(c.qty)||1); };
 const nextChange=c=>(c.priceChanges||[]).filter(x=>x.from>ymOf(today())).sort(by(x=>x.from))[0];
 function snapOf(v){ const c=get('contracts',v.contractId); if(!c) return null; const q=v.qty!=null&&v.qty!==''?num(v.qty):(num(c.qty)||1); const pr=priceAt(c,vMonth(v)); return {price:pr.price,cost:pr.cost,qty:q}; }
 const isOut=c=>(c.staffIds||[]).some(id=>get('staff',id)?.kind==='協力会社');
@@ -5583,20 +6117,21 @@ function monthCalendar(vs){
 }
 /* ---- 定期契約 ---- */
 VIEWS.contracts={
-  shell:()=>`<div class="vhead"><h1>定期契約</h1><button class="btn" data-act="import">Excel（契約台帳）から取り込む</button><button class="btn" data-act="gen-all">日程をまとめて作成</button><button class="btn pri" data-act="new-contract">＋ 定期契約</button></div>
-    <div class="toolbar"><input class="inp search" id="ctrQ" placeholder="顧客・現場・作業内容で検索" value="${esc(VS.ctrQ)}">
+  shell:()=>`<div class="vhead"><h1>定期契約</h1><button class="btn" data-act="import">Excel（契約台帳）から取り込む</button><button class="btn" data-act="gen-all">日程をまとめて作成</button><button class="btn" data-act="new-daily">＋ 日常清掃</button><button class="btn pri" data-act="new-contract">＋ 定期契約</button></div>
+    <div class="toolbar"><div class="seg">${[['','すべて'],['regular','定期清掃'],['daily','日常清掃']].map(([k,l])=>`<button data-act="ctr-cat" data-v="${k}" aria-pressed="${(VS.ctrCat||'')===k}">${l}</button>`).join('')}</div><input class="inp search" id="ctrQ" placeholder="顧客・現場・作業内容で検索" value="${esc(VS.ctrQ)}">
     <select class="inp filt" id="ctrCust" style="width:auto">${opt('','顧客：すべて',VS.ctrCust)}${all('customers').sort(by(c=>c.kana||c.name)).map(c=>opt(c.id,c.name,VS.ctrCust)).join('')}</select></div>`,
   body(){
     const q=VS.ctrQ.trim(), tm=ymOf(today());
-    const cs=all('contracts').filter(c=>(!VS.ctrCust||c.customerId===VS.ctrCust)&&(!q||[custName(c.customerId),siteName(c.siteId),c.service,c.note].join(' ').includes(q)))
+    const cs=all('contracts').filter(c=>(!VS.ctrCat||(VS.ctrCat==='daily')===isDaily(c))&&(!VS.ctrCust||c.customerId===VS.ctrCust)&&(!q||[custName(c.customerId),siteName(c.siteId),c.service,c.note].join(' ').includes(q)))
       .sort(by(c=>custName(c.customerId)+siteName(c.siteId)+(c.service||'')));
+    if(!cs.length&&(VS.ctrCat||q||VS.ctrCust)) return `<div class="panel"><div class="pbody empty">${VS.ctrCat==='daily'?'日常清掃の契約はまだありません。「＋ 日常清掃」で登録します。':'該当する契約がありません'}</div></div>`;
     if(!cs.length) return `<div class="panel"><div class="pbody"><p>定期契約がまだありません。</p><p class="small muted">「＋ 定期契約」で1件ずつ登録するか、契約台帳のExcelから取り込めます。取り込んだあと「日程をまとめて作成」で、今後12か月分の作業予定ができます。</p></div></div>`;
     const vs=all('visits');
     const annual=cs.filter(c=>c.active!==false).reduce((a,c)=>a+contractRevenueIn(c,tm,12),0);
     return `<p class="small muted" style="margin:0 0 10px">${cs.length}件　今後12か月の売上見込み <b class="num">${man(annual)}</b></p>
     <div class="panel scroll"><table class="t"><thead><tr><th>顧客／現場</th><th>作業内容</th><th>周期</th><th class="r">単価×数量</th><th class="r">1回の金額</th><th class="r">原価・粗利率</th><th>担当</th><th>今後の予定</th></tr></thead><tbody>${
       cs.map(c=>{const mine=vs.filter(v=>v.contractId===c.id&&vMonth(v)>=tm&&isOpenVisit(v));const un=mine.filter(v=>!v.date).length;
-        return `<tr class="click" data-act="contract" data-id="${c.id}" style="${c.active===false?'opacity:.55':''}"><td>${esc(custName(c.customerId))}${exMark(c)}<div class="small muted">${esc(siteName(c.siteId))}</div></td><td>${esc(c.service)}${isOut(c)?' <span class="pill">外注</span>':''}${nextChange(c)?` <span class="pill a">${+nextChange(c).from.slice(5)}月〜 改定</span>`:''}${c.active===false?' <span class="pill r">停止</span>':''}${c.needsReview?' <span class="pill w">周期を確認</span>':''}</td><td>${esc(cycleText(c.cycle))}${c.recog==='next'?'<div><span class="pill a">翌月計上</span></div>':''}</td><td class="r num" style="white-space:nowrap">${yen(c.unitPrice)}×${esc(c.qty||1)}${esc(c.unit||'')}</td><td class="r num">${yen(contractUnit(c))}</td><td class="r num small">${num(c.cost)?`${yen(contractCostUnit(c))}<div class="muted">${contractUnit(c)?Math.round((1-contractCostUnit(c)/contractUnit(c))*100):0}%${/推定/.test(c.costNote||'')?' 推定':''}</div>`:'<span class="muted">未入力</span>'}</td><td class="small">${esc((c.staffIds||[]).map(staffName).join('・'))}</td><td class="small">${c.cycle?.kind==='flat'?'<span class="muted">月額</span>':mine.length?`${mine.length}件${un?` <span class="pill w">未定${un}</span>`:''}`:'<span class="muted">未作成</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
+        return `<tr class="click" data-act="contract" data-id="${c.id}" style="${c.active===false?'opacity:.55':''}"><td>${esc(custName(c.customerId))}${exMark(c)}<div class="small muted">${esc(siteName(c.siteId))}</div></td><td>${esc(c.service)}${isOut(c)?' <span class="pill">外注</span>':''}${nextChange(c)?` <span class="pill a">${+nextChange(c).from.slice(5)}月〜 改定</span>`:''}${c.active===false?' <span class="pill r">停止</span>':''}${c.needsReview?' <span class="pill w">周期を確認</span>':''}</td><td>${esc(isDaily(c)?dailyLabel(c):cycleText(c.cycle))}${c.recog==='next'?'<div><span class="pill a">翌月計上</span></div>':''}</td><td class="r num" style="white-space:nowrap">${isHourly(c)?`${yen(c.unitPrice)}/h`:`${yen(c.unitPrice)}×${esc(c.qty||1)}${esc(c.unit||'')}`}</td><td class="r num">${yen(contractUnit(c))}</td><td class="r num small">${num(c.cost)||(isDaily(c)&&dailyCost(c)!=null)?`${yen(contractCostUnit(c))}<div class="muted">${contractUnit(c)?Math.round((1-contractCostUnit(c)/contractUnit(c))*100):0}%${/推定/.test(c.costNote||'')?' 推定':''}</div>`:'<span class="muted">未入力</span>'}</td><td class="small">${esc((c.staffIds||[]).map(staffName).join('・'))}</td><td class="small">${isDaily(c)?`<span class="muted">${esc(dailyNow(c))}</span>`:c.cycle?.kind==='flat'?'<span class="muted">月額</span>':mine.length?`${mine.length}件${un?` <span class="pill w">未定${un}</span>`:''}`:'<span class="muted">未作成</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
   }
 };
 
@@ -6070,7 +6605,7 @@ SHEETS.contract=(st)=>{
 SHEETS.customer=({id})=>{
   const c=get('customers',id); if(!c) return {title:'顧客',body:'<p class="empty">削除されました。</p>'};
   const sites=all('sites').filter(s=>s.customerId===id).sort(by(siteLabel));
-  const ctrs=all('contracts').filter(x=>x.customerId===id);
+  const ctrs=all('contracts').filter(x=>x.customerId===id&&!isDaily(x)); const dly=all('contracts').filter(x=>x.customerId===id&&isDaily(x));
   const jobs=all('jobs').filter(j=>j.customerId===id).sort(by(j=>j.updatedAt||'',-1));
   const hist=all('visits').filter(v=>{const x=get('contracts',v.contractId)||get('jobs',v.jobId);return (x?x.customerId:v.customerId)===id&&v.status==='完了';}).sort(by(v=>v.date||'',-1)).slice(0,15);
   return {title:esc(c.name)+exMark(c),body:`
@@ -6081,7 +6616,7 @@ SHEETS.customer=({id})=>{
   </div></section>
   <section class="sec"><h3>現場・店舗 <span class="num muted">${sites.length}</span><span class="sp"><button class="btn sm" data-act="new-site" data-cust="${id}">＋ 現場</button></span></h3>
    ${sites.length?`<div class="list">${sites.map(s=>`<div class="li" data-act="site-view" data-id="${s.id}"><div class="grow">${esc(siteLabel(s))}<div class="small muted">${esc(s.address||'')}${s.keyRequired?'　鍵必要':''}</div></div><span class="small muted">定期 ${ctrs.filter(x=>x.siteId===s.id&&x.active!==false).length}</span></div>`).join('')}</div>`:'<p class="empty">現場が未登録です。</p>'}</section>
-  <section class="sec"><h3>定期契約 <span class="num muted">${ctrs.length}</span><span class="sp"><button class="btn sm" data-act="new-contract" data-cust="${id}">＋ 定期契約</button></span></h3>
+  ${dailySecList(dly,id,'')}<section class="sec"><h3>定期契約 <span class="num muted">${ctrs.length}</span><span class="sp"><button class="btn sm" data-act="new-contract" data-cust="${id}">＋ 定期契約</button></span></h3>
    ${ctrs.length?`<div class="list">${ctrs.map(x=>`<div class="li" data-act="contract" data-id="${x.id}"><div class="grow">${esc(x.service)}<div class="small muted">${esc(siteName(x.siteId))}　${esc(cycleText(x.cycle))}</div></div><span class="num">${yen(contractUnit(x))}</span></div>`).join('')}</div>`:'<p class="empty">定期契約はありません。</p>'}</section>
   <section class="sec"><h3>案件 <span class="num muted">${jobs.length}</span><span class="sp"><button class="btn sm" data-act="new-job" data-cust="${id}">＋ 案件</button></span></h3>
    ${jobs.length?`<div class="list">${jobs.map(j=>`<div class="li" data-act="job" data-id="${j.id}"><span class="pill ${STAGE_TONE[j.stage]}">${esc(j.stage)}</span><div class="grow">${esc(j.title)}<div class="small muted">${esc(siteName(j.siteId))}</div></div><span class="num">${man(jobMoney(j).sales)}</span></div>`).join('')}</div>`:'<p class="empty">案件はありません。</p>'}</section>
@@ -6091,7 +6626,7 @@ SHEETS.customer=({id})=>{
 SHEETS.siteView=({id})=>{
   const s=get('sites',id); if(!s) return {title:'現場',body:'<p class="empty">削除されました。</p>'};
   const t=today(), tm=ymOf(t);
-  const ks=all('contracts').filter(x=>x.siteId===id).sort(by(x=>(x.active===false?'1':'0')+(x.service||'')));
+  const ks=all('contracts').filter(x=>x.siteId===id&&!isDaily(x)).sort(by(x=>(x.active===false?'1':'0')+(x.service||''))); const dlyS=all('contracts').filter(x=>x.siteId===id&&isDaily(x));
   const js=all('jobs').filter(j=>j.siteId===id).sort(by(j=>j.updatedAt||'',-1));
   const spot=js.filter(j=>j.type!=='定期'), regJobs=js.filter(j=>j.type==='定期');
   const vs=siteVisits(id);
@@ -6103,7 +6638,7 @@ SHEETS.siteView=({id})=>{
   body:`<div class="small muted">${esc(custName(s.customerId))}${s.storeNo?'　店番 '+esc(s.storeNo):''}${s.address?'　'+esc(s.address):''}${s.keyRequired?'　<span class="pill w">鍵必要</span>':''}</div>
   ${s.note?`<div class="callout w">${esc(s.note)}</div>`:''}
   <div class="money"><div><div class="l">定期契約</div><div class="v num">${ks.filter(x=>x.active!==false).length}件</div></div><div><div class="l">今後12か月の定期売上</div><div class="v num">${man(yr)}</div></div><div><div class="l">スポット案件</div><div class="v num">${spot.length}件</div></div><div><div class="l">スポット売上（受注済み）</div><div class="v num">${man(spot.filter(j=>['受注','施工','完了'].includes(j.stage)).reduce((a,j)=>a+jobMoney(j).sales,0))}</div></div></div>
-  <section class="sec"><h3>定期契約 <span class="num muted">${ks.length}</span><span class="sp"><button class="btn sm" data-act="new-contract" data-cust="${s.customerId}" data-site="${id}">＋ 定期契約</button></span></h3>
+  ${dailySecList(dlyS,s.customerId,id)}<section class="sec"><h3>定期契約 <span class="num muted">${ks.length}</span><span class="sp"><button class="btn sm" data-act="new-contract" data-cust="${s.customerId}" data-site="${id}">＋ 定期契約</button></span></h3>
     ${ks.length?`<div class="list">${ks.map(x=>`<div class="li" data-act="contract" data-id="${x.id}" style="${x.active===false?'opacity:.55':''}"><div class="grow">${esc(x.service)}${x.active===false?' <span class="pill r">停止</span>':''}${x.needsReview?' <span class="pill w">周期を確認</span>':''}<div class="small muted">${esc(cycleText(x.cycle))}　${esc((x.staffIds||[]).map(staffName).join('・'))}</div></div><span class="num">${yen(contractUnit(x))}${x.cycle?.kind==='flat'?'/月':'/回'}</span></div>`).join('')}</div>`:'<p class="empty">定期契約はありません。</p>'}</section>
   <section class="sec"><h3>スポット案件 <span class="num muted">${spot.length}</span><span class="sp"><button class="btn sm" data-act="new-job" data-cust="${s.customerId}" data-site="${id}">＋ 案件</button></span></h3>
     ${spot.length?`<div class="list">${spot.map(jobRow).join('')}</div>`:'<p class="empty">スポット案件はありません。</p>'}
@@ -6655,7 +7190,7 @@ async function saveContract(){
   await put('contracts',c.id,c);
   if(fromJob){ await patch('jobs',fromJob,{recurringDone:true,contractId:c.id}); }
   if(isNew&&c.cycle?.kind!=='flat'){ const n=await genVisits([get('contracts',c.id)],ymOf(today()),12); toast(`定期契約を登録し、作業予定を ${n}件作りました`); }
-  else toast('定期契約を保存しました');
+  else toast(isDaily(c)?'日常清掃の契約を保存しました':'定期契約を保存しました');
   openSheet({kind:'contract',live:false,staffChanged,draft:JSON.parse(JSON.stringify(get('contracts',c.id)))});
 }
 function planVisits0(cs,from,n){
@@ -6986,7 +7521,7 @@ function poOrderExtras(o,st){
    ========================================================= */
 const LV={admin:1,lead:2,manager:3,staff:4,part:5,kiosk:8,partner:9};
 const DEFAULT_MODE={admin:'full',lead:'full',manager:'full',staff:'simple',part:'time',partner:'report',kiosk:'time'};
-const EXTRA_L={'cost.view':'原価・粗利を見る','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
+const EXTRA_L={'cost.view':'原価・粗利を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
 const roleOf=s=>s?.kind==='協力会社'?'partner':(s?.role&&LV[s.role]?s.role:'staff');
 const meStaff=()=>get('staff',SHELL.meId());
 function approverFor(rid){
@@ -7659,10 +8194,14 @@ const PERM_ROWS=[
   ['利用者の追加・編集','staff.edit','段階・区分の変更は管理者だけ'],
   ['勤怠の締め','time.close','締めの解除は管理者だけ'],
   ['予約できるもの・予定の種別の設定','res.edit',''],
+  ['時給・人件費（現場別費用）を見る','wage.view','個別に付与（管理者は常に可）'],
+  ['時給の変更','wage.edit','個別に付与（管理者は常に可）'],
+  ['見積書・発注書に角印を押す',['admin','lead'],'ほかの人にも個別に付与できます。承認前でも押せ、押したかどうかは記録されます'],
+  ['備品・物品の在庫と発注の管理',['admin','lead','manager'],'段階4・5も個別に付与できます。補充の依頼は全員'],
   ['会社設定・承認ルールの変更','settings.edit',''],
   ['データの取り込み・バックアップ・削除','import',''],
 ];
-const SET_EXTRA_L={'cost.view':'原価・粗利を見る','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
+const SET_EXTRA_L={'cost.view':'原価・粗利を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
 MTABS.auth=()=>{
   const me=meStaff(), myRole=roleOf(me);
   const rows=PERM_ROWS.map(([l,k,n])=>{ const rs=Array.isArray(k)?k:(PERMS[k]||[]); return `<tr><td>${esc(l)}${n?`<div class="small muted">${esc(n)}</div>`:''}</td>${SET_ROLES.map(r=>`<td class="c" style="text-align:center">${rs.includes(r)?'<b style="color:var(--good)">○</b>':'<span class="muted">－</span>'}</td>`).join('')}</tr>`; }).join('');
@@ -7725,6 +8264,118 @@ function staffUseVals(d){
 ACT_G.stKind=el=>{ VS.stKind=el.dataset.v; $('#vb').innerHTML=VIEWS.master.body(); };
 docOn('input',e=>{ if(e.target.id==='stQ'){ VS.stQ=e.target.value; const pos=e.target.selectionStart; $('#vb').innerHTML=VIEWS.master.body(); const n=$('#stQ'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){} } } });
 
+/* =========================================================
+   日常清掃（定期清掃・スポット清掃とは別の区分）
+   ・契約の区分 cat:'daily'。周期は「日常・月額」（日程は作らない）
+   ・請求 billing：'flat'＝月額固定、'hourly'＝時間単価×時間（過去の月は打刻の実績、今月以降はシフトの予定）
+   ・人件費予算（月）・上限時間（月）はシフト作成時の目安
+   ========================================================= */
+const isDaily=c=>!!c&&c.cat==='daily';
+const isHourly=c=>isDaily(c)&&c.billing==='hourly';
+function hourlyHours(c,ym){ if(!window.S_API||!S_API.siteHours||!c.siteId) return 0; const h=S_API.siteHours(c.siteId,ym); return ((ym<ymOf(today())?(h.act||h.plan):h.plan)||0)/60; }
+function dailyCost(c,ym){ // 人件費（時給を見られる人だけ）＋資材。同じ現場に日常清掃が複数あれば売上の割合で分ける
+  if(!window.S_API||!S_API.canWage||!S_API.canWage()) return null;
+  const R=S_API.siteCost(ym); const r=R&&R.rows[c.siteId]; if(!r) return 0;
+  const past=ym<ymOf(today()); const tot=(past?r.actCost:r.planCost)+(+r.mat||0);
+  const sibs=all('contracts').filter(x=>isDaily(x)&&x.siteId===c.siteId&&x.active!==false);
+  if(sibs.length<2) return tot; const rv=x=>isHourly(x)?priceAt(x,ym).price*hourlyHours(x,ym):priceAt(x,ym).price*(num(x.qty)||1);
+  const all_=sibs.reduce((a,x)=>a+rv(x),0); return all_?tot*rv(c)/all_:tot/sibs.length; }
+const dailyLabel=c=>isHourly(c)?'日常清掃・時間単価':'日常清掃・月額';
+function dailyNow(c){ const m=ymOf(today()); if(!window.S_API||!S_API.siteHours||!c.siteId) return ''; const h=S_API.siteHours(c.siteId,m);
+  return `${+m.slice(5)}月 予定 ${Math.round((h.plan||0)/6)/10}h${h.act?`・実績 ${Math.round(h.act/6)/10}h`:''}${num(c.hoursCap)?` / 上限 ${num(c.hoursCap)}h`:''}`; }
+function dailySecList(list,custId,siteId){
+  return `<section class="sec"><h3>日常清掃 <span class="num muted">${list.length}</span><span class="sp"><button class="btn sm" data-act="new-daily" data-cust="${custId||''}" data-site="${siteId||''}">＋ 日常清掃</button></span></h3>
+    ${list.length?`<div class="list">${list.map(x=>`<div class="li" data-act="contract" data-id="${x.id}" style="${x.active===false?'opacity:.55':''}"><div class="grow">${esc(siteName(x.siteId)||'現場未設定')}　${esc(x.service||'日常清掃')}${x.active===false?' <span class="pill r">停止</span>':''}<div class="small muted">${esc(dailyLabel(x))}　${esc((x.staffIds||[]).map(staffName).join('・'))}　${esc(dailyNow(x))}</div></div><span class="num">${isHourly(x)?`${yen(priceAt(x,ymOf(today())).price)}/h`:`${yen(contractUnit(x))}/月`}</span></div>`).join('')}</div>`:'<p class="empty">日常清掃の契約はありません。</p>'}</section>`;
+}
+function dailyBlock(c){
+  const b=c.billing||'flat', m=ymOf(today());
+  const cost=c.id?dailyCost(c,m):null;
+  return `<section class="sec"><h3>日常清掃の条件</h3>
+    <div class="seg" role="group" style="margin-bottom:10px">${[['flat','月額固定'],['hourly','時間単価×実績時間']].map(([k,l])=>`<button data-act="dc-bill" data-v="${k}" aria-pressed="${b===k}">${l}</button>`).join('')}</div>
+    <div class="form">
+      ${fld('人件費の予算（月・円）',`<input class="inp num" inputmode="numeric" data-dc="laborBudget" value="${esc(c.laborBudget??'')}" placeholder="例：300000">`)}
+      ${fld('上限時間（月・時間）',`<input class="inp num" inputmode="decimal" data-dc="hoursCap" value="${esc(c.hoursCap??'')}" placeholder="例：260">`)}
+      ${fld('作業する曜日・時間帯',`<input class="inp" data-dc="workNote" value="${esc(c.workNote||'')}" placeholder="例：月〜土 6:00〜10:00 2名">`,true)}
+    </div>
+    <p class="small muted" style="margin:6px 0 0">${b==='hourly'?'上の「単価」に時間単価を入れてください。売上は、過去の月は打刻の実績時間、今月以降はシフトの予定時間で計算します。':'上の「単価」に月額を入れてください。売上は毎月計上されます。'}予算と上限時間は、シフトを作るときに超えていないかの目安になります。</p>
+    ${c.id&&c.siteId?`<div class="callout" style="margin-top:8px"><span>${esc(dailyNow(c))}${cost!=null?`　人件費＋資材 ${yen(cost)}`:''}</span></div>`:''}
+  </section>`;
+}
+{ const sc0=SHEETS.contract; SHEETS.contract=st=>{ const c=st.draft; const o=sc0(st); const d=isDaily(c);
+  const seg=`<div class="seg" role="group" style="margin-bottom:12px">${[['regular','定期清掃'],['daily','日常清掃']].map(([k,l])=>`<button data-act="dc-cat" data-v="${k}" aria-pressed="${(d?'daily':'regular')===k}">${l}</button>`).join('')}</div>`;
+  let body=o.body;
+  if(d){ body=body.replace(/<section class="sec"><h3>周期<\/h3>[\s\S]*?<\/section>/,dailyBlock(c))
+    .replace('<span>単価</span>',`<span>${isHourly(c)?'時間単価（円/h）':'月額（円）'}</span>`)
+    .replace('<span>数量（台数・回数）</span>','<span>数量（通常は1）</span>').replace('<h3>標準の担当</h3>','<h3>担当（パート・社員）</h3>'); }
+  return {...o,title:st.isNew?(d?'日常清掃を登録':'定期契約を登録'):(d?'日常清掃の契約':'定期契約'),body:seg+body}; }; }
+Object.assign(ACT_G,{
+  'dc-cat'(el){ readDraftForm(); const c=sheet.draft; if(el.dataset.v==='daily'){ c.cat='daily'; c.cycle={kind:'flat'}; c.billing=c.billing||'flat'; c.qty=1; if(!c.service) c.service='日常清掃'; }
+    else { delete c.cat; if(c.cycle?.kind==='flat') c.cycle={kind:'months',months:[]}; } refreshSheet(); },
+  'dc-bill'(el){ readDraftForm(); sheet.draft.billing=el.dataset.v; refreshSheet(); },
+  'new-daily'(el){ if(!can('contract.edit')) return toast('権限がありません'); openSheet({kind:'contract',isNew:true,live:false,draft:{id:uid(),cat:'daily',billing:'flat',customerId:el.dataset.cust||'',siteId:el.dataset.site||'',service:'日常清掃',unitPrice:'',qty:1,unit:'月',partnerType:'自社',cycle:{kind:'flat'},staffIds:[],active:true,start:today(),laborBudget:'',hoursCap:'',workNote:''}}); },
+  'ctr-cat'(el){ VS.ctrCat=el.dataset.v; render(); ROOT.querySelectorAll('[data-act="ctr-cat"]').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.v||'')===(VS.ctrCat||'')))); },
+});
+docOn('input',e=>{ const t=e.target; if(t.dataset&&t.dataset.dc&&sheet?.kind==='contract'&&sheet.draft){ const k=t.dataset.dc; sheet.draft[k]=k==='workNote'?t.value:(t.value===''?'':num(t.value)); } });
+
+/* =========================================================
+   角印（見積書・協力会社への発注書）
+   ・角印を押せるのは 権限1（管理者）・2（責任者）と「角印を押す」を個別に付けた人
+   ・承認前でもすぐ出せる（急ぎの提出用）。角印の有無・承認の有無・出し方を必ず記録（seallogs）
+   ・印影は seals/kakuin（読めるのは押せる人だけ。登録は管理者）
+   ========================================================= */
+const canSealG=()=>{ const m=meStaff(), r=roleOf(m); return r==='admin'||r==='lead'||(m?.extra||[]).includes('seal.use'); };
+const sealDoc=()=>{ try{ return window.S_API?S_API.get('seals','kakuin'):null; }catch(_){ return null; } };
+let SEAL_CUR=false, SEAL_T=0;
+const sealWant=st=>!!(st&&canSealG()&&sealDoc()?.img&&st.seal!==false);
+function sealImgTag(){ const d=sealDoc(); if(!d?.img) return ''; return `<img src="${d.img}" alt="" style="position:absolute;right:0;top:-8px;width:${+d.size||21}mm;height:auto;opacity:.93;pointer-events:none">`; }
+function withSeal(html){ if(!SEAL_CUR) return html; const tag=sealImgTag(); if(!tag) return html;
+  return html.replace('<div style="text-align:right">',`<div style="text-align:right;position:relative;min-height:28mm;padding-right:2px">${tag}`); }
+{ const q0=quotePaperHtml; quotePaperHtml=q=>withSeal(q0(q)); const o0=orderPaperHtml; orderPaperHtml=o=>withSeal(o0(o)); }
+const sealLogsOf=(doc,id)=>{ try{ return S_API.list('seallogs').filter(l=>l.doc===doc&&l.refId===id).sort(by(l=>l.at||'',-1)); }catch(_){ return []; } };
+const SEAL_HOW={'quote-dl':'ファイル保存','qs-file':'ファイル保存','qs-print':'印刷・PDF','order-dl':'ファイル保存'};
+function sealBar(st,doc,id){
+  const ok=canSealG(), has=!!sealDoc()?.img, ap=id?apOf(doc,id):null, approved=ap&&ap.status==='承認';
+  const on=sealWant(st); const logs=id?sealLogsOf(doc,id).slice(0,3):[];
+  return `<div class="callout ${on&&!approved?'w':''}" style="display:block;margin-bottom:10px">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>角印</b>
+    ${ok&&has?`<div class="seg">${[['1','押す'],['0','押さない']].map(([v,l])=>`<button data-act="seal-tgl" data-v="${v}" aria-pressed="${on===(v==='1')}">${l}</button>`).join('')}</div>`
+      :`<span class="small">${!has?'印影がまだ登録されていません（設定 → 会社情報）':'押さずに出します（押せるのは権限1・2と、個別に許可された人）'}</span>`}
+    <span class="small">${approved?'<span class="pill g">承認済み</span>':ap&&ap.status==='申請中'?'<span class="pill w">承認待ち</span>':'<span class="pill">承認なし</span>'}${on&&!approved?'　承認前に角印ありで出すと、その旨が記録されます':''}</span></div>
+    ${logs.length?`<div class="small muted" style="margin-top:4px">出した記録：${logs.map(l=>`${esc(String(l.at||'').slice(5,16).replace('T',' '))} ${esc(staffName(l.by))} ${l.sealed?'角印あり':'角印なし'}${l.sealed&&!l.approved?'（承認前）':''}・${esc(l.how)}`).join('　／　')}</div>`:''}</div>`;
+}
+{ const wrap=(k,doc,idOf)=>{ const f0=SHEETS[k]; SHEETS[k]=st=>{ const prev=SEAL_CUR; SEAL_CUR=sealWant(st); try{ const o=f0(st); return {...o,body:sealBar(st,doc,idOf(st))+o.body}; } finally{ SEAL_CUR=prev; } }; };
+  wrap('quotePreview','quote',st=>st.draft?.id); wrap('orderPreview','order',st=>st.draft?.id); wrap('qsend','quote',st=>st.id); }
+/* 出すとき：角印の有無を決めて、記録する */
+ROOT.addEventListener('click',e=>{ const el=e.target.closest&&e.target.closest('[data-act]'); if(!el) return; const a=el.dataset.act; if(!SEAL_HOW[a]||!sheet) return;
+  const doc=a.startsWith('order')?'order':'quote'; const id=el.dataset.id||sheet.draft?.id||sheet.id; const rec=get(doc==='order'?'orders':'quotes',id)||sheet.draft||{};
+  SEAL_CUR=sealWant(sheet); clearTimeout(SEAL_T); SEAL_T=setTimeout(()=>{ SEAL_CUR=false; },4000);
+  const ap=apOf(doc,id); const log={doc,refId:id,no:rec.no||'',title:rec.title||'',sealed:SEAL_CUR,approved:!!(ap&&ap.status==='承認'),how:SEAL_HOW[a],by:SHELL.meId(),at:new Date().toISOString()};
+  try{ S_API.put('seallogs',null,log); }catch(_){ }
+},true);
+Object.assign(ACT_G,{ 'seal-tgl'(el){ sheet.seal=el.dataset.v==='1'; refreshSheet(); } });
+
+/* 設定 → 会社情報：印影の登録（管理者） */
+async function sealFromFile(f){ // 白い背景を透明にして、赤い印影だけにする
+  const url=URL.createObjectURL(f); const img=new Image(); await new Promise((r,j)=>{ img.onload=r; img.onerror=j; img.src=url; });
+  const s=Math.min(1,300/Math.max(img.width,img.height)); const w=Math.round(img.width*s), h=Math.round(img.height*s);
+  const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h);
+  const d=x.getImageData(0,0,w,h), p=d.data; let x0=w,y0=h,x1=0,y1=0;
+  for(let i=0;i<p.length;i+=4){ const ink=Math.max(0,Math.min(255,(255-p[i+1])*1.7-40)); if(ink>25){ p[i]=214;p[i+1]=48;p[i+2]=49;p[i+3]=ink; const k=i/4,px=k%w,py=(k-px)/w; x0=Math.min(x0,px);y0=Math.min(y0,py);x1=Math.max(x1,px);y1=Math.max(y1,py); } else p[i+3]=0; }
+  x.putImageData(d,0,0); URL.revokeObjectURL(url); if(x1<=x0) throw new Error('印影が見つかりませんでした');
+  const o=document.createElement('canvas'); o.width=x1-x0+1; o.height=y1-y0+1; o.getContext('2d').drawImage(c,x0,y0,o.width,o.height,0,0,o.width,o.height);
+  return o.toDataURL('image/png'); }
+function sealSettingsSec(){ const d=sealDoc(), admin=roleOf(meStaff())==='admin';
+  return `<section class="sec"><h3>角印（見積書・発注書）</h3>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${d?.img?`<img src="${d.img}" alt="角印" style="width:90px;height:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px">`:'<span class="small muted">まだ登録されていません</span>'}
+    ${admin?`<label class="btn sm">画像を選ぶ<input type="file" accept="image/*" id="seal-file" hidden></label>${d?.img?`<label class="small">大きさ <input class="inp num" id="seal-size" style="width:64px;text-align:right" value="${esc(d.size||21)}"> mm</label><button class="btn sm danger" data-act="seal-del">登録を消す</button>`:''}`:canSealG()?'':'<span class="small muted">（角印を押せる人だけに表示されます）</span>'}</div>
+    <p class="small muted" style="margin:6px 0 0">スキャンや写真の画像から、白い部分を透明にして登録します。登録・変更は管理者だけです。角印を押せるのは権限1・2と「角印を押す」を個別に付けた人で、承認前でも出せます。角印の有無・承認の有無は、出すたびに記録されます。</p></section>`; }
+{ const s0=MTABS.settings; MTABS.settings=()=>{ const h=s0(); const i=h.indexOf('<section class="sec"><h3>会社情報'); const sec=sealSettingsSec(); return i>=0?h.slice(0,i)+sec+h.slice(i):sec+h; }; }
+docOn('change',async e=>{ const t=e.target;
+  if(t.id==='seal-file'&&t.files&&t.files[0]){ if(roleOf(meStaff())!=='admin') return toast('角印の登録は管理者だけができます');
+    try{ const img=await sealFromFile(t.files[0]); await S_API.put('seals','kakuin',{img,size:21,by:SHELL.meId(),at:new Date().toISOString()}); toast('角印を登録しました'); render(); }catch(err){ toast('登録できませんでした（'+(err.message||err)+'）'); } }
+  if(t.id==='seal-size'){ const d=sealDoc(); if(d) { await S_API.put('seals','kakuin',{...d,size:Math.max(10,Math.min(40,+t.value||21))}); render(); } } });
+Object.assign(ACT_G,{ async 'seal-del'(){ if(roleOf(meStaff())!=='admin') return; if(!confirm('角印の登録を消しますか？')) return; await S_API.del('seals','kakuin'); toast('消しました'); render(); } });
+
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
   route:()=>VS.route,
@@ -7735,6 +8386,7 @@ window.G_API={
   dataVer:()=>GDATA,
   ready:()=>loaded.size===COLS.length,
   size:c=>D[c]?D[c].size:0,
+  list:c=>D[c]?all(c):[], get:(c,id)=>D[c]?get(c,id):undefined,
   makeDemo:()=>makeDemo(), putMany:(items,p)=>putMany(items,p),
   addVisit:d=>put('visits',null,d),
   flowMine:me=>flowMine(me).map(x=>({id:x.j.id,title:x.j.title,why:x.n.why||x.n.txt})),
