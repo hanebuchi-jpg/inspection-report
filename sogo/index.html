@@ -2210,14 +2210,24 @@ SHEETS.master=()=>{
 };
 
 /* ================= 打刻 ================= */
+let punchBusy=0;
+const punchLock=()=>{ if(Date.now()-punchBusy<3000) return false; punchBusy=Date.now(); return true; };
+const minsSince=hm=>{ if(!hm) return 9999; const [h,m]=hm.split(':').map(Number), n=new Date(); return n.getHours()*60+n.getMinutes()-(h*60+m); };
 async function punchIn(){
   const sid=meId(); const t=today(); const cur=punchOf(sid,t)||{};
+  if(cur.in&&!cur.out) return toast(`出勤済みです（${cur.in}）`);
+  if(cur.in&&cur.out) return toast(`今日は${cur.in}〜${cur.out}で記録済みです。直す場合は「打刻の修正申請」から`);
+  if(!punchLock()) return;
   await put('punches',punchId(sid,t),{...cur,staffId:sid,date:t,in:nowHM(),out:'',breakMin:cur.breakMin??60,edits:cur.edits||[]});
   const n=evAll().filter(e=>e.date===t&&(e.staffIds||[]).includes(sid)).length;
   toast(`出勤しました（${nowHM()}）${n?`　今日の予定 ${n}件`:''}`);
 }
 async function punchOut(){
   const sid=meId(); const t=today(); const cur=punchOf(sid,t); if(!cur) return;
+  if(cur.out&&minsSince(cur.out)<5) return toast(`退勤済みです（${cur.out}）`);
+  if(minsSince(cur.in)<3&&!confirm(`出勤（${cur.in}）からまだ${Math.max(0,minsSince(cur.in))}分です。退勤しますか？`)) return;
+  if(cur.out&&!confirm(`${cur.out}に退勤済みです。退勤時刻を今（${nowHM()}）に変えますか？`)) return;
+  if(!punchLock()) return;
   await put('punches',punchId(sid,t),{...cur,out:nowHM()});
   toast(`退勤しました（${nowHM()}）`);
   if(usesReport(me())&&!all('reports').some(r=>r.staffId===sid&&r.date===t)){ const d=draftFromEvents(t,sid); newReport({body:d.body,tags:d.tags,eventIds:d.eventIds}); }
