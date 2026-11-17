@@ -353,6 +353,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
     </div>
     <div class="row" id="reviewRow" hidden style="justify-content:center">
       <button class="cam-btn" id="retake">撮り直す</button>
+      <button class="cam-btn" id="rotate" aria-label="写真を右に90度回す">↻ 回転</button>
       <button class="cam-btn acc" id="accept">この写真を使う</button>
     </div>
   </div>
@@ -366,6 +367,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
   <p class="pv-hint">2本指で広げると拡大、ダブルタップで拡大／元に戻す</p>
   <div class="pv-bar">
     <button type="button" class="btn pri" id="pvRetake">撮り直す</button>
+    <button type="button" class="btn" id="pvRotate" aria-label="写真を右に90度回す">↻ 回転</button>
     <button type="button" class="btn" id="pvSave">この写真を保存</button>
     <button type="button" class="btn" id="pvClose">閉じる</button>
   </div>
@@ -466,7 +468,10 @@ const pk=(sid,st)=>sid+"|"+st;
 const turl=new Map();
 async function thumbURL(k){if(turl.has(k))return turl.get(k);const b=(await pGet(k+"|t"))||(await pGet(k));if(!b)return null;const u=URL.createObjectURL(b);turl.set(k,u);return u}
 function dropThumb(k){const u=turl.get(k);if(u){URL.revokeObjectURL(u);turl.delete(k)}}
-async function delPhoto(k){dropThumb(k);await pDel(k);await pDel(k+"|t");dirty=true}
+async function delPhoto(k){dropThumb(k);await pDel(k);await pDel(k+"|t");await pDel(k+"|r");await pDel(k+"|m");dirty=true}
+// 写真を右に90度回したキャンバスを返す（元は画像でもキャンバスでもよい）
+function rot90(src){const w=src.naturalWidth||src.width,h=src.naturalHeight||src.height;const c=document.createElement("canvas");c.width=h;c.height=w;
+  const g=c.getContext("2d");g.translate(h,0);g.rotate(Math.PI/2);g.drawImage(src,0,0,w,h);return c}
 
 /* ---------- image helpers ---------- */
 function loadImg(src){return new Promise((ok,ng)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ng;i.src=src})}
@@ -631,7 +636,7 @@ $("#btnClear").onclick=()=>{
   const no=document.createElement("button");no.className="btn";no.textContent="やめる";
   row.append(go,no);box.append(s,p,row);a.appendChild(box);
   no.onclick=()=>a.innerHTML="";
-  go.onclick=async()=>{for(const k of [...keys])await delPhoto(k.replace(/\|t$/,""));D.notes={};persist();a.innerHTML="";renderSlots();toast("写真と備考をすべて消しました")};
+  go.onclick=async()=>{for(const k of [...keys])await delPhoto(k.replace(/\|[trm]$/,""));D.notes={};persist();a.innerHTML="";renderSlots();toast("写真と備考をすべて消しました")};
 };
 
 /* ---------- 写真の確認（拡大表示） ---------- */
@@ -671,6 +676,23 @@ $("#pvClose").onclick=closeViewer;$("#pvX").onclick=closeViewer;
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&PV)closeViewer()});
 $("#pvRetake").onclick=()=>{if(!PV)return;const {slot,stage}=PV;closeViewer();openCamera(slot,stage)};
 $("#pvSave").onclick=async()=>{if(!PV)return;await saveFile(PV.name,PV.blob)};
+// 保存済みの写真の回転：看板を入れる前の写真を回して、看板を入れ直して保存し直す
+$("#pvRotate").onclick=async()=>{
+  if(!PV)return;const k=pk(PV.slot.id,PV.stage),b=$("#pvRotate");
+  const rb=await pGet(k+"|r");
+  if(!rb){toast("この写真は前の版で撮ったため、回すと看板まで横になります。「撮り直す」で撮り直してください");return}
+  b.disabled=true;
+  try{
+    const m=(await pGet(k+"|m"))||{},r=rot90(await blobImg(rb));
+    const c=document.createElement("canvas");c.width=r.width;c.height=r.height;const g=c.getContext("2d");g.drawImage(r,0,0);
+    if(m.board&&D.cfg.board.on)drawBoard(g,c.width,c.height,boardRows(D.cfg,D.meta,PV.slot.name,PV.stage,new Date(m.date||Date.now())),D.cfg.board.pos,D.cfg.board.size);
+    const blob=await toBlob(c,.92),th=await makeThumb(blob);
+    await pPut(k,blob);await pPut(k+"|t",th);await pPut(k+"|r",await toBlob(r,.9));dropThumb(k);dirty=true;
+    URL.revokeObjectURL(PV.url);PV.blob=blob;PV.url=URL.createObjectURL(blob);pvImg.src=PV.url;
+    pvZ.s=1;pvZ.x=0;pvZ.y=0;pvImg.style.transform="";
+    renderSlots();toast("写真を回転しました");
+  }catch(e){toast("回転できませんでした")}finally{b.disabled=false}
+};
 
 /* ---------- 写真アプリへまとめて保存（共有） ---------- */
 let canImgShare=false;try{canImgShare=!!(navigator.canShare&&navigator.canShare({files:[new File(["x"],"t.jpg",{type:"image/jpeg"})]}))}catch(e){}
@@ -778,6 +800,9 @@ function showReview(){
   $("#reviewImg").hidden=false;video.hidden=true;$("#liveRow").hidden=true;$("#reviewRow").hidden=false;drawOverlay();
   const m=$("#camMsg");if(!ghost.hidden){m.textContent="ガイド濃さを動かして、ずれがないか確認できます";m.hidden=false}else m.hidden=true;
 }
+// 確認画面の回転：写真だけ回して、看板は正しい向きで入れ直す
+$("#rotate").onclick=async()=>{if(!raw)return;const b=$("#rotate");b.disabled=true;
+  try{raw=rot90(raw);boxAR=raw.width/raw.height;await compose();fitBox();drawOverlay()}finally{b.disabled=false}};
 $("#retake").onclick=()=>{
   if(liveOK){raw=null;setLive(true);drawOverlay()}
   else{$("#fileCam").value="";$("#fileCam").click()}
@@ -785,7 +810,9 @@ $("#retake").onclick=()=>{
 $("#accept").onclick=async()=>{
   if(!reviewBlob||!cur)return;
   const k=pk(cur.slot.id,cur.stage),b=$("#accept");b.disabled=true;
-  try{const th=await makeThumb(reviewBlob);await pPut(k,reviewBlob);await pPut(k+"|t",th);dropThumb(k)}
+  try{const th=await makeThumb(reviewBlob);await pPut(k,reviewBlob);await pPut(k+"|t",th);dropThumb(k);
+    // 看板を入れる前の写真も残す（あとで「回転」したときに看板まで横にならないように）
+    if(raw){await pPut(k+"|r",await toBlob(raw,.9));await pPut(k+"|m",{date:+(cur.date||new Date()),board:boardActive()})}}
   finally{b.disabled=false}
   const name=cur.slot.name,stage=cur.stage;
   closeCamera();renderSlots();
