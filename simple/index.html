@@ -296,7 +296,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
       <h2>施工看板</h2>
       <label class="tg"><input type="checkbox" id="bdOn"> 写真に施工看板を入れる</label>
       <label class="tg"><input type="checkbox" id="bdLink"> 「箇所」「区分」「撮影日」を、撮影する箇所・区分・撮った日と連動させる</label>
-      <p class="hint">連動をオンにすると、項目名に「箇所」「区分」「日付・撮影日」を含む行には、撮影中の箇所名、施工前・中・後、撮った日が自動で入ります。アルバムから選んだ写真は、その写真の日付が入ります。</p>
+      <p class="hint">連動をオンにすると、項目名に「箇所」「区分」「日付・撮影日」を含む行には、撮影中の箇所名、施工前・中・後、撮った日が自動で入ります。アルバムから選んだ写真は、その写真の日付が入ります。アルバムから選んだ写真には、最初は看板が入りません（確認画面の「施工看板」を押すと入ります）。撮影画面で「施工看板」をオフにすると、次の写真もオフのままになります。</p>
       <div class="grid2">
         <label class="f">看板の位置<select id="bdPos"><option value="bl">左下</option><option value="br">右下</option><option value="tl">左上</option><option value="tr">右上</option></select></label>
         <label class="f">看板の大きさ<select id="bdSize"><option value="s">小</option><option value="m">中</option><option value="l">大</option><option value="xl">特大</option></select></label>
@@ -530,7 +530,10 @@ function drawBoard(g,W,H,rows,pos,size){
 let tt;function toast(m){const t=$("#toast");t.textContent=m;t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,2800)}
 function shotCount(){let n=0;D.cfg.slots.forEach(s=>D.cfg.stages.forEach(x=>{if(keys.has(pk(s.id,x)))n++}));return n}
 function renderHeader(){$("#hdrProg").textContent="写真 "+shotCount()+"/"+(D.cfg.slots.length*D.cfg.stages.length)}
-function showTab(name){
+let setDirty=false,afterSave=null;
+function showTab(name,force){
+  if(!force&&setDirty&&!$("#p-set").hidden&&name!=="set"){askUnsaved(name);return}
+  if(name!=="set")setDirty=false;
   document.querySelectorAll(".tabs button").forEach(b=>b.setAttribute("aria-selected",String(b.dataset.tab===name)));
   ["photo","report","set"].forEach(n=>$("#p-"+n).hidden=n!==name);
   if(name==="set")fillSettings();
@@ -690,6 +693,8 @@ $("#btnPhotoShare").onclick=async e=>{
 };
 
 /* ---------- camera ---------- */
+// camPref：撮影画面で看板をオフにしたら次の写真もオフのまま。fromLib：アルバムから選んだ写真（最初は看板なし）
+let camPref=true,fromLib=false;
 let stream=null,cur=null,reviewBlob=null,liveOK=null,camBoard=true,ghostUrl=null,boxAR=4/3,raw=null;
 const video=$("#video"),ghost=$("#ghost");
 function boardActive(){return D.cfg.board.on&&camBoard}
@@ -714,7 +719,7 @@ function updateBoardBtns(){
   $("#boardPos").textContent="看板の位置："+(POS_LABEL[D.cfg.board.pos]||"左下");
   $("#boardPos").disabled=!camBoard;
 }
-$("#togBoard").onclick=async()=>{camBoard=!camBoard;updateBoardBtns();if(raw&&!$("#reviewImg").hidden)await compose();else drawOverlay()};
+$("#togBoard").onclick=async()=>{camBoard=!camBoard;if(!fromLib)camPref=camBoard;updateBoardBtns();if(raw&&!$("#reviewImg").hidden)await compose();else drawOverlay()};
 $("#boardPos").onclick=async()=>{const order=["bl","br","tr","tl"],c=D.cfg.board;c.pos=order[(order.indexOf(c.pos)+1)%4];persist();updateBoardBtns();if(raw&&!$("#reviewImg").hidden)await compose();else drawOverlay()};
 function applyOpacity(){ghost.style.opacity=String($("#ghostOp").value/100)}
 $("#ghostOp").oninput=applyOpacity;
@@ -722,7 +727,7 @@ $("#togGrid").onclick=e=>{const on=e.currentTarget.getAttribute("aria-pressed")!
 $("#togDiff").onclick=e=>{const on=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",String(on));$("#camBox").classList.toggle("diff",on)};
 
 async function prepSheet(slot,stage){
-  cur={slot,stage};camBoard=true;raw=null;reviewBlob=null;
+  cur={slot,stage};camBoard=camPref;fromLib=false;raw=null;reviewBlob=null;
   $("#cam").hidden=false;document.body.style.overflow="hidden";
   const gk=ghostKeyFor(slot,stage);
   const t=$("#camTitle");t.innerHTML="";
@@ -786,11 +791,12 @@ $("#accept").onclick=async()=>{
   closeCamera();renderSlots();
   toast(name+"の"+STAGE_LABEL[stage]+"を保存しました");
 };
-async function handleFile(file){
+async function handleFile(file,lib){
   if(!file||!cur)return;
   try{
     const u=URL.createObjectURL(file);const im=await loadImg(u);URL.revokeObjectURL(u);
     await prepSheet(cur.slot,cur.stage);
+    if(lib){fromLib=true;camBoard=false;updateBoardBtns()}
     cur.date=file.lastModified?new Date(file.lastModified):new Date();
     boxAR=im.naturalWidth/im.naturalHeight;
     const k=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));
@@ -800,7 +806,7 @@ async function handleFile(file){
   }catch(e){toast("写真を読み込めませんでした。別の写真でお試しください")}
 }
 $("#fileCam").onchange=e=>handleFile(e.target.files[0]);
-$("#fileLib").onchange=e=>handleFile(e.target.files[0]);
+$("#fileLib").onchange=e=>handleFile(e.target.files[0],true);
 function updateModeNote(){
   $("#camMode").textContent=liveOK===false
     ?"この画面ではカメラ映像を直接表示できないため、端末のカメラで撮ったあとに施工看板を合成し、前の写真と重ねて角度を確認する方式で動いています。"
@@ -842,11 +848,28 @@ function drawBoardPreview(){
   const cfg={company:$("#setCompany").value,board:{link:$("#bdLink").checked,rows:draftRows}};
   drawBoard(g,W,H,boardRows(cfg,D.meta,first,st,new Date()),$("#bdPos").value,$("#bdSize").value);
 }
+// 設定を変えたまま別のタブへ移ろうとしたら確かめる（保存を押し忘れると変更が消えるため）
+["input","change"].forEach(ev=>$("#p-set").addEventListener(ev,e=>{if(e.target&&e.target.closest&&e.target.closest("#setConfirm"))return;setDirty=true}));
+$("#p-set").addEventListener("click",e=>{if(e.target.closest&&e.target.closest("#bdAdd,#bdRows button"))setDirty=true});
+function askUnsaved(next){
+  const area=$("#setConfirm");area.innerHTML="";
+  const box=document.createElement("div");box.className="inline-confirm";
+  const s_=document.createElement("strong");s_.textContent="設定の変更がまだ保存されていません。";
+  const row=document.createElement("div");row.className="btnrow";
+  const sv=document.createElement("button");sv.className="btn pri";sv.textContent="保存して移動";
+  const go=document.createElement("button");go.className="btn";go.textContent="保存せずに移動";
+  const no=document.createElement("button");no.className="btn";no.textContent="このまま編集";
+  row.append(sv,go,no);box.append(s_,row);area.appendChild(box);
+  area.scrollIntoView({block:"end"});
+  sv.onclick=()=>{afterSave=()=>showTab(next,true);$("#btnSaveSet").click()};
+  go.onclick=()=>{setDirty=false;showTab(next,true)};
+  no.onclick=()=>{area.innerHTML=""};
+}
 $("#btnSaveSet").onclick=()=>{
   const names=lines($("#setSlots").value),stages=[...document.querySelectorAll("#stageChks input:checked")].map(i=>i.value);
   const box=$("#setConfirm");box.innerHTML="";
-  if(!stages.length){toast("撮影区分を1つ以上選んでください");return}
-  if(names.length>MAX){toast("撮影箇所は100件までです");return}
+  if(!stages.length){afterSave=null;toast("撮影区分を1つ以上選んでください");return}
+  if(names.length>MAX){afterSave=null;toast("撮影箇所は100件までです");return}
   const pool=[...D.cfg.slots];
   const slots=names.map(n=>{const i=pool.findIndex(s=>s.name===n);if(i>=0)return pool.splice(i,1)[0];return {id:"s"+uid(),name:n}});
   const lost=[];
@@ -857,6 +880,7 @@ $("#btnSaveSet").onclick=()=>{
     Object.assign(D.cfg,{stages,slots,company:$("#setCompany").value.trim(),title:$("#setTitle").value.trim()||"作業写真報告書",hideEmpty:$("#setHideEmpty").checked,notePos:$("#setNotePos").value==="below"?"below":"right",
       board:{on:$("#bdOn").checked,link:$("#bdLink").checked,pos:$("#bdPos").value,size:$("#bdSize").value,rows:draftRows.map(r=>({l:r.l.trim(),v:r.v.trim()})).filter(r=>r.l||r.v)}});
     persist();renderSlots();box.innerHTML="";toast("設定を保存しました");
+    setDirty=false;if(afterSave){const f=afterSave;afterSave=null;f()}
   };
   if(!lost.length){apply();return}
   const w=document.createElement("div");w.className="inline-confirm";
@@ -865,7 +889,7 @@ $("#btnSaveSet").onclick=()=>{
   const go=document.createElement("button");go.className="btn warn";go.textContent="削除して保存";
   const no=document.createElement("button");no.className="btn";no.textContent="やめる";
   row.append(go,no);w.append(s,row);box.appendChild(w);
-  go.onclick=apply;no.onclick=()=>box.innerHTML="";
+  go.onclick=apply;no.onclick=()=>{box.innerHTML="";afterSave=null};
 };
 
 /* ---------- 報告書 ---------- */
