@@ -8581,6 +8581,9 @@ Object.assign(ACT_G,{
 });
 docOn('input',e=>{ const t=e.target; if(t.id==='ob-q'&&sheet?.kind==='ownerBulk'){ sheet.q=t.value; const pos=t.selectionStart; refreshSheet(); const n=$('#ob-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } } });
 docOn('change',e=>{ const t=e.target; if(sheet?.kind!=='ownerBulk') return; if(t.id==='ob-only'){ sheet.only=t.checked; refreshSheet(); } if(t.id==='ob-un'){ sheet.un=t.checked; refreshSheet(); } if(t.id==='ob-of'){ sheet.of=t.value; refreshSheet(); } });
+/* 月の絞り込み：月額・まだ予定のない月の見込みも、その月だけにする */
+{ const mf0=monthlyForecast; monthlyForecast=function(from,n){ const r=mf0(from,n); const m=ANA_CTX&&ANA_CTX.f.month; return m?r.map(x=>x.m===m?x:{...x,rec:0,spot:0,cost:0,revC:0}):r; };
+  const cr0=contractRevenueIn; contractRevenueIn=function(c,from,n){ const m=ANA_CTX&&ANA_CTX.f.month; return m?cr0(c,m,1):cr0(c,from,n); }; }
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
