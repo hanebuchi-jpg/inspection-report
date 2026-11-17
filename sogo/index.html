@@ -6204,31 +6204,31 @@ VIEWS.analytics={
     // 担当者別
     const owners=salesStaff();
     const rows=owners.map(s=>{
-      const js=all('jobs').filter(j=>j.ownerId===s.id);
+      const js=all('jobs').filter(j=>j.ownerId===s.id&&inAnaPeriod(j));
       const qs=js.flatMap(j=>jobQuotes(j.id));
       const won=js.filter(j=>['受注','施工','完了'].includes(j.stage)), lost=js.filter(j=>j.stage==='失注');
       const speed=js.map(j=>{const f=jobQuotes(j.id).filter(q=>q.issuedAt).sort(by(q=>q.issuedAt))[0];return f?Math.max(0,daysSince(j.receivedAt||j.createdAt)-daysSince(f.issuedAt)):null;}).filter(x=>x!=null);
       const wonAmt=won.map(j=>jobMoney(j).sales);
       return {s,quotes:qs.filter(q=>q.status!=='作成中').length,won:won.length,lost:lost.length,rate:won.length+lost.length?won.length/(won.length+lost.length):null,avg:wonAmt.length?wonAmt.reduce((a,b)=>a+b,0)/wonAmt.length:0,speed:speed.length?speed.reduce((a,b)=>a+b,0)/speed.length:null,follow:followups().filter(q=>get('jobs',q.jobId)?.ownerId===s.id).length};
     });
-    const lostJ=all('jobs').filter(j=>j.stage==='失注'); const reasons={};lostJ.forEach(j=>{const r=j.lostReason||'未記入';(reasons[r]??={n:0,amt:0});reasons[r].n++;reasons[r].amt+=jobMoney(j).sales;});
+    const lostJ=all('jobs').filter(j=>j.stage==='失注'&&inAnaPeriod(j)); const reasons={};lostJ.forEach(j=>{const r=j.lostReason||'未記入';(reasons[r]??={n:0,amt:0});reasons[r].n++;reasons[r].amt+=jobMoney(j).sales;});
     const custRev={}; all('contracts').filter(c=>c.active!==false).forEach(c=>{custRev[c.customerId]=(custRev[c.customerId]||0)+contractRevenueIn(c,tm,12);});
     const FL=fyLabel(tm); const past=fc.filter(r=>r.m<nowM).reduce((a,r)=>a+r.rec+r.spot,0);
     const totRec=fc.reduce((a,r)=>a+r.rec,0), totSpot=fc.reduce((a,r)=>a+r.spot,0), totCost=fc.reduce((a,r)=>a+r.cost,0), totRevC=fc.reduce((a,r)=>a+r.revC,0);
     return `<div class="kpis">
       <div class="kpi"><div class="l">${FL.name}の売上（実績＋見込み）</div><div class="v num">${man(totRec+totSpot)}</div><div class="s">${past&&past<totRec+totSpot?`実績 ${man(past)}／見込み ${man(totRec+totSpot-past)}`:`定期 ${Math.round(totRec/Math.max(1,totRec+totSpot)*100)}%`}</div></div>
       <div class="kpi"><div class="l">粗利見込み</div><div class="v num">${can('cost.view')&&totCost?man(totRevC-totCost):'—'}</div><div class="s">${!totCost?'原価が未入力です':can('cost.view')&&totRevC>0?`粗利率 ${Math.round((totRevC-totCost)/totRevC*100)}%（原価入力済みの売上 ${Math.round(totRevC/Math.max(1,totRec+totSpot)*100)}%分）`:''}</div></div>
-      <div class="kpi"><div class="l">スポット→定期の転換</div><div class="v num">${convRate()}</div><div class="s">完了したスポット案件のうち定期化した割合</div></div>
+      <div class="kpi"><div class="l">スポット→定期の転換</div><div class="v num">${convRate()}</div><div class="s">${anaPeriodLabel()}に受け付けて完了したスポット案件のうち、定期化した割合</div></div>
       <div class="kpi"><div class="l">失注</div><div class="v num">${lostJ.length}件</div><div class="s">${man(lostJ.reduce((a,j)=>a+jobMoney(j).sales,0))}</div></div>
     </div>
     <section class="panel" style="margin-bottom:16px"><h2>${FL.name}の月別売上</h2><div class="pbody chart">${svg}<div class="legend"><span><i style="background:var(--accent)"></i>定期契約</span><span><i style="background:var(--warn)"></i>スポット（受注済み）</span><span><i style="background:var(--accent);opacity:.5"></i>薄い色＝今月以降（見込み）</span></div><p class="small muted" style="margin:6px 0 0">売上は計上月で集計しています。定期は作業予定（まだ作っていない月は契約の周期、日常・月額は毎月）から、翌月計上の契約は作業月の翌月に入れています。スポットは受注・施工・完了の案件の作業予定日の月です。</p></div></section>
     ${workerPanel(tm)}
     <div class="grid2">
-      <section class="panel"><h2>営業担当者別</h2><div class="pbody scroll"><table class="t"><thead><tr><th>担当</th><th class="r">見積提出</th><th class="r">受注</th><th class="r">受注率</th><th class="r">平均受注額</th><th class="r">見積まで</th><th class="r">要フォロー</th></tr></thead><tbody>${
+      <section class="panel"><h2>営業担当者別<span class="small muted" style="font-weight:400;margin-left:6px">${anaPeriodLabel()}に受け付けた案件</span></h2><div class="pbody scroll"><table class="t"><thead><tr><th>担当</th><th class="r">見積提出</th><th class="r">受注</th><th class="r">受注率</th><th class="r">平均受注額</th><th class="r">見積まで</th><th class="r">要フォロー</th></tr></thead><tbody>${
         rows.map(r=>`<tr><td>${esc(r.s.name)}</td><td class="r num">${r.quotes}</td><td class="r num">${r.won}</td><td class="r num">${r.rate==null?'—':Math.round(r.rate*100)+'%'}</td><td class="r num">${r.avg?man(r.avg):'—'}</td><td class="r num">${r.speed==null?'—':r.speed.toFixed(1)+'日'}</td><td class="r num">${r.follow?`<span class="pill w">${r.follow}</span>`:'0'}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">担当者マスタに社員を登録してください</td></tr>'}</tbody></table>
         <p class="small muted" style="margin:6px 0 0">「見積まで」は受付から最初の見積提出までの平均日数です。</p></div></section>
-      <section class="panel"><h2>きっかけ別（スポット案件）</h2><div class="pbody scroll">${(()=>{ const js=all('jobs').filter(j=>j.type!=='定期'); const g={}; js.forEach(j=>{const k=j.source||'未記入'; (g[k]??={n:0,won:0,lost:0,amt:0}); g[k].n++; if(['受注','施工','完了'].includes(j.stage)){g[k].won++; g[k].amt+=jobMoney(j).sales;} if(j.stage==='失注') g[k].lost++;}); const ks=Object.keys(g).sort((a,b)=>g[b].amt-g[a].amt||g[b].n-g[a].n); return ks.length?`<table class="t"><thead><tr><th>きっかけ</th><th class="r">案件</th><th class="r">受注</th><th class="r">受注率</th><th class="r">受注額</th></tr></thead><tbody>${ks.map(k=>{const x=g[k];return `<tr><td>${esc(k)}</td><td class="r num">${x.n}</td><td class="r num">${x.won}</td><td class="r num">${x.won+x.lost?Math.round(x.won/(x.won+x.lost)*100)+'%':'—'}</td><td class="r num">${man(x.amt)}</td></tr>`;}).join('')}</tbody></table><p class="small muted" style="margin:6px 0 0">受注率は、受注と失注が決まった案件のうちの受注の割合です。</p>`:'<p class="empty">スポット案件がまだありません。</p>'; })()}</div></section>
-      <section class="panel"><h2>失注理由</h2><div class="pbody">${Object.keys(reasons).length?`<table class="t"><tbody>${Object.entries(reasons).sort((a,b)=>b[1].n-a[1].n).map(([r,v])=>`<tr><td>${esc(r)}</td><td class="r num">${v.n}件</td><td class="r num">${man(v.amt)}</td></tr>`).join('')}</tbody></table>`:'<p class="empty">失注した案件はまだありません。</p>'}</div></section>
+      <section class="panel"><h2>きっかけ別（スポット案件）<span class="small muted" style="font-weight:400;margin-left:6px">${anaPeriodLabel()}に受け付けた案件</span></h2><div class="pbody scroll">${(()=>{ const js=all('jobs').filter(j=>j.type!=='定期'&&inAnaPeriod(j)); const g={}; js.forEach(j=>{const k=j.source||'未記入'; (g[k]??={n:0,won:0,lost:0,amt:0}); g[k].n++; if(['受注','施工','完了'].includes(j.stage)){g[k].won++; g[k].amt+=jobMoney(j).sales;} if(j.stage==='失注') g[k].lost++;}); const ks=Object.keys(g).sort((a,b)=>g[b].amt-g[a].amt||g[b].n-g[a].n); return ks.length?`<table class="t"><thead><tr><th>きっかけ</th><th class="r">案件</th><th class="r">受注</th><th class="r">受注率</th><th class="r">受注額</th></tr></thead><tbody>${ks.map(k=>{const x=g[k];return `<tr><td>${esc(k)}</td><td class="r num">${x.n}</td><td class="r num">${x.won}</td><td class="r num">${x.won+x.lost?Math.round(x.won/(x.won+x.lost)*100)+'%':'—'}</td><td class="r num">${man(x.amt)}</td></tr>`;}).join('')}</tbody></table><p class="small muted" style="margin:6px 0 0">受注率は、受注と失注が決まった案件のうちの受注の割合です。</p>`:'<p class="empty">スポット案件がまだありません。</p>'; })()}</div></section>
+      <section class="panel"><h2>失注理由<span class="small muted" style="font-weight:400;margin-left:6px">${anaPeriodLabel()}に受け付けた案件</span></h2><div class="pbody">${Object.keys(reasons).length?`<table class="t"><tbody>${Object.entries(reasons).sort((a,b)=>b[1].n-a[1].n).map(([r,v])=>`<tr><td>${esc(r)}</td><td class="r num">${v.n}件</td><td class="r num">${man(v.amt)}</td></tr>`).join('')}</tbody></table>`:'<p class="empty">失注した案件はまだありません。</p>'}</div></section>
       <section class="panel"><h2>顧客別　定期売上（${FL.name}）</h2><div class="pbody"><table class="t"><tbody>${Object.entries(custRev).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([id,v])=>`<tr class="click" data-act="customer" data-id="${id}"><td>${esc(custName(id))}</td><td class="r num">${man(v)}</td></tr>`).join('')||'<tr><td class="empty">定期契約がありません</td></tr>'}</tbody></table></div></section>
     </div>`;
   }
@@ -6246,7 +6246,7 @@ function workerPanel(fs){
   <p class="small muted" style="margin:6px 0 0">期の範囲で集計しています。スポット案件は発注書の金額（作業日の月）、定期契約は作業予定に入っている担当の原価（複数担当なら等分）で集計しています。原価が未入力の定期契約は発注額0円として数えます。行を押すと発注書と作業の一覧が開きます。</p></div></section>`;
 }
 function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(Math.max(x,1))));const f=x/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p;}
-function convRate(){const done=all('jobs').filter(j=>j.type!=='定期'&&j.stage==='完了');if(!done.length)return '—';const c=done.filter(j=>j.recurringDone&&j.contractId).length;return Math.round(c/done.length*100)+'%';}
+function convRate(){const done=all('jobs').filter(j=>j.type!=='定期'&&j.stage==='完了'&&inAnaPeriod(j));if(!done.length)return '—';const c=done.filter(j=>j.recurringDone&&j.contractId).length;return Math.round(c/done.length*100)+'%';}
 
 /* ---- マスタ・設定 ---- */
 VIEWS.master={
@@ -8532,7 +8532,7 @@ function anaBar(){ const f=anaF(), all_=canAllAna(), fs=anaFy();
 const anaCtxEmpty=()=>!all('customers').some(c=>(c.ownerIds||[]).includes(SHELL.meId()))&&!all('jobs').some(j=>j.ownerId===SHELL.meId());
 { const a=VIEWS.analytics, b0=a.body.bind(a);
   a.body=function(){ const bar=anaBar(); let h; ANA_CTX=anaBuild(); try{ h=b0(); } finally{ ANA_CTX=null; } const f=anaF();
-      if(f.owner) h=h.replace(/(<section class="panel"><h2>営業担当者別<\/h2>[\s\S]*?<tbody>)([\s\S]*?)(<\/tbody>)/,(m,p1,p2,p3)=>p1+p2.split('</tr>').filter(r=>!r.includes('<td>')||r.includes(`>${esc(staffName(f.owner))}<`)).join('</tr>')+p3);
+      if(f.owner) h=h.replace(/(<section class="panel"><h2>営業担当者別[\s\S]*?<tbody>)([\s\S]*?)(<\/tbody>)/,(m,p1,p2,p3)=>p1+p2.split('</tr>').filter(r=>!r.includes('<td>')||r.includes(`>${esc(staffName(f.owner))}<`)).join('</tr>')+p3);
       return bar+h; }; }
 docOn('change',e=>{ const t=e.target; if(!t.dataset||!t.dataset.af) return; const f={...(VS.anaF||{})}; f[t.dataset.af]=t.value; if(t.dataset.af==='cust') f.site=''; VS.anaF=f; render(); });
 
@@ -8584,6 +8584,9 @@ docOn('change',e=>{ const t=e.target; if(sheet?.kind!=='ownerBulk') return; if(t
 /* 月の絞り込み：月額・まだ予定のない月の見込みも、その月だけにする */
 { const mf0=monthlyForecast; monthlyForecast=function(from,n){ const r=mf0(from,n); const m=ANA_CTX&&ANA_CTX.f.month; return m?r.map(x=>x.m===m?x:{...x,rec:0,spot:0,cost:0,revC:0}):r; };
   const cr0=contractRevenueIn; contractRevenueIn=function(c,from,n){ const m=ANA_CTX&&ANA_CTX.f.month; return m?cr0(c,m,1):cr0(c,from,n); }; }
+/* 案件を数える表の範囲：その期、または選んだ月（受付日で判定） */
+function inAnaPeriod(j){ const d=ymOf(j.receivedAt||j.createdAt||''); if(!d) return false; const m=(VS.anaF||{}).month; if(m) return d===m; const fs=anaFy(); return d>=fs&&d<ymAdd(fs,12); }
+function anaPeriodLabel(){ const m=(VS.anaF||{}).month; return m?ymLabel(m):fyLabel(anaFy()).name; }
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
