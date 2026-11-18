@@ -8596,6 +8596,60 @@ function anaPeriodLabel(){ const m=(VS.anaF||{}).month; return m?ymLabel(m):fyLa
   const t0=SHEETS.site; SHEETS.site=st=>addKana(t0(st),'s_name',st.draft?.kana); }
 docOn('input',e=>{ const t=e.target; if(t.dataset&&t.dataset.kana&&sheet?.draft&&(sheet.kind==='staff'||sheet.kind==='site')) sheet.draft.kana=t.value.trim(); });
 
+/* =========================================================
+   日程・差配
+   ・担当別月／週ボード：表を画面の高さに収めて、日付の行と担当の列を固定（横のスクロールバーが常に画面の下に見える）
+   ・担当の選択：本社勤務／現場勤務（所属ごと）／協力会社に分け、検索・まとまりごとの全選択・今月予定がある人だけ
+   ・勤務区分は利用者ごとに「自動／本社勤務／現場勤務」。自動は所属・権限から判定
+   ========================================================= */
+const HQ_DEPTS=['営業部','管理本部','本社','総務','経理','事務'];
+function workplaceOf(s){ if(!s) return ''; if(s.kind==='協力会社') return '協力会社'; if(s.workplace) return s.workplace;
+  const d=String(s.dept||'').trim(); if(HQ_DEPTS.some(x=>d.includes(x))) return '本社勤務'; if(['admin','lead','manager'].includes(s.role)) return '本社勤務';
+  return d?'現場勤務':'本社勤務'; }
+document.head.insertAdjacentHTML('beforeend',`<style>
+#G .scroll.panel:has(> table.board){max-height:calc(100dvh - 190px);overflow:auto}
+#G .board.month thead th,#G .board thead th{position:sticky;top:0;z-index:3}
+#G .board.month thead th.who-h{z-index:4}
+#G .board td.who{position:sticky;left:0;z-index:2}
+#G .pkpanel .pkq{width:100%;margin:0 0 6px;font-size:14px}
+#G .pkpanel .grp{display:flex;align-items:center;gap:6px}
+#G .pkpanel .grp{justify-content:flex-start}
+#G .pkpanel .grp button+button{margin-left:4px}
+#G .pkpanel .grp button{margin-left:auto;font-size:11px;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:1px 6px;cursor:pointer;color:inherit}
+#G .pkpanel .grp.sub{padding-left:10px;font-weight:500}
+#G .pkpanel .opt[hidden]{display:none}
+</style>`);
+{ const P=PICK.sched; const busyIds=()=>new Set(P.opts0().filter(o=>o.n>0).map(o=>o.id));
+  P.opts0=P.opts;
+  P.opts=()=>P.opts0().map(o=>{ const s=get('staff',o.id); if(!s) return {...o,sort:'9'};
+    const w=workplaceOf(s); const g=w==='現場勤務'?`現場勤務：${s.dept||'所属なし'}`:w; return {...o,group:g,dept:s.dept||'',kana:s.kana||'',sort:(w==='本社勤務'?'1':w==='現場勤務'?'2':w==='協力会社'?'3':'4')+g}; })
+    .sort((a,b)=>a.sort<b.sort?-1:a.sort>b.sort?1:0);
+  P.quick=()=>[['all','すべて'],['hq','本社勤務'],['site','現場勤務'],...(partners().length?[['ptn','協力会社']]:[]),['busy','今月予定がある人'],['none','クリア']];
+  const q0=pickQuick; pickQuick=function(v){ const k=VS.picker?.k; if(k==='sched'&&['hq','site','busy'].includes(v)){ const ids=v==='busy'?[...busyIds()]:staffList().filter(s=>workplaceOf(s)===(v==='hq'?'本社勤務':'現場勤務')).map(s=>s.id); P.set(ids); savePrefs(); render(); return; } return q0(v); }; }
+{ const pp0=pickerPanel; pickerPanel=function(){ let h=pp0(); const k=VS.picker?.k; if(k!=='sched') return h;
+    const q=VS.pickQ||''; const kh=x=>nk(x).toLowerCase().replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)); const nzq=kh(q);
+    // 検索欄
+    h=h.replace('<div class="qrow">',`<input class="inp search pkq" id="pk-q" placeholder="名前・ふりがな・所属で探す" value="${esc(q)}" data-nosuggest="1"><div class="qrow">`);
+    // まとまりの見出しに「全部」「外す」。現場勤務は所属ごとの小見出し
+    h=h.replace(/<div class="grp">([^<]*)<\/div>/g,(m,g)=>{ const gg=g.replace(/&amp;/g,'&'); const sub=gg.startsWith('現場勤務：'); return `<div class="grp${sub?' sub':''}">${sub?esc(gg.slice(5)):g}<button type="button" data-act="pick-g" data-g="${esc(gg)}" data-on="1">全部</button><button type="button" data-act="pick-g" data-g="${esc(gg)}" data-on="0">外す</button></div>`; });
+    // 現場勤務の大見出しを1回だけ
+    let first=true; h=h.replace(/<div class="grp sub">/g,m=>{ if(!first) return m; first=false; return `<div class="grp">現場勤務</div>`+m; });
+    if(nzq){ const opts=PICK.sched.opts(); const hit=new Set(opts.filter(o=>kh(o.name+o.kana+o.dept).includes(nzq)).map(o=>o.id));
+      h=h.replace(/<label class="opt"><input type="checkbox" data-pkopt="([^"]*)"/g,(m,id)=>hit.has(id.replace(/&amp;/g,'&'))?m:m.replace('<label class="opt"','<label class="opt" hidden')); }
+    return h; }; }
+Object.assign(ACT_G,{
+  'pick-g'(el){ const P=PICK.sched, g=el.dataset.g, on=el.dataset.on==='1'; const opts=P.opts(); const ids=opts.map(o=>o.id); let sel=P.get()?[...P.get()]:[...ids];
+    const gi=opts.filter(o=>o.group===g||(g==='現場勤務'&&String(o.group).startsWith('現場勤務'))).map(o=>o.id);
+    sel=on?[...new Set([...sel,...gi])]:sel.filter(x=>!gi.includes(x)); P.set(ids.every(x=>sel.includes(x))?null:sel); savePrefs(); render(); },
+});
+docOn('input',e=>{ const t=e.target; if(t.id!=='pk-q') return; VS.pickQ=t.value; const pos=t.selectionStart; render(); const n=$('#pk-q'); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } });
+/* 利用者の画面：勤務区分 */
+{ const s0=SHEETS.staff; SHEETS.staff=st=>{ const o=s0(st); const s=st.draft; if(!s||s.kind==='協力会社') return o; const at=o.body.indexOf('data-kana="1"'); const end=at>=0?o.body.indexOf('</label>',at):-1;
+    const auto=workplaceOf({...s,workplace:''});
+    const f=`<label class="fld"><span>勤務区分（日程・差配の担当選びで使います）</span><select class="inp" data-wp="1"><option value="" ${!s.workplace?'selected':''}>自動（${esc(auto)}）</option><option ${s.workplace==='本社勤務'?'selected':''}>本社勤務</option><option ${s.workplace==='現場勤務'?'selected':''}>現場勤務</option></select></label>`;
+    return end>=0?{...o,body:o.body.slice(0,end+8)+f+o.body.slice(end+8)}:o; }; }
+docOn('change',e=>{ const t=e.target; if(t.dataset&&t.dataset.wp&&sheet?.kind==='staff'&&sheet.draft) sheet.draft.workplace=t.value; });
+
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
   route:()=>VS.route,
