@@ -52,6 +52,22 @@ a{color:var(--accent)}
 .tabbar button[aria-current="page"]{color:var(--accent);font-weight:700}
 .tabbar .badge{position:absolute;top:3px;left:calc(50% + 6px);font-size:9.5px;min-width:16px;padding:0 4px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* メニューを縮めたとき（アイコンだけ） */
+.nav-tg{border:0;background:none;padding:6px;margin:-6px 4px -6px -6px;border-radius:8px;cursor:pointer;color:var(--fg);display:inline-flex}
+.nav-tg:hover{background:var(--surface-2)}
+.brand{align-items:center}
+body.nav-mini .app{grid-template-columns:64px minmax(0,1fr)}
+body.nav-mini #G .app,body.nav-mini #S .app{grid-template-columns:minmax(0,1fr)}
+body.nav-mini .snav{padding:14px 8px;align-items:center}
+body.nav-mini .snav .bt,body.nav-mini .snav .who,body.nav-mini .snav .foot{display:none}
+body.nav-mini .snav .brand{padding:0 0 10px}
+body.nav-mini .snav .nav-tg{margin:0}
+body.nav-mini .snav .grp{font-size:0;padding:6px 0;border-top:1px solid var(--line);width:36px;margin-top:6px}
+body.nav-mini .snav button[data-sgo="go"]{width:44px;height:42px;justify-content:center;padding:0;position:relative}
+body.nav-mini .snav button[data-sgo="go"] > span:not(.badge){display:none}
+body.nav-mini .snav .badge{position:absolute;top:2px;right:0;font-size:9.5px;min-width:16px;padding:0 4px}
+@media (max-width:900px){body.nav-mini .app{grid-template-columns:minmax(0,1fr)}}
 /* シェル独自 */
 html,body{margin:0;padding:0}
 .mod{min-width:0}
@@ -1226,12 +1242,15 @@ const SHELL=(()=>{
     out['G:jobs']=g.jobs; out['G:schedule']=g.schedule; out['S:reports']=s.reports; out['S:time']=s.time; out['S:porders']=s.porders; out['G:approvals']=apCount(); { const me=S_API.meId(); const n=noticesFor(me).length+flowMine(me).length; if(n) out['S:home']=n; }
     return out;
   }
+  function navMini(){ try{ const me=window.S_API&&S_API.meId?S_API.meId():''; const p=me&&window.S_API?S_API.get('prefs',me):null; if(p&&typeof p.navMini==='boolean') return p.navMini; return localStorage.getItem('nav-mini')==='1'; }catch(_){ return false; } }
+  function navMiniSet(v){ try{ localStorage.setItem('nav-mini',v?'1':'0'); const me=S_API.meId(); if(me){ const p=S_API.get('prefs',me)||{}; S_API.put('prefs',me,{...p,navMini:v}); } }catch(_){ } document.body.classList.toggle('nav-mini',v); }
   function renderNav(){
+    document.body.classList.toggle('nav-mini',navMini());
     if(!window.G_API||!window.S_API) return;
     const b=badges(), me=S_API.meId();
-    const btn=([m,r,l,d])=>`<button data-sgo="go" data-m="${m}" data-r="${r}" ${isCur(m,r)?'aria-current="page"':''}>${icon(d)}<span>${esc(l)}</span>${b[m+':'+r]?`<span class="badge">${b[m+':'+r]}</span>`:''}</button>`;
+    const btn=([m,r,l,d])=>`<button data-sgo="go" data-m="${m}" data-r="${r}" title="${esc(l)}" aria-label="${esc(l)}" ${isCur(m,r)?'aria-current="page"':''}>${icon(d)}<span>${esc(l)}</span>${b[m+':'+r]?`<span class="badge">${b[m+':'+r]}</span>`:''}</button>`;
     const opts=S_API.staff().map(s=>`<option value="${esc(s.id)}" ${s.id===me?'selected':''}>${esc(s.name)}${esc(s.tag)}</option>`).join('');
-    $('#shell-nav').innerHTML=`<div class="brand">真総合<small>試作版</small></div>
+    $('#shell-nav').innerHTML=`<div class="brand"><button class="nav-tg" data-sgo="navmini" aria-label="${navMini()?'メニューを広げる':'メニューを縮める'}" title="${navMini()?'メニューを広げる':'メニューを縮める'}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><span class="bt">真総合<small>試作版</small></span></div>
       ${SB&&sbRole!=='admin'?`<div class="who"><span>ログイン中</span><b>${esc(S_API.staff().find(s=>s.id===me)?.name||'')}</b></div>`:`<label class="who"><span>${SB?'表示の確認（管理者のみ）':'利用者（試作用の切替）'}</span><select class="sinp" data-sgo-chg="me">${opts||'<option>（未登録）</option>'}</select></label>`}`+
       items().map(([gname,list])=>(gname?`<div class="grp">${esc(gname)}</div>`:'')+list.map(btn).join('')).join('')+
       `<div class="foot"><button class="sbl-link" data-sgo="settab" data-k="view">表示の設定</button><br>${SB?`${esc(sbUser?.email||'')}<br><button class="sbl-link" data-sbl="logout">ログアウト</button>`:preview?'プレビュー（保存されません）':'共有データに保存中'}</div>`;
@@ -1365,6 +1384,7 @@ const SHELL=(()=>{
   document.addEventListener('click',e=>{
     const el=e.target.closest('[data-sgo]'); if(!el) return;
     const a=el.dataset.sgo;
+    if(a==='navmini'){ navMiniSet(!navMini()); renderNav(); return; }
     if(a==='go'){ if(el.dataset.r==='settings'||el.dataset.r==='master') goSet(''); else go(el.dataset.m,el.dataset.r); }
     else if(a==='settab') goSet(el.dataset.k);
     else if(a==='more'){ moreOpen=!moreOpen; renderNav(); }
@@ -8649,6 +8669,139 @@ docOn('input',e=>{ const t=e.target; if(t.id!=='pk-q') return; VS.pickQ=t.value;
     const f=`<label class="fld"><span>勤務区分（日程・差配の担当選びで使います）</span><select class="inp" data-wp="1"><option value="" ${!s.workplace?'selected':''}>自動（${esc(auto)}）</option><option ${s.workplace==='本社勤務'?'selected':''}>本社勤務</option><option ${s.workplace==='現場勤務'?'selected':''}>現場勤務</option></select></label>`;
     return end>=0?{...o,body:o.body.slice(0,end+8)+f+o.body.slice(end+8)}:o; }; }
 docOn('change',e=>{ const t=e.target; if(t.dataset&&t.dataset.wp&&sheet?.kind==='staff'&&sheet.draft) sheet.draft.workplace=t.value; });
+
+/* =========================================================
+   顧客・現場：3列（顧客一覧｜基本情報｜関連カード）
+   ・顧客／現場を選ぶと右の2列が入れ替わる（道しるべ・「← 顧客に戻る」で戻れる）
+   ・顧客一覧の列は畳める（人ごとに覚える）
+   ・カードは6件まで表示し「すべて表示」で広げる。9件以上はカード内で検索できる
+   ・編集はこれまでの編集画面（右から出る画面）を開く
+   ========================================================= */
+const cuPref=(k,d)=>{ try{ const v=localStorage.getItem('cu-'+k+'-'+(SHELL.meId()||'')); return v==null?d:JSON.parse(v); }catch(_){ return d; } };
+const cuPrefSet=(k,v)=>{ try{ localStorage.setItem('cu-'+k+'-'+(SHELL.meId()||''),JSON.stringify(v)); }catch(_){ } };
+const vCust=v=>v.customerId||get('sites',v.siteId)?.customerId||get('contracts',v.contractId)?.customerId||get('jobs',v.jobId)?.customerId||'';
+const vSite=v=>v.siteId||get('contracts',v.contractId)?.siteId||get('jobs',v.jobId)?.siteId||'';
+function cuRepsFor(kind,id){ try{ return (window.S_API?S_API.list('reports'):[]).filter(r=>(r.tags||[]).some(t=>t.k===kind&&t.id===id)).sort(by(r=>r.date||'',-1)); }catch(_){ return []; } }
+function cuTag(t,tone){ const c={a:['var(--accent-soft)','var(--accent)'],g:['var(--ok-soft,#e5f4e4)','var(--ok)'],w:['var(--warn-soft,#f9eeda)','var(--warn)'],r:['var(--bad-soft,#fbebeb)','var(--bad)'],n:['var(--surface-2)','var(--muted)']}[tone||'n']; return `<span class="cu-tag" style="background:${c[0]};color:${c[1]}">${esc(t)}</span>`; }
+function cuRow(act,id,tag,name,right,extra=''){ return `<button class="cu-row" data-act="${act}" data-id="${esc(id)}" ${extra}>${tag||''}<span class="cu-nm">${name}</span><span class="cu-rt">${right||''}</span></button>`; }
+function cuCard(key,title,count,add,rows,emptyMsg){ const exp=(VS.cuExp||{})[key], q=(VS.cuQ||{})[key]||'';
+  const hit=q?rows.filter(r=>r.text.includes(q)):rows; const show=exp||q?hit:hit.slice(0,6);
+  return `<section class="cu-card"><div class="cu-ch"><h3>${title}</h3><span class="muted small">${count}</span>${add||''}</div>
+    ${rows.length>8?`<input class="inp cu-q" data-cuq="${key}" placeholder="${esc(title)}を探す" value="${esc(q)}" data-nosuggest="1">`:''}
+    ${show.map(r=>r.html).join('')||`<p class="muted small" style="margin:6px 2px">${q?'当てはまるものがありません':emptyMsg||'ありません'}</p>`}
+    ${!q&&hit.length>6?`<button class="cu-more" data-act="cu-exp" data-k="${key}">${exp?'たたむ':`すべて表示（${hit.length}件）`}</button>`:''}</section>`; }
+function cuList(){ const q=(VS.custQ||'').trim(), f=VS.cuF||'work', me=SHELL.meId(); const tm=ymOf(today());
+  const hasWork=new Set([...all('contracts').map(c=>c.customerId),...all('jobs').map(j=>j.customerId)]);
+  let cs=all('customers').filter(c=>!q||(c.name+(c.kana||'')).includes(q)||all('sites').some(s=>s.customerId===c.id&&siteLabel(s).includes(q)));
+  if(f==='work') cs=cs.filter(c=>hasWork.has(c.id)); if(f==='mine') cs=cs.filter(c=>(c.ownerIds||[]).includes(me));
+  cs.sort(by(c=>c.kana||c.name)); const sel=VS.cu?.t==='cust'?VS.cu.id:VS.cu?.t==='site'?get('sites',VS.cu.id)?.customerId:'';
+  const nS=id=>all('sites').filter(s=>s.customerId===id).length, nC=id=>all('contracts').filter(x=>x.customerId===id&&x.active!==false).length;
+  const lim=VS.cuLim||200;
+  return `<aside class="cu-list" aria-label="顧客一覧"><div class="cu-lh"><b>顧客一覧</b><span class="muted small">${cs.length}社</span><button class="btn ghost sm" data-act="cu-fold" aria-label="顧客一覧をたたむ" title="顧客一覧をたたむ">«</button></div>
+    <div class="cu-chips">${[['work','契約・案件あり'],['mine','自分の担当'],['all','すべて']].map(([k,l])=>`<button data-act="cu-f" data-v="${k}" aria-pressed="${f===k}">${l}</button>`).join('')}</div>
+    <div class="cu-lb">${cs.slice(0,lim).map(c=>`<button class="cu-li ${c.id===sel?'on':''}" data-act="customer" data-id="${c.id}"><span><b>${esc(c.name)}</b><small>現場 ${nS(c.id)}・定期 ${nC(c.id)}</small></span></button>`).join('')||'<p class="muted small" style="padding:12px">該当なし</p>'}
+    ${cs.length>lim?`<button class="cu-more" data-act="cu-lim">さらに表示（残り${cs.length-lim}社）</button>`:''}</div></aside>`; }
+function cuCustDetail(c){ const tm=ymOf(today()), t=today();
+  const sites=all('sites').filter(s=>s.customerId===c.id).sort(by(siteLabel));
+  const ctrs=all('contracts').filter(x=>x.customerId===c.id);
+  const reg=ctrs.filter(x=>!isDaily(x)).sort(by(x=>(x.active===false?'1':'0')+siteLabel(get('sites',x.siteId)||{})+(x.service||''))), dly=ctrs.filter(isDaily);
+  const jobs=all('jobs').filter(j=>j.customerId===c.id).sort(by(j=>(['完了','失注'].includes(j.stage)?'1':'0')+(j.receivedAt||j.createdAt||''),-1));
+  const vis=all('visits').filter(v=>vCust(v)===c.id);
+  const up=vis.filter(v=>v.status!=='完了'&&v.status!=='中止').sort(by(v=>(v.date||'9999')+(v.start||''))), done=vis.filter(v=>v.status==='完了').sort(by(v=>v.date||'',-1));
+  const reps=cuRepsFor('customer',c.id);
+  const yr=ctrs.filter(x=>x.active!==false).reduce((a,x)=>a+contractRevenueIn(x,tm,12),0);
+  const nVis=s=>vis.filter(v=>vSite(v)===s.id&&v.status!=='完了'&&v.status!=='中止').length, nCt=s=>ctrs.filter(x=>x.siteId===s.id&&x.active!==false).length;
+  const cards=[
+    cuCard('sites','現場・店舗',sites.length,`<button class="btn sm" data-act="new-site" data-cust="${c.id}">＋ 現場</button>`,sites.map(s=>({text:siteLabel(s),html:cuRow('site',s.id,cuTag('現場'),esc(siteLabel(s)),`定期 ${nCt(s)}・予定 ${nVis(s)} ›`)}))),
+    cuCard('reg','定期契約',reg.filter(x=>x.active!==false).length,`<button class="btn sm" data-act="new-contract" data-cust="${c.id}">＋ 定期</button>`,reg.map(x=>({text:(x.service||'')+siteLabel(get('sites',x.siteId)||{}),html:cuRow('contract',x.id,cuTag(x.active===false?'停止':'定期',x.active===false?'n':'a'),`${esc(x.service||'')}<small>${esc(siteLabel(get('sites',x.siteId)||{}))}</small>`,`${esc(cycleText(x.cycle))} ${yen(contractUnit(x))}${x.chk||x.needsReview?' '+cuTag('要確認','w'):''}`)})),'定期契約はありません'),
+    cuCard('daily','日常清掃',dly.length,`<button class="btn sm" data-act="new-daily" data-cust="${c.id}">＋ 日常</button>`,dly.map(x=>({text:(x.service||'')+siteLabel(get('sites',x.siteId)||{}),html:cuRow('contract',x.id,cuTag('日常','g'),`${esc(x.service||'')}<small>${esc(siteLabel(get('sites',x.siteId)||{}))}</small>`,isHourly(x)?`${yen(priceAt(x,tm).price)}/h`:`月額 ${yen(contractUnit(x))}`)})),'日常清掃の契約はありません'),
+    cuCard('jobs','案件',jobs.filter(j=>!['完了','失注'].includes(j.stage)).length+'件 進行中',`<button class="btn sm" data-act="new-job" data-cust="${c.id}">＋ 案件</button>`,jobs.map(j=>({text:(j.title||'')+j.stage,html:cuRow('job',j.id,cuTag(j.stage,j.stage==='失注'?'r':j.stage==='完了'?'n':j.stage==='施工'?'w':'a'),`${esc(j.title||'（件名なし）')}<small>${esc(siteLabel(get('sites',j.siteId)||{}))}</small>`,'›')})),'案件はありません'),
+    cuCard('vis','作業予定・履歴',`今後 ${up.length}`,'',[...up,...done].map(v=>({text:visitTitle(v),html:cuRow('visit',v.id,cuTag(v.date?jd(v.date):'日程未定',v.status==='完了'?'g':isLate(v)?'r':'n'),esc(visitTitle(v)),esc((v.staffIds||[]).map(staffName).join('・'))+(v.status==='完了'?' '+cuTag('完了','g'):''))})),'作業予定はありません'),
+    cuCard('reps','日常報告',reps.length?`直近 ${Math.min(reps.length,99)}${reps.length>99?'+':''}件`:'',
+      '',reps.slice(0,60).map(r=>({text:(r.body||'')+(r.title||''),html:cuRow('cu-rep',r.id,cuTag(r.date?jd(r.date):''),esc(String(r.title||r.body||'').slice(0,60)),esc(staffName(r.staffId)))})),'日常報告はありません')];
+  return `<div class="cu-mid"><section class="cu-card cu-info"><div class="cu-ch"><h2>${esc(c.name)}</h2><span class="muted small">${esc(c.kana||'')}</span><button class="btn sm" data-act="cu-edit" data-k="customer" data-id="${c.id}">編集</button></div>
+      <dl class="cu-dl">${[['電話',c.tel],['メール',c.email],['先方担当',c.contact],['住所',c.address],['営業担当',(c.ownerIds||[]).map(staffName).join('・')],['略称',c.aliases],['メモ',c.note]].filter(([,v])=>v).map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')||'<dt></dt><dd class="muted">連絡先が未登録です。「編集」から入れてください。</dd>'}</dl></section>
+    <section class="cu-card cu-kpi"><div><span>年間の定期売上（見込み）</span><b class="num">${yen(yr)}</b></div><div><span>現場</span><b class="num">${sites.length}</b></div><div><span>進行中の案件</span><b class="num">${jobs.filter(j=>!['完了','失注'].includes(j.stage)).length}</b></div></section></div>
+  <div class="cu-cards">${cards.join('')}</div>`; }
+function cuSiteDetail(s){ const c=get('customers',s.customerId)||{}; const t=today();
+  const ctrs=all('contracts').filter(x=>x.siteId===s.id).sort(by(x=>(x.active===false?'1':'0')+(x.service||'')));
+  const vis=all('visits').filter(v=>vSite(v)===s.id); const up=vis.filter(v=>v.status!=='完了'&&v.status!=='中止').sort(by(v=>(v.date||'9999')+(v.start||''))), done=vis.filter(v=>v.status==='完了').sort(by(v=>v.date||'',-1));
+  const jobs=all('jobs').filter(j=>j.siteId===s.id).sort(by(j=>(['完了','失注'].includes(j.stage)?'1':'0')+(j.receivedAt||''),-1));
+  const reps=cuRepsFor('site',s.id);
+  let stock=[]; try{ stock=(window.S_API?S_API.list('items'):[]).filter(x=>!x.inactive&&(x.siteMin||{})[s.id]).map(x=>{ const mn=+x.siteMin[s.id]; const q=S_API.list('stockmoves').reduce((a,v)=>v.itemId!==x.id?a:a+(v.kind==='adjust'?(v.to===s.id?+v.qty:0):((v.to===s.id?+v.qty:0)-(v.from===s.id?+v.qty:0))),0); return {x,mn,q}; }); }catch(_){ }
+  const cards=[
+    cuCard('s-ctr','この現場の契約',ctrs.filter(x=>x.active!==false).length,`<button class="btn sm" data-act="new-contract" data-cust="${c.id||''}" data-site="${s.id}">＋ 定期</button>`,ctrs.map(x=>({text:x.service||'',html:cuRow('contract',x.id,isDaily(x)?cuTag('日常','g'):cuTag(x.active===false?'停止':'定期',x.active===false?'n':'a'),esc(x.service||''),isDaily(x)?(isHourly(x)?`${yen(priceAt(x,ymOf(t)).price)}/h`:`月額 ${yen(contractUnit(x))}`):`${esc(cycleText(x.cycle))} ${yen(contractUnit(x))}`)})),'契約はありません'),
+    cuCard('s-vis','作業予定・履歴',`今後 ${up.length}`,'',[...up,...done].map(v=>({text:visitTitle(v),html:cuRow('visit',v.id,cuTag(v.date?jd(v.date):'日程未定',v.status==='完了'?'g':isLate(v)?'r':'n'),esc(visitTitle(v)),esc((v.staffIds||[]).map(staffName).join('・')))})),'作業予定はありません'),
+    cuCard('s-jobs','案件',jobs.length,`<button class="btn sm" data-act="new-job" data-cust="${c.id||''}" data-site="${s.id}">＋ 案件</button>`,jobs.map(j=>({text:j.title||'',html:cuRow('job',j.id,cuTag(j.stage,j.stage==='失注'?'r':j.stage==='完了'?'n':'a'),esc(j.title||''),'›')})),'案件はありません'),
+    cuCard('s-reps','日常報告',reps.length?`${reps.length}件`:'','',reps.slice(0,60).map(r=>({text:(r.body||'')+(r.title||''),html:cuRow('cu-rep',r.id,cuTag(r.date?jd(r.date):''),esc(String(r.title||r.body||'').slice(0,60)),esc(staffName(r.staffId)))})),'日常報告はありません'),
+    ...(stock.length?[cuCard('s-stock','置き在庫',`${stock.filter(o=>o.q<o.mn).length}品目が不足`,'',stock.map(o=>({text:o.x.name,html:`<div class="cu-row">${o.q<o.mn?cuTag('不足','r'):cuTag('OK','g')}<span class="cu-nm">${esc(o.x.name)}</span><span class="cu-rt">いま ${o.q} / 定数 ${o.mn}</span></div>`})))]:[])];
+  return `<div class="cu-mid"><button class="cu-back" data-act="customer" data-id="${c.id||''}"><span aria-hidden="true">←</span><span><small>顧客</small><b>${esc(c.name||'')}</b></span><span class="cu-bk">顧客の画面へ</span></button>
+    <section class="cu-card cu-info"><div class="cu-ch"><h2>${esc(siteLabel(s))}</h2><button class="btn sm" data-act="cu-edit" data-k="site" data-id="${s.id}">編集</button></div>
+      <dl class="cu-dl">${[['施設',s.facility],['店番',s.storeNo],['住所',s.address],['鍵・入館',s.keyRequired?'鍵が必要'+(s.keyNote?'（'+s.keyNote+'）':''):s.keyNote],['注意事項',s.caution||s.note],['ふりがな',s.kana]].filter(([,v])=>v).map(([k,v])=>`<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')||'<dt></dt><dd class="muted">住所などが未登録です。「編集」から入れてください。</dd>'}</dl></section></div>
+  <div class="cu-cards">${cards.join('')}</div>`; }
+{ const V=VIEWS.customers, b0=V.body.bind(V);
+  V.body=function(){ if(VS.custView==='site') return b0();
+    if(VS.cu&&!get(VS.cu.t==='site'?'sites':'customers',VS.cu.id)) VS.cu=null;
+    const open=cuPref('list',true), narrow=innerWidth<=900;
+    const cu=VS.cu, c=cu?.t==='cust'?get('customers',cu.id):cu?.t==='site'?get('customers',get('sites',cu.id)?.customerId):null, s=cu?.t==='site'?get('sites',cu.id):null;
+    const crumb=`<nav class="cu-crumb" aria-label="現在の位置"><a href="#" data-act="cu-home">顧客・現場</a>${c?`<span aria-hidden="true">›</span>${s?`<a href="#" data-act="customer" data-id="${c.id}">${esc(c.name)}</a><span aria-hidden="true">›</span><b>${esc(siteLabel(s))}</b>`:`<b>${esc(c.name)}</b>`}`:''}${s?`<button class="btn sm cu-backbtn" data-act="customer" data-id="${c?.id||''}">← ${esc(c?.name||'顧客')}に戻る</button>`:''}</nav>`;
+    const detail=!cu?`<div class="cu-empty"><p>左の一覧から顧客を選んでください。</p><p class="muted small">上の検索欄で、顧客名・ふりがな・現場名から探せます。</p></div>`:s?cuSiteDetail(s):cuCustDetail(c);
+    if(narrow) return cu?crumb+`<div class="cu-detail">${detail}</div>`:cuList();
+    return `<div class="cu-wrap ${open?'':'folded'}">${open?cuList():`<button class="cu-unfold" data-act="cu-fold" aria-label="顧客一覧を開く" title="顧客一覧を開く"><span>»</span><span class="cu-vt">顧客一覧</span></button>`}<div class="cu-main">${crumb}<div class="cu-detail">${detail}</div></div></div>`; }; }
+/* 顧客・現場の画面では、顧客／現場を開くと右の2列に出す。ほかの画面からはこの画面に移って出す */
+ROOT.addEventListener('click',e=>{ const el=e.target.closest&&e.target.closest('[data-act="customer"],[data-act="site"]'); if(!el||!el.dataset.id) return;
+  if(el.closest('#overlay')&&sheet&&!['customer','site'].includes(sheet.kind)) return; // 案件などの画面の中のリンクはこれまでどおり
+  if(VS.custView==='site'&&VS.route==='customers'&&!el.closest('.cu-wrap,.cu-detail')) return; // 現場ごとの表はこれまでどおり
+  e.preventDefault(); e.stopPropagation(); if(sheet) closeSheet();
+  VS.cu={t:el.dataset.act==='site'?'site':'cust',id:el.dataset.id}; VS.cuQ={}; VS.cuExp={};
+  if(VS.route!=='customers'){ VS.route='customers'; VS.custView='cust'; try{ history.replaceState(null,'','#customers'); }catch(_){ } }
+  render(); const m=ROOT.querySelector('.cu-main'); if(m) m.scrollIntoView({block:'start'}); },true);
+Object.assign(ACT_G,{
+  'cu-home'(){ VS.cu=null; render(); },
+  'cu-fold'(){ cuPrefSet('list',!cuPref('list',true)); render(); },
+  'cu-f'(el){ VS.cuF=el.dataset.v; render(); },
+  'cu-lim'(){ VS.cuLim=(VS.cuLim||200)+300; render(); },
+  'cu-exp'(el){ VS.cuExp={...(VS.cuExp||{}),[el.dataset.k]:!(VS.cuExp||{})[el.dataset.k]}; render(); },
+  'cu-edit'(el){ const id=el.dataset.id; if(el.dataset.k==='site') openSheet({kind:'site',live:false,draft:{...get('sites',id)}}); else openSheet({kind:'customer',id}); },
+  'cu-rep'(el){ const id=el.dataset.id; try{ SHELL.go('S','reports'); setTimeout(()=>{ const r=document.querySelector('#S'); const b=document.createElement('button'); b.hidden=true; b.dataset.act='openReport'; b.dataset.id=id; r.appendChild(b); b.click(); b.remove(); },60); }catch(_){ } },
+});
+docOn('input',e=>{ const t=e.target; if(!t.dataset||!t.dataset.cuq) return; VS.cuQ={...(VS.cuQ||{}),[t.dataset.cuq]:t.value}; const k=t.dataset.cuq, pos=t.selectionStart; render(); const n=ROOT.querySelector(`[data-cuq="${k}"]`); if(n){ n.focus(); try{ n.setSelectionRange(pos,pos); }catch(_){ } } });
+document.head.insertAdjacentHTML('beforeend',`<style>
+#G .cu-wrap{display:grid;grid-template-columns:270px minmax(0,1fr);gap:16px;align-items:start}
+#G .cu-wrap.folded{grid-template-columns:36px minmax(0,1fr)}
+#G .cu-list{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;position:sticky;top:12px;max-height:calc(100dvh - 140px);overflow:hidden}
+#G .cu-lh{display:flex;align-items:center;gap:8px;padding:10px 10px 6px 14px}#G .cu-lh button{margin-left:auto}
+#G .cu-chips{display:flex;gap:4px;flex-wrap:wrap;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+#G .cu-chips button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--muted)}
+#G .cu-chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+#G .cu-lb{overflow:auto}
+#G .cu-li{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 14px;cursor:pointer;color:var(--fg)}
+#G .cu-li b{display:block;font-size:13.5px}#G .cu-li small{color:var(--muted);font-size:11.5px}
+#G .cu-li.on{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+#G .cu-unfold{position:sticky;top:12px;width:36px;min-height:140px;border:1px solid var(--line);background:var(--surface);border-radius:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0;color:var(--muted)}
+#G .cu-vt{writing-mode:vertical-rl;font-size:12px;letter-spacing:.1em}
+#G .cu-crumb{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:0 0 12px}
+#G .cu-crumb b{color:var(--fg)}#G .cu-backbtn{margin-left:auto}
+#G .cu-detail{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:16px;align-items:start}
+#G .cu-mid{display:flex;flex-direction:column;gap:12px;position:sticky;top:12px}
+#G .cu-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;align-items:start}
+#G .cu-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+#G .cu-ch{display:flex;align-items:center;gap:8px;margin-bottom:6px}#G .cu-ch h2{margin:0;font-size:19px}#G .cu-ch h3{margin:0;font-size:14.5px}#G .cu-ch .btn{margin-left:auto}
+#G .cu-dl{display:grid;grid-template-columns:76px minmax(0,1fr);gap:6px 10px;margin:0;font-size:13px}#G .cu-dl dt{color:var(--muted)}#G .cu-dl dd{margin:0;white-space:pre-wrap;word-break:break-word}
+#G .cu-kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));text-align:center;gap:6px}#G .cu-kpi span{display:block;font-size:11px;color:var(--muted)}#G .cu-kpi b{font-size:16px}
+#G .cu-row{display:flex;align-items:center;gap:8px;width:100%;border:0;border-top:1px solid var(--line);background:none;padding:8px 2px;text-align:left;cursor:pointer;color:var(--fg);font-size:13px}
+#G .cu-row:hover{background:var(--surface-2)}#G .cu-nm{flex:1;min-width:0;overflow-wrap:anywhere}#G .cu-nm small{display:block;color:var(--muted);font-size:11.5px}
+#G .cu-rt{color:var(--muted);font-size:12px;text-align:right;max-width:42%;flex:0 1 auto}
+#G .cu-nm{min-width:40%}
+#G .cu-tag{display:inline-block;min-width:42px;text-align:center;border-radius:6px;padding:1px 6px;font-size:11px;flex:none}
+#G .cu-more{border:0;background:none;color:var(--accent);padding:8px 2px 2px;text-align:left;cursor:pointer;font-size:12.5px}
+#G .cu-q{margin:0 0 6px;font-size:13px;height:32px}
+#G .cu-back{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--accent-soft);border-radius:12px;padding:10px 14px;cursor:pointer;text-align:left;color:var(--fg)}
+#G .cu-back small{display:block;font-size:11px;color:var(--muted)}#G .cu-bk{margin-left:auto;font-size:12px;color:var(--accent)}
+#G .cu-empty{grid-column:1/-1;background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:40px;text-align:center}
+@media (max-width:1200px){#G .cu-detail{grid-template-columns:minmax(0,1fr)}#G .cu-mid{position:static}}
+@media (max-width:900px){#G .cu-list{position:static;max-height:none}}
+</style>`);
 
 window.G_API={
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
