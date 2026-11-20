@@ -1738,7 +1738,7 @@ function monthCal(ids){
     const d=addDays(start,i); if(i===35&&ymOf(d)!==m) break;
     const evs=eventsFor(d,ids); const wd=i%7;
     h+=`<div class="cd ${VS.wishMode?'wishing':''} ${ymOf(d)!==m?'out':''} ${d===today()?'today':''} ${d===VS.calSel?'sel':''}" data-act="calDay" data-date="${d}" data-fit>
-      <div class="cdn"><span class="${wd===0||holName(d)?'sun':wd===6?'sat':''}" ${holName(d)?`title="${esc(holName(d))}"`:''}>${+d.slice(8)}</span>${holName(d)?`<small class="muted" style="font-size:10px;color:var(--danger,#c33)">${esc(holName(d))}</small>`:''}${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
+      <div class="cdn"><span class="${wd===0||hoco(d)?'sun':wd===6?'sat':''}" ${hoco(d)?`title="${esc(hoco(d))}"`:''}>${+d.slice(8)}</span>${hoco(d)?`<small class="muted" style="font-size:10px;color:var(--danger,#c33)">${esc(hoco(d))}</small>`:''}${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
       ${evs.map(e=>evChip(e,multi)).join('')}
       <div class="cdots">${evs.slice(0,4).map(e=>e.rp?'<i class="rpdot"></i>':`<i class="ty${tyIdx(e.type)}" style="background:var(--c)"></i>`).join('')}</div></div>`;
   }
@@ -5509,6 +5509,90 @@ document.head.insertAdjacentHTML('beforeend',`<style>
 #S tr.tot td{border-top:2px solid var(--line)}
 </style>`);
 
+/* =========================================================
+   会社の年間休日（会社カレンダー）
+   meta/companycal：weekOff（毎週の休み）・national（祝日を休み）・ranges（夏季・年末年始などの期間）
+                    add（休みにする日）・work（出勤日にする日）
+   ・本社勤務の人は会社カレンダーで勤怠の「所定休日」を判定（人ごとに「個別の曜日」に切り替え可）
+   ・カレンダーに会社の休日を表示
+   ========================================================= */
+const CC_DEF={weekOff:[0,6],national:true,ranges:[],add:{},work:{}};
+const ccfg=()=>({...CC_DEF,...(get('meta','companycal')||{})});
+function coOffInfo(d){ const c=ccfg(); if(!d) return null;
+  if(c.work&&c.work[d]) return null;
+  if(c.add&&c.add[d]!=null) return {name:c.add[d]||'会社休日',kind:'add'};
+  const r=(c.ranges||[]).find(r=>r.from&&r.to&&d>=r.from&&d<=r.to); if(r) return {name:r.name||'会社休日',kind:'range'};
+  if(c.national&&holName(d)) return {name:holName(d),kind:'nat'};
+  if((c.weekOff||[]).includes(wdOf(d))) return {name:'',kind:'week'};
+  return null; }
+const coOff=d=>!!coOffInfo(d);
+const coOffLabel=d=>{ const i=coOffInfo(d); return i&&(i.kind==='add'||i.kind==='range')?i.name:''; };
+const hoco=d=>holName(d)||coOffLabel(d);
+function wpS(s){ if(!s||s.kind==='協力会社') return ''; if(s.workplace) return s.workplace; const d=String(s.dept||''); if(['営業部','管理本部','本社','総務','経理','事務'].some(x=>d.includes(x))||['admin','lead','manager'].includes(s.role)) return '本社勤務'; return d?'現場勤務':'本社勤務'; }
+const usesCoCal=s=>s&&(s.calMode==='company'||(!s.calMode&&wpS(s)==='本社勤務'));
+{ const dk0=dayKind; dayKind=function(s,date){ if(!usesCoCal(s)) return dk0(s,date);
+    const sw=lvOk(s.id).filter(l=>l.kind==='swap'); if(sw.some(l=>l.workDate===date)) return 'work'; if(sw.some(l=>l.date===date)) return 'off';
+    if(!coOff(date)) return 'work'; return wdOf(date)===sLegalHol(s)?'legal':'off'; }; }
+function ccDays(from,to){ const out=[]; for(let d=from;d<=to;d=addDays(d,1)) out.push(d); return out; }
+function ccCount(from,to){ const ds=ccDays(from,to); const off=ds.filter(coOff); return {off:off.length,work:ds.length-off.length}; }
+function ccFyStart(){ try{ const s=window.G_API&&G_API.get?G_API.get('settings','main'):null; const m=+(s&&(s.fyStart||s.fiscalStart||s.closingMonth)); return m>=1&&m<=12?m:0; }catch(_){ return 0; } }
+function ccSummaryHtml(){ const c=ccfg(), ed=['admin','lead'].includes(roleS()), y=+today().slice(0,4);
+  const cy=ccCount(`${y}-01-01`,`${y}-12-31`), ny=ccCount(`${y+1}-01-01`,`${y+1}-12-31`);
+  return `<div class="panel" style="margin-top:12px"><h2>会社の年間休日</h2><div class="pbody">
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill a">${y}年の休日 ${cy.off}日</span><span class="pill">${y}年の出勤日 ${cy.work}日</span><span class="pill">${y+1}年の休日 ${ny.off}日</span></div>
+    <p class="small" style="margin:8px 0">毎週の休み：${(c.weekOff||[]).map(i=>'日月火水木金土'[i]).join('・')||'なし'}　祝日：${c.national?'休み':'出勤'}　${(c.ranges||[]).length?'期間の休み：'+c.ranges.map(r=>`${esc(r.name||'休み')}（${jd(r.from)}〜${jd(r.to)}）`).join('、'):''}</p>
+    <button class="btn ${ed?'pri':''}" data-act="ccOpen">${ed?'カレンダーで設定':'カレンダーを見る'}</button>
+    <div class="hint">本社勤務の人は、この会社カレンダーで勤怠の所定休日を判定します（法定休日は人ごとの設定）。現場勤務の人は人ごとの所定勤務日で判定します。人ごとに「利用者・権限」で切り替えられます。</div></div></div>`; }
+{ const a0=attCfgHtml; attCfgHtml=function(){ return a0()+ccSummaryHtml(); }; }
+SHEETS.compCal=()=>{ const c=ccfg(), y=sheet.y, ed=['admin','lead'].includes(roleS()); const cnt=ccCount(`${y}-01-01`,`${y}-12-31`); const fs=ccFyStart();
+  const fyc=fs?ccCount(`${y}-${pad(fs)}-01`,addDays(`${y+1}-${pad(fs)}-01`,-1)):null;
+  const month=m=>{ const ym=`${y}-${pad(m)}`, first=`${ym}-01`, n=new Date(y,m,0).getDate(), lead=wdOf(first);
+    const cells=[...Array(lead)].map(()=>'<span></span>').concat([...Array(n)].map((_,i)=>{ const d=`${ym}-${pad(i+1)}`, inf=coOffInfo(d), wd=wdOf(d);
+      const cls=inf?(inf.kind==='add'||inf.kind==='range'?'cc-add':inf.kind==='nat'?'cc-nat':'cc-wk'):(c.work[d]?'cc-work':'');
+      return `<button type="button" class="cc-d ${cls}" ${ed?`data-act="ccDay" data-d="${d}"`:''} title="${esc(inf?(inf.name||'休日'):c.work[d]?'出勤日（休みを取り消し）':'出勤日')}" aria-label="${jd(d)} ${esc(inf?(inf.name||'休日'):'出勤日')}">${i+1}</button>`; }));
+    const off=ccDays(first,`${ym}-${pad(n)}`).filter(coOff).length;
+    return `<div class="cc-m"><div class="cc-mh"><b>${m}月</b><span class="muted small">休み ${off}日</span></div><div class="cc-g">${[...'日月火水木金土'].map((w,i)=>`<span class="cc-w ${i===0?'sun':i===6?'sat':''}">${w}</span>`).join('')}${cells.join('')}</div></div>`; };
+  return {title:`会社の年間休日　${y}年`,body:`
+    <div class="toolbar"><button class="btn sm" data-act="ccYear" data-n="-1" aria-label="前の年">‹</button><b>${y}年</b><button class="btn sm" data-act="ccYear" data-n="1" aria-label="次の年">›</button>
+      <span class="pill a">休日 ${cnt.off}日</span><span class="pill">出勤日 ${cnt.work}日</span>${fyc?`<span class="pill">期（${fs}月〜）の休日 ${fyc.off}日</span>`:''}</div>
+    ${ed?`<section class="sec"><h3>決まった休み</h3><div class="form">
+      <div class="fld"><span>毎週の休み</span><div style="display:flex;gap:6px;flex-wrap:wrap">${[...'日月火水木金土'].map((w,i)=>`<label class="pill" style="cursor:pointer;font-weight:400"><input type="checkbox" data-ccw="${i}" ${(c.weekOff||[]).includes(i)?'checked':''}> ${w}</label>`).join('')}</div></div>
+      <label class="fld"><span>祝日</span><select class="inp" data-cc="national"><option value="1" ${c.national?'selected':''}>休みにする</option><option value="0" ${!c.national?'selected':''}>出勤日にする</option></select></label></div>
+      <h3 style="margin-top:10px">期間の休み（夏季休暇・年末年始など）</h3>
+      <div class="list">${(c.ranges||[]).map((r,i)=>`<div class="li"><input class="inp" style="max-width:160px" data-ccr="${i}" data-k="name" value="${esc(r.name||'')}" placeholder="名前"><input class="inp" type="date" style="max-width:170px" data-ccr="${i}" data-k="from" value="${esc(r.from||'')}"><span>〜</span><input class="inp" type="date" style="max-width:170px" data-ccr="${i}" data-k="to" value="${esc(r.to||'')}"><button class="btn ghost sm" data-act="ccRDel" data-i="${i}" aria-label="削除">✕</button></div>`).join('')||'<p class="small muted" style="margin:0">まだありません</p>'}</div>
+      <button class="btn sm" data-act="ccRAdd" style="margin-top:6px">＋ 期間を追加</button></section>`:''}
+    <section class="sec"><h3>${y}年のカレンダー${ed?'<span class="sp small muted">日付を押すと、休み⇄出勤日を切り替えます</span>':''}</h3>
+      <div class="cc-legend small"><span class="cc-d cc-wk">1</span>毎週の休み <span class="cc-d cc-nat">1</span>祝日 <span class="cc-d cc-add">1</span>会社で決めた休み <span class="cc-d cc-work">1</span>休みを出勤日に変更</div>
+      <div class="cc-y">${[...Array(12)].map((_,i)=>month(i+1)).join('')}</div></section>`,
+    foot:`<button class="btn pri" data-act="close">閉じる</button>`}; };
+async function ccSave(o){ await put('meta','companycal',{...ccfg(),...o}); renderOverlay(); }
+Object.assign(ACT_S,{
+  ccOpen(){ openSheet({kind:'compCal',y:+today().slice(0,4)}); },
+  ccYear(el){ sheet.y+= +el.dataset.n; renderOverlay(); },
+  async ccDay(el){ const d=el.dataset.d, c=ccfg(); const add={...(c.add||{})}, work={...(c.work||{})};
+    if(work[d]){ delete work[d]; } else if(add[d]!=null){ delete add[d]; } else if(coOff(d)){ work[d]=true; } else { const n=prompt(`${jd(d)}を休みにします。名前（空欄で「会社休日」）`,''); if(n===null) return; add[d]=n.trim(); }
+    await ccSave({add,work}); },
+  async ccRAdd(){ const c=ccfg(); await ccSave({ranges:[...(c.ranges||[]),{name:'',from:'',to:''}]}); },
+  async ccRDel(el){ const c=ccfg(); const r=[...(c.ranges||[])]; r.splice(+el.dataset.i,1); await ccSave({ranges:r}); },
+});
+docOn('change',async e=>{ const t=e.target; if(sheet?.kind!=='compCal') return;
+  if(t.dataset.ccw!=null){ const c=ccfg(); const s=new Set(c.weekOff||[]); t.checked?s.add(+t.dataset.ccw):s.delete(+t.dataset.ccw); await ccSave({weekOff:[...s].sort()}); }
+  if(t.dataset.cc==='national') await ccSave({national:t.value==='1'});
+  if(t.dataset.ccr!=null){ const c=ccfg(); const r=(c.ranges||[]).map(x=>({...x})); const x=r[+t.dataset.ccr]; if(!x) return; x[t.dataset.k]=t.value; if(x.from&&x.to&&x.to<x.from) [x.from,x.to]=[x.to,x.from]; await ccSave({ranges:r}); } });
+document.head.insertAdjacentHTML('beforeend',`<style>
+#S .cc-y{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+#S .cc-mh{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+#S .cc-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+#S .cc-w{font-size:10.5px;color:var(--muted)}#S .cc-w.sun{color:var(--bad)}#S .cc-w.sat{color:var(--accent)}
+#S .cc-d{border:0;background:var(--surface);border-radius:6px;font-size:12px;padding:5px 0;font-family:var(--f-num);color:var(--fg);cursor:pointer;min-height:28px}
+#S .cc-d:not([data-act]){cursor:default}
+#S .cc-d.cc-wk{background:var(--surface-2);color:var(--muted)}
+#S .cc-d.cc-nat{background:var(--bad-soft,#fbebeb);color:var(--bad)}
+#S .cc-d.cc-add{background:var(--accent-soft);color:var(--accent);font-weight:700}
+#S .cc-d.cc-work{outline:2px solid var(--ok);outline-offset:-2px}
+#S .cc-legend{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}#S .cc-legend .cc-d{display:inline-block;width:24px;min-height:0;padding:2px 0;cursor:default}
+</style>`);
+
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
   route:()=>VS.route,
@@ -5521,7 +5605,7 @@ window.S_API={
   dispatchEvents:()=>all('events').filter(isDispatch),
   dataVer:()=>dataVer,
   openFieldVisit:id=>openFieldVisit(id),
-  hol:d=>holName(d),
+  hol:d=>hoco(d), coOff:d=>coOff(d),
   unregDue:()=>unregDue().length,
   get:(c,id)=>get(c,id), list:c=>all(c), siteHours:(s,m)=>siteHours(s,m), siteCost:m=>canWage()?siteCostMonth(m):null, canWage:()=>canWage(), patMinOf:c=>patMin(patOfCell(c)), closed:ym=>!!closeOf(ym),
   ready:()=>loaded.size===COLS.length,
@@ -6696,7 +6780,7 @@ SHEETS.staff=(st)=>{const s=st.draft;return {title:st.isNew?'担当者・協力�
   ${fld('会社名（協力会社）',`<input class="inp" id="st_company" value="${esc(s.company)}">`)}${fld('電話',`<input class="inp" id="st_tel" value="${esc(s.tel)}">`)}
   ${fld('段階（1〜3は営業担当の一覧に出ます。変えると利用モードも初期値に変わります）',`<select class="inp" id="st_role">${opt('','（未設定）',s.role)}${Object.entries(ROLES).map(([k,l])=>opt(k,l,s.role)).join('')}</select>`)}
   ${fld('ログイン用メール（管理者だけが設定できます）',`<input class="inp" id="st_email" type="email" value="${esc(s.email)}" ${roleOf(meStaff())==='admin'?'':'disabled'} placeholder="例：yamada@oandk.ne.jp">`)}
-  ${s.kind!=='協力会社'?fld('承認者（未設定なら責任者・管理者）',`<select class="inp" id="st_approverId">${staffOpts(s.approverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('承認者が不在のときの代理',`<select class="inp" id="st_subApproverId">${staffOpts(s.subApproverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('不在中（この人に来る承認を代理へ回す）',`<label class="pill" style="cursor:pointer;padding:6px 12px;font-weight:400"><input type="checkbox" id="st_away" ${s.away?'checked':''}> 不在中</label>`)+`<div class="fld wide"><span>追加の権限（段階に関係なく、この人だけに足す）</span><div style="display:flex;flex-wrap:wrap;gap:6px">${Object.entries(EXTRA_L).map(([k,l])=>`<label class="pill" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-extra value="${k}" ${(s.extra||[]).includes(k)||(k==='price.edit'&&(s.extra||[]).includes('master.edit'))?'checked':''} ${roleOf(meStaff())==='admin'?'':'disabled'}> ${l}</label>`).join('')}</div></div>`:''}
+  ${s.kind!=='協力会社'?fld('承認者（未設定なら責任者・管理者）',`<select class="inp" id="st_approverId">${staffOpts(s.approverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('承認者が不在のときの代理',`<select class="inp" id="st_subApproverId">${staffOpts(s.subApproverId,employees().filter(x=>x.id!==s.id),'（責任者・管理者）')}</select>`)+fld('不在中（この人に来る承認を代理へ回す）',`<label class="pill" style="cursor:pointer;padding:6px 12px;font-weight:400"><input type="checkbox" id="st_away" ${s.away?'checked':''}> 不在中</label>`)+`<div class="fld wide"><span>追加の権限（段階に関係なく、この人だけに足す）</span><div style="display:flex;flex-wrap:wrap;gap:6px">${Object.entries(EXTRA_L).map(([k,l])=>`<label class="pill" data-xroles="${(PERMS[k]||[]).join(',')}" style="cursor:pointer;padding:4px 10px;font-weight:400"><input type="checkbox" data-extra value="${k}" ${(s.extra||[]).includes(k)||(k==='price.edit'&&(s.extra||[]).includes('master.edit'))?'checked':''} ${roleOf(meStaff())==='admin'?'':'disabled'}> ${l}</label>`).join('')}</div></div>`:''}
   ${fld('状態',`<select class="inp" id="st_inactive">${opt('0','有効',s.inactive?'1':'0')}${opt('1','無効（退職・取引終了）',s.inactive?'1':'0')}</select>`)}
   </div></section>${staffUseSec(s)}${loginBox(s,st)}${s.kind==='協力会社'?`<section class="sec"><h3>連絡先（発注の連絡を送る人・複数可）<span class="sp"><button class="btn sm" data-act="cn-add">＋ 連絡先</button></span></h3>
     ${(s.contacts||[]).length?`<div class="scroll"><table class="t lines"><thead><tr><th>名前</th><th>メール</th><th>LINE</th><th>通常送る</th><th></th></tr></thead><tbody>${(s.contacts||[]).map((c,i)=>`<tr><td><input data-cn="${i}" data-k="name" value="${esc(c.name)}" placeholder="例：山本（現場責任者）"></td><td><input data-cn="${i}" data-k="email" value="${esc(c.email)}" placeholder="example@…"></td><td style="text-align:center"><input type="checkbox" data-cn="${i}" data-k="line" ${c.line?'checked':''}></td><td style="text-align:center"><input type="checkbox" data-cn="${i}" data-k="notify" ${c.notify!==false?'checked':''}></td><td class="x"><button class="btn ghost sm" data-act="cn-del" data-i="${i}" aria-label="削除">✕</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="small muted" style="margin:0">まだありません。発注を出したときの連絡先を登録しておくと、送り先を選ぶだけで連絡できます。</p>'}</section>`:''}`,foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn pri" data-act="staff-save">保存</button>`};};
@@ -8669,6 +8753,20 @@ docOn('input',e=>{ const t=e.target; if(t.id!=='pk-q') return; VS.pickQ=t.value;
     const f=`<label class="fld"><span>勤務区分（日程・差配の担当選びで使います）</span><select class="inp" data-wp="1"><option value="" ${!s.workplace?'selected':''}>自動（${esc(auto)}）</option><option ${s.workplace==='本社勤務'?'selected':''}>本社勤務</option><option ${s.workplace==='現場勤務'?'selected':''}>現場勤務</option></select></label>`;
     return end>=0?{...o,body:o.body.slice(0,end+8)+f+o.body.slice(end+8)}:o; }; }
 docOn('change',e=>{ const t=e.target; if(t.dataset&&t.dataset.wp&&sheet?.kind==='staff'&&sheet.draft) sheet.draft.workplace=t.value; });
+/* 勤怠の休日の判定（会社カレンダー／個別の曜日） */
+{ const s1=SHEETS.staff; SHEETS.staff=st=>{ const o=s1(st); const s=st.draft; if(!s||s.kind==='協力会社') return o; const at=o.body.indexOf('data-wp="1"'); const end=at>=0?o.body.indexOf('</label>',at):-1;
+    const auto=workplaceOf({...s,workplace:s.workplace||''})==='本社勤務'?'会社カレンダー':'個別の曜日';
+    const f=`<label class="fld"><span>勤怠の休日の判定</span><select class="inp" data-calmode="1"><option value="" ${!s.calMode?'selected':''}>自動（${auto}）</option><option value="company" ${s.calMode==='company'?'selected':''}>会社カレンダー（設定 → 勤怠の「会社の年間休日」）</option><option value="own" ${s.calMode==='own'?'selected':''}>個別の曜日（下の所定勤務日）</option></select></label>`;
+    setTimeout(exFilter,0);
+    return end>=0?{...o,body:o.body.slice(0,end+8)+f+o.body.slice(end+8)}:o; }; }
+docOn('change',e=>{ const t=e.target; if(t.dataset&&t.dataset.calmode&&sheet?.kind==='staff'&&sheet.draft) sheet.draft.calMode=t.value; if(t.id==='st_role') exFilter(); if(t.dataset&&t.dataset.extra!=null) exFilter(); });
+/* 追加の権限：段階で持っている分は隠す（チェックが付いているものは残す） */
+function exFilter(){ const ov=ROOT.querySelector('#overlay'); if(!ov) return; const labs=[...ov.querySelectorAll('label[data-xroles]')]; if(!labs.length) return;
+  const role=ov.querySelector('#st_role')?.value||sheet?.draft?.role||''; const box=labs[0].parentElement; let hid=0;
+  labs.forEach(l=>{ const roles=(l.dataset.xroles||'').split(',').filter(Boolean); const has=role==='admin'||roles.includes(role); const on=l.querySelector('input')?.checked; const hide=has&&!on&&!VS.exAll; l.hidden=hide; l.style.display=hide?'none':''; if(has&&!on) hid++; });
+  let n=box.parentElement.querySelector('.ex-note'); if(!n){ n=document.createElement('div'); n.className='ex-note small muted'; n.style.marginTop='6px'; box.after(n); }
+  n.innerHTML=role==='admin'?'管理者はすべての権限を持っているため、追加の権限はいりません。':hid?`この段階で持っている権限 ${hid}件は表示していません。<button type="button" class="sbl-link" data-act="ex-all" style="border:0;background:none;color:var(--accent);cursor:pointer;padding:0">${VS.exAll?'隠す':'表示する'}</button>`:''; }
+Object.assign(ACT_G,{ 'ex-all'(){ VS.exAll=!VS.exAll; exFilter(); } });
 
 /* =========================================================
    顧客・現場：3列（顧客一覧｜基本情報｜関連カード）
