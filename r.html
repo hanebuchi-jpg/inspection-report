@@ -1,0 +1,74 @@
+<!doctype html>
+<!--
+  O&K 作業報告書の閲覧ページ（お客様向けリンク）
+  © 2026 株式会社オーアンドケー
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>作業報告書</title>
+<style>
+  :root{--ink:#1d2b36;--sub:#5b6b78;--line:#d8e0e6;--pri:#0b3f7a;--bg:#eef1f3}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.6}
+  header{background:var(--pri);color:#fff;padding:18px 20px}
+  header .co{font-size:13px;opacity:.85}
+  header h1{margin:2px 0 0;font-size:22px}
+  main{max-width:640px;margin:0 auto;padding:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+  .row{display:flex;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line)}
+  .row:last-child{border-bottom:0}
+  .row b{min-width:5.5em;color:var(--sub);font-weight:600}
+  .file{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}
+  .file:last-child{border-bottom:0}
+  .file .nm{flex:1 1 200px;font-weight:600;word-break:break-all}
+  .file .sz{color:var(--sub);font-size:13px;font-weight:400}
+  a.btn{display:inline-block;text-decoration:none;border-radius:10px;padding:10px 16px;font-weight:700;border:1px solid var(--pri);color:var(--pri);background:#fff}
+  a.btn.pri{background:var(--pri);color:#fff}
+  .msg{text-align:center;color:var(--sub);padding:40px 10px}
+  .note{color:var(--sub);font-size:13px}
+  footer{text-align:center;color:var(--sub);font-size:12px;padding:10px 0 30px}
+</style>
+</head>
+<body>
+<header><div class="co" id="co">株式会社オーアンドケー</div><h1>作業報告書</h1></header>
+<main id="main"><div class="msg">読み込んでいます…</div></main>
+<footer>© 株式会社オーアンドケー</footer>
+<script>
+(async function(){
+  const API="https://lebibpyvyjondqzxakgk.supabase.co/functions/v1/report-api";
+  const main=document.getElementById("main");
+  const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const k=new URLSearchParams(location.hash.slice(1)).get("k")||new URLSearchParams(location.search).get("k");
+  const fail=m=>{main.innerHTML='<div class="card msg">'+esc(m)+'</div>'};
+  if(!k)return fail("リンクが正しくありません。メールやメッセージのリンクをもう一度開いてください。");
+  let j;
+  try{
+    const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"view",k})});
+    j=await r.json().catch(()=>({}));
+    if(!r.ok)return fail(j.error||"報告書を開けませんでした。");
+  }catch(e){return fail("通信できませんでした。電波の良いところでもう一度開いてください。")}
+  document.getElementById("co").textContent=j.company||"株式会社オーアンドケー";
+  const d=j.date?j.date.replace(/^(\d+)-(\d+)-(\d+)$/,(m,y,mo,da)=>y+"年"+(+mo)+"月"+(+da)+"日"):"";
+  const kb=n=>n>1048576?(n/1048576).toFixed(1)+"MB":Math.max(1,Math.round(n/1024))+"KB";
+  const ex=new Date(j.exp),exs=ex.getFullYear()+"年"+(ex.getMonth()+1)+"月"+ex.getDate()+"日";
+  main.innerHTML=
+    '<div class="card">'+
+      (j.customer?'<div class="row"><b>お客様</b><span>'+esc(j.customer)+' 様</span></div>':'')+
+      (j.site?'<div class="row"><b>現場</b><span>'+esc(j.site)+'</span></div>':'')+
+      (j.title?'<div class="row"><b>作業内容</b><span>'+esc(j.title)+'</span></div>':'')+
+      (d?'<div class="row"><b>作業日</b><span>'+esc(d)+'</span></div>':'')+
+    '</div>'+
+    '<div class="card">'+(j.files.length?j.files.map(f=>
+      '<div class="file"><div class="nm">'+esc(f.name)+' <span class="sz">（'+kb(f.size||0)+'）</span></div>'+
+      '<a class="btn pri" href="'+esc(f.url)+'" target="_blank" rel="noopener">開く</a>'+
+      '<a class="btn" href="'+esc(f.dl)+'">保存</a></div>').join(""):'<div class="msg">報告書はまだありません。</div>')+
+    '</div>'+
+    '<p class="note">このリンクは '+esc(exs)+' まで開けます。ボタンは開いてから1時間有効です。開けないときはこのページを読み込み直してください。'+(j.tel?'<br>お問い合わせ：'+esc(j.tel):'')+'</p>';
+})();
+</script>
+</body>
+</html>

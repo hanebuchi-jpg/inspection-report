@@ -983,6 +983,11 @@ const SHELL=(()=>{
   const sbLoginEmail=v=>{ v=String(v||'').trim(); return v.includes('@')?v:(/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(v)?`${v.toLowerCase()}@${SB_ID_DOMAIN}`:v); };
   const sbIsIdMail=e=>String(e||'').toLowerCase().endsWith('@'+SB_ID_DOMAIN);
   function sbLoginLabel(){ const e=sbUser?.email||''; return sbIsIdMail(e)?'社員ID '+e.split('@')[0].toUpperCase():e; }
+  async function sbFnX(name,body={}){ // 報告書アプリとの連動など、ほかのサーバー処理
+    const {data,error}=await SB.functions.invoke(name,{body});
+    if(error){ let m=error.message; try{ const j=await error.context.json(); if(j?.error) m=j.error; }catch(_){} throw new Error(m); }
+    return data;
+  }
   async function sbFn(action,body={}){ // 社員IDのログイン発行・共用端末の打刻（サーバー処理）
     const {data,error}=await SB.functions.invoke('staff-login',{body:{action,...body}});
     if(error){ let m=error.message; try{ const j=await error.context.json(); if(j?.error) m=j.error; }catch(_){} throw new Error(m); }
@@ -1084,6 +1089,7 @@ const SHELL=(()=>{
     if(SB){ const {data,error}=await SB.storage.from('attachments').download(id); if(error) throw new Error(error.message); return data; }
     const r=await fetch('/_blob/'+id); if(!r.ok) throw new Error('ファイルが見つかりません'); return await r.blob(); }
   const sPut=(c,id,d)=>S_API.put(c,id,d), sList=c=>window.S_API?S_API.list(c):[], sDel=(c,id)=>S_API.del(c,id);
+  const reportApi=b=>SB?sbFnX('report-api',b):Promise.reject(new Error('本番（ログインあり）の画面で使えます'));
   const loginApi={ get live(){ return !!SB; }, call:(a,b)=>SB?sbFn(a,b):Promise.reject(new Error('本番（ログインあり）の画面で使えます')), kioskDemo:()=>kioskDemo() };
   function use(n){
     if(cache[n]) return cache[n];
@@ -1285,6 +1291,7 @@ const SHELL=(()=>{
     ['time','S','time','勤怠・シフト',3,'time.close'],
     ['cal','S','cal','カレンダー・予約',3,'res.edit'],
     ['work','S','work','作業内容',3,'res.edit'],
+    ['renkei','G','renkei','報告書アプリ',3,''],
     ['data','G','data','データ',1,''],
     ['perm','G','auth','権限一覧',5,''],
     ['view','S','view','表示（この端末）',99,''],
@@ -1299,7 +1306,7 @@ const SHELL=(()=>{
     if((st.mode||'full')!=='full') return false;
     const lv=LVS[st.role]??4; return lv<=t[4]||(!!t[5]&&(st.extra||[]).includes(t[5]))||(t[5]==='price.edit'&&(st.extra||[]).includes('master.edit'));
   }
-  function setKeyOf(m,t){ if(m==='G') return {settings:'company',staff:'users',prices:'prices',templates:'prices',data:'data',auth:'perm'}[t]||''; return {time:'time',cal:'cal',work:'work',view:'view',data:'sdata'}[t]||''; }
+  function setKeyOf(m,t){ if(m==='G') return {settings:'company',staff:'users',prices:'prices',templates:'prices',renkei:'renkei',data:'data',auth:'perm'}[t]||''; return {time:'time',cal:'cal',work:'work',view:'view',data:'sdata'}[t]||''; }
   function setTabsHtml(curKey){ return `<div class="tabs" role="tablist">${SET_TABS.filter(t=>t[3]&&setTabOk(t[0])).map(t=>`<button role="tab" data-sgo="settab" data-k="${t[0]}" aria-selected="${t[0]===curKey}">${t[3]}</button>`).join('')}</div>`; }
   function goSet(k){
     if(!k||!setTabOk(k)) k=(lastSet&&setTabOk(lastSet)?lastSet:'')||(SET_TABS.find(t=>t[3]&&setTabOk(t[0]))||[])[0]||'view';
@@ -1402,7 +1409,7 @@ const SHELL=(()=>{
     try{ Object.assign(st,JSON.parse(localStorage.getItem('shin-sogo-route')||'{}')); }catch(_){}
     go(st.m,st.r);
   }
-  return {setTabsHtml,goSet,setTabOk,setKeyOf,fileBlob,loginStaffId,sPut,sList,sDel,loginApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
+  return {setTabsHtml,goSet,setTabOk,setKeyOf,fileBlob,loginStaffId,sPut,sList,sDel,loginApi,reportApi,use,sync,seed,start,go,openVisit,canMakeVisits,apResults,poRepOk,visitInfo,visitDone,visitAttach,visitPatch,openEvent,flowMine,noticesFor,ackNotice,openJob,meId,canApproveFor,apCount,openApprovals,poState,poOpenQ,poMine,openOrder,moveEvent,eventToVisit,demoCountS,delDemoS,openMaster,visitsAsEvents,eventsAsVisits,get preview(){return preview;}};
 })();
 
 </script>
@@ -5593,6 +5600,17 @@ document.head.insertAdjacentHTML('beforeend',`<style>
 #S .cc-legend{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}#S .cc-legend .cc-d{display:inline-block;width:24px;min-height:0;padding:2px 0;cursor:default}
 </style>`);
 
+/* 報告書アプリ（総合連動）：現場の簡易画面と協力会社の発注書から開く（中身は業務側の g_renkei） */
+{ const f0=SHEETS.fvisit; SHEETS.fvisit=()=>{ const r=f0(); const v=SHELL.visitInfo(sheet.id); if(!r||!v||!r.body||!v.staffIds.includes(meId())||v.status==='中止') return r;
+  const b=`<div class="callout" style="display:block;margin:0 0 8px"><button class="btn pri" data-act="fvRk" style="width:100%;font-size:16px;padding:12px">${v.attachments.some(a=>/報告/.test(a.name||''))?'報告書をもう一度作る・送る':'報告書を作る（写真・チェック）'}</button><div class="small muted" style="margin-top:4px">報告書アプリが開きます。送ると作業が「完了」になります。</div></div>`;
+  r.body=r.body.replace('<div class="fld"><span>写真・報告書</span>',b+'<div class="fld"><span>写真・報告書</span>'); return r; }; }
+{ const c0=poRepCell; poRepCell=function(p,r,i,self){ const h=c0(p,r,i,self); if(!self||p.cancelled||p.stopped||poRepOf(p,r,i)||r.date>today()) return h;
+  return `<button class="btn sm pri" data-act="poRk" data-k="${esc(r.vid||String(i))}">報告書アプリで作る</button> `+h; }; }
+Object.assign(ACT_S,{
+  fvRk(){ if(window.G_API&&G_API.rkOpenVisit) G_API.rkOpenVisit(sheet.id); },
+  poRk(el){ const p=get('porders',sheet.id); if(p&&window.G_API&&G_API.rkOpenPorder) G_API.rkOpenPorder(p,el.dataset.k); },
+});
+
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
   route:()=>VS.route,
@@ -8901,7 +8919,197 @@ document.head.insertAdjacentHTML('beforeend',`<style>
 @media (max-width:900px){#G .cu-list{position:static;max-height:none}}
 </style>`);
 
-window.G_API={
+/* =========================================================
+   報告書アプリ（O&K報告書・総合連動）との連動
+   ・作業予定／現場の簡易画面／協力会社の発注書から「報告書を作る」→ 連動版が開く
+   ・報告書の形（標準・簡易・写真のみ・報告書のみ）とテンプレートは
+     定期契約 → 現場 → 顧客 → 会社の標準 の順に決まる（サーバー側でも同じ順で決める）
+   ・送られた報告書は作業予定に付き、社員の分はすぐ「完了」になる（協力会社は確認待ち）
+   ・お客様には「見られるリンク」も送れる（期限付き）
+   ・設定（meta/renkei）：url, viewUrl, defType, linkDays, templates[{id,name,data}]
+   ========================================================= */
+const RK_TYPES=[['std','標準','前・後の重ね撮り・施工看板・チェック・お客様サイン'],['simple','簡易','重ね撮り写真と備考'],['photo','写真のみ','写真を撮って送るだけ'],['doc','報告書のみ','写真なし。チェック・作業内容・特記事項・サイン']];
+const RK_L=Object.fromEntries(RK_TYPES.map(([k,l])=>[k,l]));
+const RK_DEF={url:'https://hanebuchi-jpg.github.io/inspection-report/renkei.html',viewUrl:'https://hanebuchi-jpg.github.io/inspection-report/r.html',defType:'std',linkDays:90};
+const RK_STAGES={before:'施工前',during:'施工中',after:'施工後'};
+const RK_FREE={files:1024**3,db:500*1024**2};
+function rkCfg(){ let m={}; try{ m=(window.S_API&&S_API.get('meta','renkei'))||{}; }catch(_){} return {...RK_DEF,...m,templates:Array.isArray(m.templates)?m.templates:[]}; }
+async function rkCfgPut(ch){ const m=(window.S_API&&S_API.get('meta','renkei'))||{}; await S_API.put('meta','renkei',{...m,...ch,updatedAt:nowIso()}); }
+const rkApiUrl=()=>((window.SB_CONFIG&&SB_CONFIG.url)||'https://lebibpyvyjondqzxakgk.supabase.co')+'/functions/v1/report-api';
+const rkB64=s=>{ const b=new TextEncoder().encode(s); let x=''; for(let i=0;i<b.length;i+=8192) x+=String.fromCharCode.apply(null,b.subarray(i,i+8192)); return btoa(x).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
+const rkCanEdit=()=>isOfficeMe();
+/* 形とテンプレートの決まり方（表示用。実際に開くときはサーバーが同じ順で決める） */
+function rkChain(o){ // o: {contract, site, customer}
+  const cf=rkCfg(), tpls=new Set(cf.templates.map(t=>t.id));
+  const lv=[[o.contract,'定期契約'],[o.site,'現場'],[o.customer,'顧客']];
+  let type='',src='会社の標準',tpl='',tsrc='';
+  for(const [x,l] of lv){ if(!x) continue; if(!type&&RK_L[x.rtype]){ type=x.rtype; src=l; } if(!tpl&&x.rtpl&&tpls.has(x.rtpl)){ tpl=x.rtpl; tsrc=l; } }
+  return {type:type||(RK_L[cf.defType]?cf.defType:'std'),src,tpl,tsrc};
+}
+function rkOfVisit(v){ const c=get('contracts',v.contractId), j=get('jobs',v.jobId), s=get('sites',c?.siteId||j?.siteId||v.siteId), cu=get('customers',c?.customerId||j?.customerId||s?.customerId||v.customerId); return {c,j,s,cu,...rkChain({contract:c,site:s,customer:cu})}; }
+const rkTplName=id=>rkCfg().templates.find(t=>t.id===id)?.name||'';
+
+/* ---- 報告書アプリを開く ---- */
+async function rkOpen(job){
+  if(!SHELL.reportApi) return toast('この画面では使えません');
+  const cf=rkCfg(); let w=null;
+  try{ w=window.open('','_blank'); if(w) w.document.write('<p style="font:16px sans-serif;padding:24px">報告書アプリを開いています…</p>'); }catch(_){}
+  try{
+    const r=await SHELL.reportApi({action:'issue',col:job.col,id:job.id,key:job.key||''});
+    const me=staffName(SHELL.meId())||'';
+    const p={...job,t:r.t,exp:r.exp,kind:r.kind||job.kind,type:r.type||job.type,tpl:r.tpl||'',api:rkApiUrl(),by:job.by||me,company:S().companyName||'',back:location.href.split('#')[0]};
+    const url=cf.url+'#job='+rkB64(JSON.stringify(p));
+    if(w&&!w.closed) w.location.href=url; else location.href=url;
+  }catch(e){ try{ w&&w.close(); }catch(_){} toast('報告書アプリを開けませんでした（'+(e?.message||'エラー')+'）'); }
+}
+function rkOpenVisit(id){
+  const v=get('visits',id); if(!v) return toast('作業予定が見つかりません');
+  const r=rkOfVisit(v);
+  rkOpen({col:'visits',id,kind:'staff',type:r.type,title:visitTitle(v),site:r.s?(r.s.name||siteLabel(r.s)):'',storeNo:r.s?.storeNo||'',customer:r.cu?.name||'',date:v.date||today(),start:v.start||'',end:v.end||'',item:r.c?.service||r.j?.service||visitTitle(v),spot:!v.contractId});
+}
+function rkOpenPorder(p,k){ // 協力会社：発注書の予定行から
+  const i=(p.schedule||[]).findIndex((r,j)=>(r.vid||String(j))===k); const r=i>=0?p.schedule[i]:{};
+  const sn=r.siteName||(p.sites?.[0]?.name)||p.site?.name||'';
+  rkOpen({col:'porders',id:p.id,key:k,kind:'partner',type:'',title:r.title||p.title||'',site:sn,customer:'',date:r.date||today(),start:r.start||'',end:r.end||'',item:r.title||p.title||'',spot:p.kind!=='contract'});
+}
+const rkBtn=v=>{ const r=rkOfVisit(v); return `<button class="btn pri" data-act="rk-open" data-id="${v.id}" title="報告書の形：${esc(RK_L[r.type])}（${esc(r.src)}の設定）">報告書を作る（${esc(RK_L[r.type])}）</button>`; };
+
+/* ---- 作業予定の画面 ---- */
+{ const v0=SHEETS.visit; if(v0) SHEETS.visit=(st)=>{ const r=v0(st); if(!r||!r.body) return r; const v=get('visits',st.id); if(!v) return r;
+  r.body=r.body.replace(`<button class="btn" data-act="kanryo" data-id="${v.id}">完了報告書を作成（アプリを開く）</button>`,rkBtn(v)+`<button class="btn ghost sm" data-act="kanryo" data-id="${v.id}">従来の完了報告書アプリ</button>`);
+  const rf=(v.attachments||[]).filter(a=>a.from==='報告アプリ');
+  if(rf.length){ const a=rf[rf.length-1]; r.body=r.body.replace('<section class="sec"><h3>完了報告</h3>',`<section class="sec"><h3>完了報告</h3><div class="callout g" style="margin-bottom:10px"><span>報告書アプリから届きました：${esc(poWhen(a.at))}　${esc(a.byName||staffName(a.by)||'')}${a.rtype&&RK_L[a.rtype]?'　'+esc(RK_L[a.rtype]):''}${rf.length>1?'　（'+rf.length+'件）':''}</span></div>`); }
+  return r; }; }
+
+/* ---- 契約・現場・顧客：報告書の形とテンプレート ---- */
+function rkSec(col,o,chainArgs){
+  const cf=rkCfg(), cur=rkChain(chainArgs), up=rkChain({...chainArgs,[col==='contracts'?'contract':col==='sites'?'site':'customer']:null});
+  const upL=`${RK_L[up.type]}（${up.src}）`;
+  return `<section class="sec"><h3>報告書アプリ</h3><div class="form">
+    ${fld('報告書の形',`<select class="inp" data-rk="rtype" data-col="${col}" data-id="${esc(o.id||'')}">${opt('',`上の設定に従う：${upL}`,o.rtype||'')}${RK_TYPES.map(([k,l,h])=>opt(k,`${l}（${h}）`,o.rtype||'')).join('')}</select>`)}
+    ${fld('テンプレート（撮影箇所・チェック項目）',`<select class="inp" data-rk="rtpl" data-col="${col}" data-id="${esc(o.id||'')}">${opt('',up.tpl?`上の設定に従う：${rkTplName(up.tpl)}`:'なし（標準の項目・箇所は現場で追加）',o.rtpl||'')}${cf.templates.map(t=>opt(t.id,t.name,o.rtpl||'')).join('')}</select>`)}
+  </div><p class="small muted" style="margin:6px 0 0">今は「${esc(RK_L[cur.type])}」${cur.src!=='会社の標準'||!o.rtype?`（${esc(cur.src)}の設定）`:''}${cur.tpl?`・テンプレート「${esc(rkTplName(cur.tpl))}」`:''}で開きます。定期契約 → 現場 → 顧客 → 会社の標準 の順に、最初に決めてあるものを使います。テンプレートは「マスタ・設定 → 報告書アプリ」で作ります。</p></section>`;
+}
+{ const c0=SHEETS.contract; SHEETS.contract=(st)=>{ const r=c0(st); if(!r||!r.body||!st.draft) return r; const c=st.draft, s=get('sites',c.siteId), cu=get('customers',c.customerId||s?.customerId);
+    r.body+=rkSec('contracts',c,{contract:c,site:s,customer:cu}); return r; }; }
+{ const s0=SHEETS.site; SHEETS.site=(st)=>{ const r=s0(st); if(!r||!r.body||!st.draft) return r; const s=st.draft, cu=get('customers',s.customerId);
+    r.body+=rkSec('sites',s,{site:s,customer:cu}); return r; }; }
+{ const u0=SHEETS.customer; SHEETS.customer=(st)=>{ const r=u0(st); const c=get('customers',st.id); if(!r||!r.body||!c) return r;
+    r.body+=rkSec('customers',c,{customer:c}); return r; }; }
+docOn('change',async e=>{ const t=e.target; if(!t.dataset||!t.dataset.rk) return;
+  const k=t.dataset.rk, col=t.dataset.col, id=t.dataset.id, v=t.value;
+  if(sheet?.draft&&(sheet.draft.id||'')===id) sheet.draft[k]=v;
+  if(id&&get(col,id)&&!(sheet?.draft&&sheet.isNew)){ await patch(col,id,{[k]:v}); toast(k==='rtype'?'報告書の形を変更しました':'テンプレートを変更しました'); }
+  refreshSheet(); });
+
+/* ---- お客様に送る：見られるリンク ---- */
+{ const r0=SHEETS.rsend; SHEETS.rsend=(st)=>{ const r=r0(st); const v=get('visits',st.id); if(!r||!v||!r.body) return r;
+  const L=v.reportLink, ok=L&&L.exp>Date.now();
+  const sec=`<section class="sec"><h3>報告書を見られるリンク</h3>${ok?`<div class="form"><label class="fld wide"><span>リンク（${esc(new Date(L.exp).toLocaleDateString('ja-JP'))}まで）</span><input class="inp" id="rk_link" readonly value="${esc(L.url)}"></label></div>
+    <div class="toolbar" style="margin:6px 0 0"><button class="btn" data-act="rk-copy">コピー</button><a class="btn" href="https://line.me/R/share?text=${encodeURIComponent(visitTitle(v)+' の完了報告書です。\n'+L.url)}" target="_blank" rel="noopener" data-rkline="1" style="text-decoration:none">LINEで送る</a><button class="btn" data-act="rk-inmail">メールの文面に入れる</button><button class="btn ghost sm" data-act="rk-link" data-id="${v.id}">作り直す</button></div>`
+    :`<p class="small muted" style="margin:0 0 6px">ファイルを添付する代わりに、報告書を開けるリンクを送れます（LINEにも貼れます）。リンクは${rkCfg().linkDays}日間有効で、この作業の報告書だけが見られます。</p><button class="btn" data-act="rk-link" data-id="${v.id}">リンクを作る</button>`}</section>`;
+  const i=r.body.indexOf('<section class="sec"><div class="form">');
+  r.body=i>=0?r.body.slice(0,i)+sec+r.body.slice(i):r.body+sec; return r; }; }
+
+/* ---- 設定タブ ---- */
+const RK_ST={};
+function rkUsageHtml(){
+  const u=RK_ST.usage; if(!u) return `<button class="btn" data-act="rk-usage">使用量を確認する</button>`;
+  if(u.err) return `<div class="callout w"><span>${esc(u.err)}</span></div><button class="btn" data-act="rk-usage">もう一度確認する</button>`;
+  const mb=n=>(n/1048576).toFixed(n<10485760?1:0)+'MB';
+  const bar=(n,max,l)=>{ const p=Math.min(100,Math.round(n/max*100)); return `<div style="margin:6px 0"><div class="small" style="display:flex;justify-content:space-between"><span>${l}</span><b style="color:${p>=80?'var(--danger,#c0392b)':'inherit'}">${mb(n)} / ${mb(max)}（${p}%）</b></div><div style="height:10px;border-radius:6px;background:var(--line);overflow:hidden"><div style="height:100%;width:${p}%;background:${p>=80?'#c0392b':p>=60?'#e08a00':'var(--accent,#0b3f7a)'}"></div></div></div>`; };
+  const hi=u.files/RK_FREE.files>=.8||u.db/RK_FREE.db>=.8;
+  return `${hi?'<div class="callout w"><span>使用量が8割を超えています。Supabaseの有料プラン（Pro）への切り替えを検討してください。</span></div>':''}
+    ${bar(u.files,RK_FREE.files,`ファイル保存（うち報告書 ${mb(u.reports)}・${u.n}件）`)}${bar(u.db,RK_FREE.db,'データベース')}
+    <p class="small muted" style="margin:6px 0 0">無料プランの上限で表示しています（Proはファイル100GB・データベース8GB）。${esc(new Date(u.at).toLocaleString('ja-JP'))} 時点。</p><button class="btn sm" data-act="rk-usage">更新</button>`;
+}
+function rkTplEditHtml(){
+  const d=RK_ST.edit; if(!d) return '';
+  return `<div class="callout" style="display:block;margin:10px 0">
+    <div class="form">${fld('テンプレート名',`<input class="inp" id="rkt_name" value="${esc(d.name)}" placeholder="例：床洗浄（スーパー）">`,true)}
+      ${fld('撮影の段階',`<select class="inp" id="rkt_stages">${[['before,after','施工前・施工後'],['before,during,after','施工前・施工中・施工後'],['after','施工後だけ']].map(([k,l])=>opt(k,l,d.stages.join(','))).join('')}</select>`)}
+      ${fld('報告書の題名',`<input class="inp" id="rkt_title" value="${esc(d.title||'')}" placeholder="作業完了報告書">`)}
+      ${fld('撮影する箇所（1行に1つ）',`<textarea class="inp" id="rkt_slots" rows="6" placeholder="エントランス\n通路\nトイレ">${esc((d.slots||[]).join('\n'))}</textarea>`,true)}
+      ${fld('チェック項目（1行に1つ）',`<textarea class="inp" id="rkt_items" rows="6" placeholder="床の汚れが落ちている\n周囲を汚していない">${esc((d.items||[]).join('\n'))}</textarea>`,true)}
+      ${fld('施工看板',`<select class="inp" id="rkt_board">${opt('1','写真に入れる',d.board?.on!==false?'1':'0')}${opt('0','入れない',d.board?.on!==false?'1':'0')}</select>`)}
+    </div>
+    <div class="toolbar" style="margin:8px 0 0"><button class="btn" data-act="rk-tcancel">やめる</button><button class="btn pri" data-act="rk-tsave">保存</button></div></div>`;
+}
+function rkTplUse(id){ return ['contracts','sites','customers'].reduce((a,c)=>a+all(c).filter(x=>x.rtpl===id).length,0); }
+MTABS.renkei=()=>{
+  const cf=rkCfg(), ed=rkCanEdit(), dis=ed?'':'disabled';
+  return `${ed?'':'<div class="callout" style="margin-bottom:12px">見るだけです。変更は管理者・責任者・営業事務ができます。</div>'}
+  <section class="sec"><h3>報告書の形（会社の標準）</h3>
+    <div class="seg" role="group" aria-label="会社の標準の報告書の形" style="flex-wrap:wrap">${RK_TYPES.map(([k,l])=>`<button data-act="rk-def" data-v="${k}" aria-pressed="${cf.defType===k}" ${dis}>${l}</button>`).join('')}</div>
+    <div class="list" style="margin-top:8px">${RK_TYPES.map(([k,l,h])=>`<div class="li" style="cursor:default"><b style="min-width:6em">${l}</b><span class="small muted">${h}</span></div>`).join('')}</div>
+    <p class="small muted" style="margin:6px 0 0">定期契約・現場・顧客の画面で、それぞれ別の形にできます（定期契約 → 現場 → 顧客 → 会社の標準 の順に使います）。現場の人は選ばずに、決まった形で開きます。</p></section>
+  <section class="sec"><h3>テンプレート（撮影箇所・チェック項目）</h3>
+    <p class="small muted" style="margin:0 0 8px">必要なときだけ作ってください。テンプレートがなくても、標準のチェック項目で使え、撮影箇所は現場で追加できます。O&amp;K報告書の「テンプレートを送る」のリンクやファイルを取り込むこともできます。</p>
+    ${cf.templates.length?`<div class="list">${cf.templates.map(t=>`<div class="li" style="cursor:default"><span class="grow"><b>${esc(t.name)}</b><br><span class="small muted">箇所${(t.data?.slots||[]).length}・チェック${(t.data?.items||[]).length}・${esc((t.data?.stages||[]).map(s=>RK_STAGES[s]).join('・'))}　使用中 ${rkTplUse(t.id)}件</span></span>${ed?`<button class="btn sm" data-act="rk-tedit" data-id="${t.id}">編集</button><button class="btn ghost sm" data-act="rk-tdel" data-id="${t.id}">削除</button>`:''}</div>`).join('')}</div>`:'<div class="small muted">まだありません。</div>'}
+    ${rkTplEditHtml()}
+    ${ed&&!RK_ST.edit?`<div class="toolbar" style="margin:8px 0 0"><button class="btn" data-act="rk-tnew">＋ 新しく作る</button><input class="inp" id="rkt_code" placeholder="O&amp;K報告書のテンプレートのリンクを貼り付け" style="flex:1 1 260px"><button class="btn" data-act="rk-timp">取り込む</button><label class="btn">ファイルから<input type="file" id="rkt_file" accept=".json,application/json" hidden></label></div>`:''}</section>
+  <section class="sec"><h3>アプリとリンク</h3><div class="form">
+    ${fld('報告書アプリ（連動版）のURL',`<input class="inp" data-rkc="url" value="${esc(cf.url)}" ${dis}>`,true)}
+    ${fld('お客様用の閲覧ページのURL',`<input class="inp" data-rkc="viewUrl" value="${esc(cf.viewUrl)}" ${dis}>`,true)}
+    ${fld('お客様リンクの有効日数',`<input class="inp num" inputmode="numeric" data-rkc="linkDays" value="${esc(cf.linkDays)}" ${dis}>`)}
+  </div></section>
+  <section class="sec"><h3>サーバーの使用量</h3>${rkUsageHtml()}</section>`;
+};
+function rkTplData(){
+  const lines=id=>(ROOT.querySelector(id)?.value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,100);
+  return {name:(ROOT.querySelector('#rkt_name')?.value||'').trim(),stages:(ROOT.querySelector('#rkt_stages')?.value||'before,after').split(','),title:(ROOT.querySelector('#rkt_title')?.value||'').trim(),
+    slots:lines('#rkt_slots'),items:lines('#rkt_items'),board:{on:ROOT.querySelector('#rkt_board')?.value!=='0'}};
+}
+async function rkDecode(code){
+  code=String(code||'').trim(); const m=code.match(/#tpl=([^&\s]+)/); if(m) code=m[1];
+  const kind=code.slice(0,2); let s=code.slice(2).replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4) s+='=';
+  const b=atob(s), u=new Uint8Array(b.length); for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+  if(kind==='z.'){ const st=new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip')); return JSON.parse(await new Response(st).text()); }
+  if(kind==='j.') return JSON.parse(new TextDecoder().decode(u));
+  throw new Error('リンクの形式が違います');
+}
+async function rkImport(obj){
+  const t=obj&&(obj.template||obj); if(!t||!Array.isArray(t.stages)) return toast('テンプレートとして読めませんでした');
+  const slots=(t.slots||[]).map(x=>String(typeof x==='string'?x:x?.name||'').trim()).filter(Boolean), items=(t.items||[]).map(x=>String(typeof x==='string'?x:x?.text||'').trim()).filter(Boolean);
+  if(!slots.length&&!items.length) return toast('撮影箇所もチェック項目もないテンプレートです');
+  const data={...t,slots,items}; delete data.id;
+  const cf=rkCfg(); await rkCfgPut({templates:[...cf.templates,{id:'rt'+Math.random().toString(36).slice(2,9),name:String(t.name||'取り込んだテンプレート').slice(0,60),data,at:nowIso(),by:SHELL.meId()}]});
+  toast(`テンプレート「${t.name||''}」を取り込みました`); render();
+}
+Object.assign(ACT_G,{
+  'rk-open'(el){ rkOpenVisit(el.dataset.id); },
+  async 'rk-def'(el){ if(!rkCanEdit()) return; await rkCfgPut({defType:el.dataset.v}); toast(`会社の標準を「${RK_L[el.dataset.v]}」にしました`); render(); },
+  async 'rk-usage'(){ RK_ST.usage=null; render(); try{ const u=await SHELL.reportApi({action:'usage'}); RK_ST.usage=u; }catch(e){ RK_ST.usage={err:'確認できませんでした（'+(e?.message||'エラー')+'）'}; } render(); },
+  'rk-tnew'(){ RK_ST.edit={id:'',name:'',stages:['before','after'],slots:[],items:[],title:'',board:{on:true}}; render(); },
+  'rk-tedit'(el){ const t=rkCfg().templates.find(x=>x.id===el.dataset.id); if(!t) return; RK_ST.edit={id:t.id,name:t.name,...structuredClone(t.data||{})}; render(); },
+  'rk-tcancel'(){ RK_ST.edit=null; render(); },
+  async 'rk-tsave'(){ const d=rkTplData(); if(!d.name) return toast('テンプレート名を入れてください'); if(!d.slots.length&&!d.items.length) return toast('撮影する箇所かチェック項目を入れてください');
+    const cf=rkCfg(), e=RK_ST.edit, name=d.name; delete d.name;
+    const old=cf.templates.find(t=>t.id===e.id);
+    const rec={id:e.id||('rt'+Math.random().toString(36).slice(2,9)),name,data:{...(old?.data||{}),...d,name},at:nowIso(),by:SHELL.meId()};
+    await rkCfgPut({templates:old?cf.templates.map(t=>t.id===e.id?rec:t):[...cf.templates,rec]}); RK_ST.edit=null; toast(`テンプレート「${name}」を保存しました`); render(); },
+  async 'rk-tdel'(el){ const id=el.dataset.id, n=rkTplUse(id), cf=rkCfg(), t=cf.templates.find(x=>x.id===id); if(!t) return;
+    if(el.dataset.ok!=='1'){ el.dataset.ok='1'; el.textContent=n?`使用中${n}件。削除する`:'本当に削除'; return; }
+    await rkCfgPut({templates:cf.templates.filter(x=>x.id!==id)}); toast(`「${t.name}」を削除しました${n?'（使っていた所は標準に戻ります）':''}`); render(); },
+  async 'rk-timp'(){ const c=ROOT.querySelector('#rkt_code')?.value||''; if(!c.trim()) return toast('リンクを貼り付けてください'); try{ await rkImport(await rkDecode(c)); }catch(e){ toast('読み込めませんでした（'+(e?.message||'エラー')+'）'); } },
+  async 'rk-link'(el){ const id=el.dataset.id; toast('リンクを作っています…');
+    try{ const r=await SHELL.reportApi({action:'link',id,days:rkCfg().linkDays}); const url=rkCfg().viewUrl+'#k='+r.k;
+      await patch('visits',id,{reportLink:{url,exp:r.exp,at:nowIso(),by:SHELL.meId()}}); (sheet.svia=sheet.svia||new Set()).add('リンク'); refreshSheet(); toast('リンクを作りました'); }
+    catch(e){ toast('リンクを作れませんでした（'+(e?.message||'エラー')+'）'); } },
+  async 'rk-copy'(){ const u=ROOT.querySelector('#rk_link')?.value||''; try{ await navigator.clipboard.writeText(u); toast('リンクをコピーしました'); }catch(_){ ROOT.querySelector('#rk_link')?.select(); toast('選択しました。コピーしてください'); } (sheet.svia=sheet.svia||new Set()).add('リンク'); },
+  'rk-inmail'(){ const v=get('visits',sheet.id), L=v?.reportLink; if(!L) return; const ta=ROOT.querySelector('#rs_msg'); const add=`\n▼報告書はこちらからもご覧いただけます（${new Date(L.exp).toLocaleDateString('ja-JP')}まで）\n${L.url}\n`;
+    const cur=ta?ta.value:(sheet.msg||''); if(cur.includes(L.url)) return toast('もう入っています'); sheet.msg=cur.replace(/\n*$/,'')+'\n'+add; if(ta) ta.value=sheet.msg; toast('メールの文面にリンクを入れました'); },
+});
+docOn('change',async e=>{ const t=e.target;
+  if(t.dataset&&t.dataset.rkc){ if(!rkCanEdit()) return; const k=t.dataset.rkc; let v=t.value.trim(); if(k==='linkDays'){ v=Math.min(365,Math.max(1,Math.round(+v||90))); } await rkCfgPut({[k]:v}); toast('保存しました'); return; }
+  if(t.id==='rkt_file'&&t.files&&t.files[0]){ try{ rkImport(JSON.parse(await t.files[0].text())); }catch(_){ toast('ファイルを読み込めませんでした'); } }
+});
+docOn('click',e=>{ if(e.target.closest&&e.target.closest('[data-rkline]')&&sheet) (sheet.svia=sheet.svia||new Set()).add('LINE'); });
+/* 管理者には、使用量が8割を超えたら1日1回知らせる */
+setTimeout(async()=>{ try{ if(!SHELL.reportApi||roleOf(meStaff())!=='admin') return; const k='rk-usage-day', d=today(); if(localStorage.getItem(k)===d) return; localStorage.setItem(k,d);
+  const u=await SHELL.reportApi({action:'usage'}); if(u.files/RK_FREE.files>=.8||u.db/RK_FREE.db>=.8) toast('サーバーの使用量が8割を超えています（マスタ・設定 → 報告書アプリ）'); }catch(_){} },15000);
+
+window.G_API={rkOpenVisit:id=>rkOpenVisit(id),rkOpenPorder:(p,k)=>rkOpenPorder(p,k),
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
   route:()=>VS.route,
   badges(){ const c=counts(); return {jobs:c.follow+c.rec, schedule:c.unsched+c.late}; },
