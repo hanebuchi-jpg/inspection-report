@@ -833,6 +833,7 @@ const SHELL=(()=>{
       ['S','genba','現場予定',I.pin],
       ['S','reserve','設備・車両の予約',I.car,'予約'],
       ['S','stock','備品・物品の在庫',I.box,'在庫'],
+      ['S','bundles','まとめ報告',I.po,'まとめ'],
     ]],
     ['営業・現場管理',[
       ['G','home','業務ダッシュボード',I.dash,'業務'],
@@ -1427,12 +1428,12 @@ const ROLE_L={admin:'1 管理者',lead:'2 責任者（上長）',manager:'3 営�
    予定（個人＋差配）・日常報告（タグ連動）・出退勤/タイムカード・顧客/担当別ビュー
    データ: 共有DB（db capability）。使えない環境ではメモリ上のサンプルで動作。
    ========================================================= */
-const COLS=['staff','customers','sites','jobs','events','reports','punches','wishes','fixreqs','meta','areas','patterns','shifts','bizlib','porders','resources','bookings','reslogs','prefs','leaves','wages','items','stockmoves','purchases','supplyreqs','seals','seallogs'];
+const COLS=['staff','customers','sites','jobs','events','reports','punches','wishes','fixreqs','meta','areas','patterns','shifts','bizlib','porders','resources','bookings','reslogs','prefs','leaves','wages','items','stockmoves','purchases','supplyreqs','seals','seallogs','rbundles','rbrows'];
 const TYPES=['作業','訪問・営業','社内・会議','休み・私用','シフト'];
 const R_KINDS=['日報','訪問報告','要対応・クレーム','その他'];
 const MODES={full:'フル機能',simple:'報告＋勤怠',report:'報告のみ',time:'勤怠のみ'};
 const MODE_DESC={full:'すべての機能（カレンダー・シフト・差配・全員の報告と勤怠・修正申請の承認・顧客別・設定）',simple:'出退勤・日常報告・自分の予定・タイムカード',report:'日常報告・自分の予定（出退勤ボタンは出ません）',time:'出退勤・自分の予定・タイムカード（報告は出ません）'};
-const MODE_ROUTES={simple:['home','calendar','reports','time','reserve','stock'],report:['home','calendar','reports'],time:['home','calendar','time']};
+const MODE_ROUTES={simple:['home','calendar','reports','time','reserve','stock','bundles'],report:['home','calendar','reports'],time:['home','calendar','time']};
 const usesTime=s=>!s||['full','simple','time'].includes(s.mode||'full');
 const usesReport=s=>!s||(s.kind!=='協力会社'&&['full','simple','report'].includes(s.mode||'full'));
 const modeTag=s=>(s.mode&&s.mode!=='full')?`（${MODES[s.mode]}）`:'';
@@ -1595,13 +1596,15 @@ const NAV_FULL=[
   ['genba','現場予定','M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11zM12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z'],
   ['reserve','設備・車両の予約','M3 13l2-6h14l2 6v5h-2M3 13v5h2M3 13h18M7 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0M13 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0'],
   ['stock','備品・物品の在庫','M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10'],
+  ['bundles','まとめ報告','M4 4h16v16H4zM4 9h16M4 14h16M9 4v16'],
   ['porders','協力会社の発注確認','M6 3h9l4 4v14H6zM14 3v5h5M9 14l2 2 4-4'],
   ['reports','日常報告','M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7'],
   ['time','出退勤・勤怠','M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2'],
   ['relations','顧客・担当別','M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM16 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5'],
   ['settings','設定','M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M18 16v4'],
 ];
-const navItems=()=>{ if(!isSimple()) return NAV_FULL; const r=[...(MODE_ROUTES[myMode()]||MODE_ROUTES.simple)]; if(isPartner(me())){ const k=r.indexOf('reports'); if(k>=0) r.splice(k,1); r.push('porders','genba'); }
+const navItems=()=>{ if(!isSimple()) return NAV_FULL; const r=[...(MODE_ROUTES[myMode()]||MODE_ROUTES.simple)]; if(isPartner(me())){ const k=r.indexOf('reports'); if(k>=0) r.splice(k,1); r.push('porders','genba'); if(!r.includes('bundles')) r.push('bundles'); }
+  if(!all('rbundles').length&&!['admin','lead','manager'].includes(me()?.role)){ const k=r.indexOf('bundles'); if(k>=0) r.splice(k,1); }
   return NAV_FULL.filter(n=>r.includes(n[0])).map(n=>n[0]==='calendar'?[n[0],'自分の予定',n[2]]:n[0]==='porders'?[n[0],'発注書',n[2]]:n[0]==='time'?[n[0],'タイムカード',n[2]]:n); };
 const VS={shCust:'',shSite:'',shArea:'',shView:'site',ssTab:'pat',ssArea:'',route:'home',calDate:today(),calSel:today(),repQ:'',repTag:'',repKind:'',repMonth:ymOf(today()),rp:null,tMonth:ymOf(today()),tStaff:'',tTab:'today',sMonth:ymAdd(ymOf(today()),1),gMonth:ymOf(today()),gStaff:'',wishMode:false,relKind:'customer',relQ:'',setTab:'users'};
 let sheet=null;
@@ -5611,6 +5614,280 @@ Object.assign(ACT_S,{
   poRk(el){ const p=get('porders',sheet.id); if(p&&window.G_API&&G_API.rkOpenPorder) G_API.rkOpenPorder(p,el.dataset.k); },
 });
 
+/* =========================================================
+   まとめ報告表（同じ現場の作業を、日または月でまとめて1つの報告書にする）
+   ・表 rbundles／行 rbrows（行ごとに保存するので、複数人が同時に入力しても消し合わない）
+   ・行は作業予定（テナントごとの契約）から作る。総台数は契約の数量
+   ・作業した人が 実施台数・チェック・日付 を入れる → 最後に検収サインをもらって提出
+   ・社内の人が提出したらその場で、協力会社が提出したら事務所の確認で、作業予定が「完了」になる
+   ・報告書は書式（設定 → 報告書アプリ → 指定の書式）で作る。書式は表を作った時点のものを保存
+   ========================================================= */
+/* ファイルの保存は業務側（G）の保存先を使う（協力会社の報告の添付もこれで送れる） */
+const assets={upload:(f,prefix)=>window.G_API&&G_API.upload?G_API.upload(f,prefix):Promise.reject(new Error('この画面ではファイルを保存できません'))};
+const RB_ST={date:today(),q:'',only:false,view:''};
+const rbOffice=()=>{ const m=me(); return !!m&&!isPartner(m)&&['admin','lead','manager'].includes(m.role); };
+const rbInternal=()=>{ const m=me(); return !!m&&!isPartner(m); };
+const rbRows=id=>all('rbrows').filter(r=>r.bundleId===id).sort(by(r=>r.ord||0));
+const rbList=()=>all('rbundles').sort(by(b=>(b.status==='confirmed'?'2':b.status==='submitted'?'1':'0')+'|'+b.period+'|'+(b.siteName||''),1));
+const rbPeriodL=b=>b.unit==='day'?jd(b.period):`${+b.period.slice(0,4)}年${+b.period.slice(5,7)}月`;
+const rbStatusL={open:['a','入力中'],submitted:['w','提出済み（確認待ち）'],confirmed:['g','確認済み']};
+const rbCanInput=b=>!!b&&b.status!=='confirmed'&&(rbInternal()||(b.partnerIds||[]).includes(meId()));
+const rbN=v=>v===''||v==null?'':Math.max(0,Math.round(+v||0));
+function rbSum(rows){ let total=0,done=0,n=0; rows.forEach(r=>{ total+=+r.total||0; if(r.done!==''&&r.done!=null){ done+=+r.done||0; n++; } }); return {total,done,n}; }
+const rbChecksOf=b=>(b.form&&b.form.checks)||[];
+const rbRowDone=(r,b)=>r.done!==''&&r.done!=null&&(rbChecksOf(b).length?(r.checks||[]).filter(Boolean).length>=rbChecksOf(b).length:true);
+const rbWorkersFrom=(b,rows)=>{ const s=new Set((b.head?.workers||[]).filter(Boolean)); return [...s]; };
+const rbDates=rows=>[...new Set(rows.map(r=>r.date).filter(Boolean))].sort();
+
+/* ---- 一覧と表 ---- */
+VIEWS.bundles=()=>{
+  if(RB_ST.view&&get('rbundles',RB_ST.view)) return rbDetail(get('rbundles',RB_ST.view));
+  const bs=rbList(), open=bs.filter(b=>b.status!=='confirmed'), done=bs.filter(b=>b.status==='confirmed');
+  const card=b=>{ const rows=rbRows(b.id), s=rbSum(rows), st=rbStatusL[b.status||'open']; const fin=rows.filter(r=>rbRowDone(r,b)).length;
+    return `<button class="li" data-act="rbOpen" data-id="${b.id}"><span class="pill ${st[0]}" style="flex:none">${st[1]}</span><span class="grow"><b>${esc(b.siteName)}</b>　${esc(rbPeriodL(b))}<br><span class="small muted">${esc(b.form?.name||'')}　${fin}/${rows.length}行　実施 ${s.done}／${s.total}台</span></span></button>`; };
+  let h=`<div class="vhead"><h1>まとめ報告</h1>${rbInternal()?'<button class="btn pri" style="margin-left:auto" data-act="rbNew">＋ まとめ報告表を作る</button>':''}</div>
+  <p class="small muted" style="margin:0 0 12px">同じ現場の作業を、日または月でまとめて1つの報告書にします。作業した日に「実施台数」とチェックを入れ、最後にお客様の検収サインをもらって提出します。</p>`;
+  if(rbInternal()){ const sug=G_API.rbSuggest?G_API.rbSuggest(ymOf(today())).filter(x=>!get('rbundles',x.id)):[];
+    if(sug.length) h+=`<div class="callout" style="display:block;margin-bottom:12px"><b>今月の表がまだない現場</b><div class="list" style="margin-top:6px">${sug.map(x=>`<div class="li" style="cursor:default"><span class="grow">${esc(x.siteName)}　${esc(x.unit==='day'?'日ごと':'月ごと')}　作業${x.n}件</span><button class="btn sm pri" data-act="rbMake" data-site="${esc(x.siteId)}" data-p="${esc(x.period)}">表を作る</button></div>`).join('')}</div></div>`; }
+  h+=`<div class="panel" style="margin-bottom:16px"><h2>入力中・確認待ち <span class="num muted">${open.length}</span></h2><div class="pbody">${open.length?`<div class="list">${open.map(card).join('')}</div>`:'<div class="empty">ありません</div>'}</div></div>`;
+  if(done.length) h+=`<div class="panel"><h2>確認済み <span class="num muted">${done.length}</span></h2><div class="pbody"><div class="list">${done.slice(0,40).map(card).join('')}</div></div></div>`;
+  return h;
+};
+function rbDetail(b){
+  const rows=rbRows(b.id), f=b.form||{}, cks=rbChecksOf(b), s=rbSum(rows), st=rbStatusL[b.status||'open'], ed=rbCanInput(b)&&b.status==='open';
+  const q=RB_ST.q.trim(), list=rows.filter(r=>(!q||String(r.tenant).includes(q))&&(!RB_ST.only||!rbRowDone(r,b)));
+  const fin=rows.filter(r=>rbRowDone(r,b)).length, dates=rbDates(rows);
+  const ckH=cks.map((c,i)=>`<th class="rb-ck" title="${esc(c)}">${'①②③④⑤⑥⑦⑧⑨⑩'[i]||i+1}</th>`).join('');
+  const so=RB_ST.sort&&rbInternal()&&b.status!=='confirmed';
+  const tr=r=>{ const d=rbRowDone(r,b);
+    if(so) return `<tr><td class="rb-t"><b>${esc(r.tenant)}</b></td><td colspan="${5+cks.length}"><span style="display:inline-flex;gap:6px;align-items:center"><button class="btn sm" data-act="rbMove" data-id="${r.id}" data-d="-1" aria-label="${esc(r.tenant)}を上へ">↑</button><button class="btn sm" data-act="rbMove" data-id="${r.id}" data-d="1" aria-label="${esc(r.tenant)}を下へ">↓</button>
+      <label class="small" style="display:flex;gap:4px;align-items:center">フロア<input class="inp" style="width:70px" data-rbfloor="${r.id}" value="${esc(r.floor||'')}" placeholder="例：1F"></label></span></td></tr>`;
+    return `<tr class="${d?'rb-done':''}"><td class="rb-t"><b>${esc(r.tenant)}</b>${r.floor?`<span class="small muted"> ${esc(r.floor)}</span>`:''}</td><td class="r">${esc(r.total)}</td>
+    <td><input class="inp num rb-n" style="width:72px" inputmode="numeric" data-rbn="${r.id}" value="${esc(r.done??'')}" placeholder="${esc(r.total)}" ${ed?'':'disabled'} aria-label="${esc(r.tenant)}の実施台数"></td>
+    ${cks.map((c,i)=>`<td class="rb-ck"><input type="checkbox" data-rbc="${r.id}" data-i="${i}" ${(r.checks||[])[i]?'checked':''} ${ed?'':'disabled'} aria-label="${esc(r.tenant)} ${esc(c)}"></td>`).join('')}
+    <td>${ed?`<button class="btn sm" data-act="rbAll" data-id="${r.id}" title="実施台数を総台数にして、チェックを全部入れる">${d?'済':'全部'}</button>`:''}</td>
+    <td class="small">${r.date?esc(jd(r.date)):''}${r.byName?`<br><span class="muted">${esc(r.byName)}</span>`:''}</td>
+    <td><input class="inp rb-note" data-rbnote="${r.id}" value="${esc(r.note||'')}" ${ed?'':'disabled'} placeholder="不具合・空調機No.など" aria-label="${esc(r.tenant)}の備考"></td></tr>`; };
+  const hd=b.head||{};
+  let h=`<div class="vhead"><button class="btn sm" data-act="rbBack">‹ 一覧</button><h1 style="margin-left:8px">${esc(b.siteName)}　${esc(rbPeriodL(b))}</h1><span class="pill ${st[0]}" style="margin-left:8px">${st[1]}</span></div>
+  <style>.rb-wrap{overflow:auto;max-height:calc(100dvh - 260px);border:1px solid var(--line);border-radius:10px}.rb-tab{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
+  .rb-tab th{position:sticky;top:0;background:var(--panel,#fff);z-index:2;font-size:12px;padding:6px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .rb-tab td{padding:4px;border-bottom:1px solid var(--line);vertical-align:middle}.rb-tab .rb-t{position:sticky;left:0;background:var(--panel,#fff);z-index:1;min-width:9em;max-width:14em}
+  .rb-tab .rb-ck{text-align:center;width:34px}.rb-tab .rb-ck input{width:22px;height:22px}.rb-n{width:64px}.rb-note{min-width:10em}.rb-done td{background:color-mix(in srgb,var(--ok,#16794a) 8%,transparent)}.rb-done .rb-t{background:color-mix(in srgb,var(--ok,#16794a) 8%,var(--panel,#fff))}
+  .rb-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:6px 0}</style>
+  <div class="panel" style="margin-bottom:12px"><div class="pbody">
+    <div style="display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center"><span>書式：<b>${esc(f.name||'')}</b>${f.ver?` <span class="small muted">${esc(f.ver)}</span>`:''}</span><span>入力済み <b>${fin}</b>/${rows.length}行</span><span>実施 <b>${s.done}</b>／総台数 ${s.total}台</span>${dates.length?`<span class="small muted">作業日 ${dates.map(d=>+d.slice(8)+'日').join('・')}</span>`:''}</div>
+    ${rbInternal()&&b.status!=='confirmed'?`<div class="toolbar" style="margin:10px 0 0;flex-wrap:wrap">${so?`<b class="small">並び順・フロアを編集中</b><button class="btn sm" data-act="rbFloorSort">フロア順に並べる</button>${rbOffice()?'<button class="btn sm pri" data-act="rbSaveOrder">この並びを現場に保存（次の表から同じ順）</button>':''}<button class="btn sm" data-act="rbSortOff">終わる</button>`:'<button class="btn sm ghost" data-act="rbSortOn">並び順・フロアを変える</button>'}</div>`:''}
+    ${ed&&!so?`<div class="toolbar" style="margin:10px 0 0;flex-wrap:wrap"><label class="small" style="display:flex;gap:6px;align-items:center">入力する日<input class="inp" type="date" id="rb-date" value="${esc(RB_ST.date)}" style="width:auto"></label>
+      <input class="inp search" id="rb-q" placeholder="テナントを検索" value="${esc(RB_ST.q)}" style="flex:1 1 160px"><label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rb-only" ${RB_ST.only?'checked':''}> 未入力だけ</label></div>`:''}
+  </div></div>
+  <div class="rb-legend">${cks.map((c,i)=>`<span>${'①②③④⑤⑥⑦⑧⑨⑩'[i]||i+1} ${esc(c)}</span>`).join('')}</div>
+  <div class="rb-wrap"><table class="rb-tab"><thead><tr><th class="rb-t">テナント</th><th>総台数</th><th>実施台数</th>${ckH}<th></th><th>日付</th><th>備考</th></tr></thead><tbody>${list.map(tr).join('')||`<tr><td colspan="${6+cks.length}" class="empty">該当する行はありません</td></tr>`}</tbody>
+  <tfoot><tr><td class="rb-t"><b>合計</b></td><td class="r"><b>${s.total}</b></td><td><b>${s.done}</b></td><td colspan="${3+cks.length}"></td></tr></tfoot></table></div>
+  <div class="panel" style="margin-top:12px"><h2>報告書の内容</h2><div class="pbody"><div class="form">
+    ${[['start','開始時間','text'],['end','終了時間（26:30のような書き方も可）','text'],['leader','作業責任者','text'],['leaderTel','責任者の連絡先','tel']].map(([k,l,t])=>`<label class="fld"><span>${l}</span><input class="inp" type="${t}" data-rbh="${k}" value="${esc(hd[k]??(f[k]||''))}" ${ed?'':'disabled'}></label>`).join('')}
+    <label class="fld wide"><span>作業者（責任者を除く。読点「、」区切り）</span><input class="inp" data-rbh="workers" value="${esc((hd.workers||[]).join('、'))}" ${ed?'':'disabled'} placeholder="例：村山、梅津、吉田、深井"></label>
+    <label class="fld wide"><span>不具合・異常箇所報告${f.defectNote?`<span class="small muted" style="font-weight:400">　${esc(f.defectNote)}</span>`:''}</span><textarea class="inp" rows="3" data-rbh="defects" ${ed?'':'disabled'}>${esc(hd.defects||'')}</textarea></label>
+    <label class="fld wide"><span>備考</span><textarea class="inp" rows="2" data-rbh="remarks" ${ed?'':'disabled'}>${esc(hd.remarks||'')}</textarea></label>
+  </div>
+  <div class="fld" style="margin-top:8px"><span>写真（任意）</span>${(b.photos||[]).length?`<div class="list">${b.photos.map((p,i)=>`<div class="li" style="cursor:default"><a class="grow" href="#" data-blob="${esc(p.id)}" data-file="${esc(p.id)}">${esc(p.name||'写真'+(i+1))}</a>${ed?`<button class="btn ghost sm" data-act="rbPhDel" data-i="${i}">削除</button>`:''}</div>`).join('')}</div>`:'<div class="small muted">ありません。必要なときだけ付けてください（報告書の後ろに載ります）。</div>'}
+    ${ed?'<input type="file" id="rb-photo" accept="image/*" multiple style="margin-top:6px">':''}</div>
+  </div></div>
+  <div class="toolbar" style="margin-top:12px;flex-wrap:wrap">
+    <button class="btn" data-act="rbPreview">報告書を見る</button>
+    ${ed?`<button class="btn pri" data-act="rbSign">検収サインをもらって提出</button>`:''}
+    ${b.status==='submitted'&&rbOffice()?`<button class="btn pri" data-act="rbConfirm">確認して作業予定を完了にする</button><button class="btn" data-act="rbReopen">差し戻す（入力中に戻す）</button>`:''}
+    ${b.status==='submitted'&&!rbOffice()?'<span class="small muted">提出済みです。事務所が確認すると作業予定が完了になります。</span>':''}
+    ${b.pdf?`<a class="btn" href="#" data-blob="${esc(b.pdf.id)}" data-file="${esc(b.pdf.id)}">提出した報告書（PDF）</a>`:''}
+    ${b.status==='confirmed'&&rbOffice()&&b.primaryVid?`<button class="btn" data-act="rbSend">お客様に送る</button>`:''}
+    ${rbOffice()&&b.status==='open'?`<button class="btn ghost" data-act="rbRefresh">作業予定から行を更新</button><button class="btn ghost danger" data-act="rbDel">この表を削除</button>`:''}
+  </div>`;
+  return h;
+}
+
+/* ---- 表を作る ---- */
+SHEETS.rbNew=()=>{
+  const sites=all('sites').filter(s=>!s.inactive).sort(by(s=>(s.bundle?'0':'1')+(s.name||'')));
+  const sid=sheet.siteId||'', s=get('sites',sid), unit=sheet.unit||s?.bundle||'month';
+  const per=sheet.period||(unit==='day'?today():ymOf(today()));
+  return {title:'まとめ報告表を作る',body:`<div class="sec"><div class="form">
+    <label class="fld wide"><span>現場</span><select class="inp" id="rbn-site"><option value="">選んでください</option>${sites.map(x=>`<option value="${esc(x.id)}" ${x.id===sid?'selected':''}>${esc(x.name)}${x.bundle?'（'+(x.bundle==='day'?'日ごと':'月ごと')+'）':''}</option>`).join('')}</select></label>
+    <label class="fld"><span>まとめる単位</span><select class="inp" id="rbn-unit"><option value="month" ${unit!=='day'?'selected':''}>月ごと</option><option value="day" ${unit==='day'?'selected':''}>日ごと</option></select></label>
+    <label class="fld"><span>${unit==='day'?'作業日':'対象月'}</span><input class="inp" id="rbn-per" type="${unit==='day'?'date':'month'}" value="${esc(per)}"></label>
+  </div><p class="small muted">その現場・期間の作業予定から行を作ります。書式は現場（なければ顧客）に設定したものを使います。</p></div>`,
+  foot:`<button class="btn" data-act="close">やめる</button><button class="btn pri" data-act="rbCreate">作る</button>`};
+};
+async function rbCreate(siteId,period){
+  const site=get('sites',siteId); if(!site) return toast('現場を選んでください');
+  const id=`rb_${siteId}_${period}`; if(get('rbundles',id)){ RB_ST.view=id; closeSheet(); render(); return toast('この現場・期間の表はもうあります'); }
+  const src=G_API.rbSource(siteId,period); if(!src) return toast('作業予定を読めませんでした');
+  if(!src.rows.length) return toast('この現場・期間の作業予定がありません');
+  const prev=rbList().filter(b=>b.siteId===siteId&&b.id!==id).sort(by(b=>b.period,-1))[0];
+  const f=src.form||{};
+  const b={siteId,siteName:site.name||'',customerId:site.customerId||'',period,unit:period.length===7?'month':'day',formId:f.id||'',form:f,partnerIds:src.partnerIds,staffIds:src.staffIds,status:'open',
+    head:{start:prev?.head?.start||f.start||'',end:prev?.head?.end||f.end||'',leader:prev?.head?.leader||f.leader||'',leaderTel:prev?.head?.leaderTel||f.leaderTel||'',workers:prev?.head?.workers||[],defects:'',remarks:''},photos:[],createdBy:meId()};
+  await put('rbundles',id,b);
+  let i=0; for(const r of src.rows){ i++; await put('rbrows',`${id}~${String(i).padStart(3,'0')}`,{bundleId:id,partnerIds:src.partnerIds,ord:i,tenant:r.tenant,floor:r.floor||'',total:r.total,vids:r.vids,done:'',checks:[],note:'',date:'',by:'',byName:''}); }
+  RB_ST.view=id; closeSheet(); render(); toast(`表を作りました（${src.rows.length}行）`);
+}
+async function rbRefresh(b){
+  const src=G_API.rbSource(b.siteId,b.period); if(!src) return;
+  const rows=rbRows(b.id), have=new Set(rows.flatMap(r=>r.vids||[])); let i=rows.reduce((a,r)=>Math.max(a,r.ord||0),0), n=0;
+  for(const r of src.rows){ const nv=r.vids.filter(v=>!have.has(v)); if(!nv.length) continue;
+    const ex=rows.find(x=>x.tenant===r.tenant);
+    if(ex) await put('rbrows',ex.id,{...ex,vids:[...ex.vids,...nv],total:r.total});
+    else { i++; await put('rbrows',`${b.id}~${String(i).padStart(3,'0')}`,{bundleId:b.id,partnerIds:b.partnerIds,ord:i,tenant:r.tenant,floor:r.floor||'',total:r.total,vids:nv,done:'',checks:[],note:'',date:'',by:'',byName:''}); }
+    n++; }
+  const pids=[...new Set([...(b.partnerIds||[]),...src.partnerIds])];
+  if(pids.length!==(b.partnerIds||[]).length) await put('rbundles',b.id,{...b,partnerIds:pids});
+  toast(n?`${n}件の作業予定を表に足しました`:'新しい作業予定はありません');
+}
+
+/* ---- 行の入力 ---- */
+function rbTouch(r,ch){ const d=RB_ST.date||today(); return put('rbrows',r.id,{...r,...ch,date:r.date||d,by:meId(),byName:staffName(meId())}); }
+docOn('change',async e=>{ const t=e.target; if(!t.dataset) return;
+  if(t.dataset.rbn){ const r=get('rbrows',t.dataset.rbn); if(r) await rbTouch(r,{done:rbN(t.value)}); return; }
+  if(t.dataset.rbc){ const r=get('rbrows',t.dataset.rbc); if(!r) return; const c=[...(r.checks||[])]; c[+t.dataset.i]=t.checked; await rbTouch(r,{checks:c}); return; }
+  if(t.dataset.rbfloor){ const r=get('rbrows',t.dataset.rbfloor); if(r) await put('rbrows',r.id,{...r,floor:t.value.trim()}); return; }
+  if(t.dataset.rbnote){ const r=get('rbrows',t.dataset.rbnote); if(r) await put('rbrows',r.id,{...r,note:t.value}); return; }
+  if(t.dataset.rbh){ const b=get('rbundles',RB_ST.view); if(!b) return; const k=t.dataset.rbh; const v=k==='workers'?t.value.split(/[、,，\s]+/).map(x=>x.trim()).filter(Boolean):t.value; await put('rbundles',b.id,{...b,head:{...(b.head||{}),[k]:v}}); return; }
+  if(t.id==='rb-date'){ RB_ST.date=t.value||today(); return; }
+  if(t.id==='rb-only'){ RB_ST.only=t.checked; render(); return; }
+  if(t.id==='rbn-unit'&&sheet?.kind==='rbNew'){ sheet.unit=t.value; sheet.period=''; sheet.siteId=ROOT.querySelector('#rbn-site')?.value||''; renderOverlay(); return; }
+  if(t.id==='rbn-site'&&sheet?.kind==='rbNew'){ sheet.siteId=t.value; sheet.unit=''; sheet.period=''; renderOverlay(); return; }
+  if(t.id==='rb-photo'&&t.files&&t.files.length){ const b=get('rbundles',RB_ST.view); if(!b) return; if(!assets) return toast('この画面では写真を付けられません');
+    toast('写真を送っています…'); const ph=[...(b.photos||[])];
+    for(const f of t.files){ try{ const sm=await rbShrink(f); const u=await assets.upload(sm,isPartnerUser()?'partner/'+meId():undefined); ph.push({id:u.id,name:f.name,by:meId(),at:new Date().toISOString()}); }catch(err){ toast('写真を送れませんでした（'+(err?.message||'エラー')+'）'); } }
+    await put('rbundles',b.id,{...get('rbundles',b.id),photos:ph}); toast('写真を付けました'); }
+});
+docOn('input',e=>{ if(e.target.id==='rb-q'){ RB_ST.q=e.target.value; clearTimeout(RB_ST.qt); RB_ST.qt=setTimeout(()=>{ render(); const x=ROOT.querySelector('#rb-q'); if(x){ x.focus(); x.setSelectionRange(x.value.length,x.value.length); } },300); } });
+async function rbShrink(f){ // 写真は長辺1600pxに縮めて送る
+  try{ const u=URL.createObjectURL(f); const im=await new Promise((ok,ng)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ng; i.src=u; }); URL.revokeObjectURL(u);
+    const k=Math.min(1,1600/Math.max(im.width,im.height)), c=document.createElement('canvas'); c.width=Math.round(im.width*k); c.height=Math.round(im.height*k); c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    const bl=await new Promise(ok=>c.toBlob(ok,'image/jpeg',.8)); return new File([bl],(f.name||'photo').replace(/\.\w+$/,'')+'.jpg',{type:'image/jpeg'}); }catch(_){ return f; }
+}
+
+/* ---- 報告書（書式どおりのページを作ってPDFにする） ---- */
+const RB_PER=26;
+function rbPagesHtml(b,rows,sign){
+  const f=b.form||{}, hd=b.head||{}, cks=rbChecksOf(b), s=rbSum(rows), dates=rbDates(rows), conf=sign?.confirm??hd.confirm??'';
+  const css=`<style>.rbp{width:794px;height:1123px;box-sizing:border-box;padding:46px 48px;background:#fff;color:#111;font-family:"Yu Gothic","Hiragino Sans","Noto Sans JP",sans-serif;font-size:12px;position:relative;overflow:hidden}
+  .rbp table{width:100%;border-collapse:collapse}.rbp td,.rbp th{border:1px solid #333;padding:4px 6px}.rbp th{background:#3a3a3a;color:#fff;font-weight:700;font-size:11px}
+  .rbp .ttl{background:#3a3a3a;color:#fff;text-align:center;font-size:20px;font-weight:700;letter-spacing:.2em;padding:8px;margin-bottom:14px}.rbp .lb{background:#3a3a3a;color:#fff;font-weight:700;width:90px;text-align:center}
+  .rbp .gap{height:10px}.rbp .c{text-align:center}.rbp .r{text-align:right}.rbp .big{font-size:15px}.rbp .lines{height:120px;vertical-align:top;white-space:pre-wrap;background:repeating-linear-gradient(#fff 0 21px,#bbb 21px 22px)}
+  .rbp .ft{position:absolute;bottom:22px;left:48px;right:48px;display:flex;justify-content:space-between;font-size:10px;color:#666}.rbp .ck{font-size:15px;font-weight:700}</style>`;
+  const wd=dates.length?`${+dates[0].slice(5,7)}月　${dates.map(d=>+d.slice(8)+'日').join('　')}`:'';
+  const work=(f.work||[]).map((w,i,a)=>{ const first=i===0||a[i-1].cat!==w.cat, span=a.filter(x=>x.cat===w.cat).length;
+    return `<tr>${first?`<td class="c" rowspan="${span}"><b>${esc(w.cat)}</b></td>`:''}<td class="c">${esc(w.place)}</td><td style="white-space:pre-wrap">${esc(w.detail)}</td><td class="c big">${w.count?s.total:''}</td><td class="c big">${w.count?s.done:''}</td><td class="c big">${w.count?esc(conf):''}</td></tr>`; }).join('');
+  const p1=`<div class="rbp">${css}<div class="ttl">${esc(f.title1||'実施報告書')}</div>
+    <table><tr><td class="lb">店番</td><td class="c big" style="width:90px">${esc(f.storeNo||'')}</td><td class="lb">店名</td><td class="c big">${esc(f.shopName||b.siteName)}</td></tr></table><div class="gap"></div>
+    <table><tr><td class="lb" rowspan="2">作業パートナー</td><td class="c big" rowspan="2">${esc(f.partner||'')}</td><td style="width:50px">TEL：</td><td style="width:150px">${esc(f.tel||'')}</td></tr><tr><td>FAX：</td><td>${esc(f.fax||'')}</td></tr></table><div class="gap"></div>
+    <table><tr><th style="width:46%">作業日</th><th>開始時間</th><th>終了時間</th></tr><tr><td class="big" style="height:40px">${esc(wd)}</td><td class="c big">${esc(hd.start||'')}</td><td class="c big">${esc(hd.end||'')}</td></tr></table>
+    <table><tr><th style="width:46%">作業責任者</th><th>作業者（責任者を除く）</th></tr><tr><td class="c big" style="height:40px">${esc(hd.leader||'')}</td><td rowspan="2" class="big" style="vertical-align:top">${esc((hd.workers||[]).join('　'))}</td></tr>
+      <tr><td><span style="display:inline-block;background:#3a3a3a;color:#fff;padding:2px 8px;margin-right:10px">連絡先</span>${esc(hd.leaderTel||'')}</td></tr></table><div class="gap"></div>
+    <table><tr><th colspan="6">作業内容</th></tr><tr><th style="width:64px">項目</th><th style="width:70px">作業箇所</th><th>詳細</th><th style="width:66px">設置台数</th><th style="width:66px">作業台数</th><th style="width:76px">お客様確認台数</th></tr>${work}</table><div class="gap"></div>
+    <table><tr><th>不具合・異常箇所報告</th></tr><tr><td class="lines">${f.defectNote?`<span style="font-size:10px">${esc(f.defectNote)}</span>\n`:''}${esc([hd.defects,...rows.filter(r=>r.note).map(r=>r.tenant+'：'+r.note)].filter(Boolean).join('\n'))}</td></tr></table><div class="gap"></div>
+    <table><tr><th>備考</th><th style="width:130px">検収印</th></tr><tr><td class="lines" style="height:110px">${esc(hd.remarks||'')}</td><td class="c" style="height:110px;vertical-align:middle">${sign?.img?`<img src="${sign.img}" style="max-width:120px;max-height:70px"><br>`:''}${sign?.at?esc(+sign.at.slice(5,7)+'/'+ +sign.at.slice(8,10)):''}${sign?.name?`<br><span style="font-size:10px">${esc(sign.name)}</span>`:''}</td></tr></table>
+    <div class="ft"><span>${esc(f.name||'')}</span><span>1</span></div></div>`;
+  const pages=[p1], n=Math.max(1,Math.ceil(rows.length/RB_PER));
+  for(let p=0;p<n;p++){ const part=rows.slice(p*RB_PER,(p+1)*RB_PER), last=p===n-1;
+    pages.push(`<div class="rbp">${css}<div style="display:flex;justify-content:space-between;align-items:flex-end"><div style="font-size:17px;font-weight:700;letter-spacing:.1em">${esc(f.title2||'実施チェック表')}</div><div style="font-size:13px">${esc(f.ver||'')}</div></div>
+      <div style="margin:8px 0 2px;font-weight:700">店舗名：${esc(f.shopShort||f.shopName||b.siteName)}</div><div style="margin:0 0 8px;font-weight:700">作業内容：${esc(f.workLabel||'')}</div>
+      <table><tr><th style="width:40px">フロア</th><th>テナント名</th><th style="width:48px">総台数</th><th style="width:66px">実施台数</th>${cks.map(c=>`<th style="width:54px;font-size:9px;white-space:normal">${esc(c)}</th>`).join('')}<th style="width:80px">備考</th></tr>
+      ${part.map(r=>`<tr><td class="c">${esc(r.floor||'')}</td><td>${esc(r.tenant)}</td><td class="r">${esc(r.total)}台</td><td class="r">${r.done!==''&&r.done!=null?`<b style="font-size:14px">${esc(r.done)}</b> `:''}${esc(f.unitLabel||'台')}</td>${cks.map((c,i)=>`<td class="c ck">${(r.checks||[])[i]?'✓':''}</td>`).join('')}<td style="font-size:10px">${esc(r.note||'')}</td></tr>`).join('')}
+      ${last?`<tr><td></td><td><b>合計</b></td><td class="r"><b>${s.total}台</b></td><td class="r"><b>${s.done}</b> ${esc(f.unitLabel||'台')}</td>${cks.map(()=>'<td></td>').join('')}<td></td></tr>`:''}</table>
+      <div class="ft"><span>${esc(f.name||'')}</span><span>${p+2}</span></div></div>`); }
+  return pages;
+}
+async function rbPhotoPages(b,start){
+  const ph=b.photos||[]; if(!ph.length) return [];
+  const urls=[]; for(const p of ph){ try{ const bl=await SHELL.fileBlob(p.id); urls.push({u:await new Promise(ok=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.readAsDataURL(bl); }),n:p.name||''}); }catch(_){} }
+  const out=[]; for(let i=0;i<urls.length;i+=4){ const g=urls.slice(i,i+4);
+    out.push(`<div class="rbp" style="width:794px;height:1123px;box-sizing:border-box;padding:46px 48px;background:#fff;font-family:sans-serif;position:relative"><div style="font-size:16px;font-weight:700;margin-bottom:10px">作業写真　${esc(b.siteName)}　${esc(rbPeriodL(b))}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${g.map(x=>`<div style="text-align:center"><img src="${x.u}" style="width:100%;height:440px;object-fit:contain;background:#f4f4f4"><div style="font-size:11px;margin-top:4px">${esc(x.n)}</div></div>`).join('')}</div>
+      <div style="position:absolute;bottom:22px;right:48px;font-size:10px;color:#666">${start+out.length}</div></div>`); }
+  return out;
+}
+async function rbMakePdf(b,sign){
+  await G_API.pdfLib();
+  const rows=rbRows(b.id), pages=[...rbPagesHtml(b,rows,sign)]; pages.push(...await rbPhotoPages(b,pages.length+1));
+  const host=document.createElement('div'); host.style.cssText='position:absolute;left:-10000px;top:0'; document.body.appendChild(host);
+  try{ const {jsPDF}=window.jspdf, pdf=new jsPDF({unit:'mm',format:'a4',orientation:'p'});
+    for(let i=0;i<pages.length;i++){ host.innerHTML=pages[i]; const el=host.firstElementChild;
+      const cv=await window.html2canvas(el,{scale:1.6,backgroundColor:'#ffffff',logging:false,width:794,height:1123}); if(i) pdf.addPage(); pdf.addImage(cv.toDataURL('image/jpeg',.82),'JPEG',0,0,210,297); }
+    const nm=`${(b.form?.title1||'実施報告書')}_${b.siteName}_${b.period}.pdf`.replace(/[\\/:*?"<>|\s]+/g,'_');
+    return new File([pdf.output('blob')],nm,{type:'application/pdf'});
+  } finally { host.remove(); }
+}
+SHEETS.rbPreview=()=>{ const b=get('rbundles',sheet.id); if(!b) return {title:'報告書',body:''};
+  const pages=rbPagesHtml(b,rbRows(b.id),b.sign||null);
+  return {title:'報告書（確認用）',body:`<p class="small muted" style="margin:0 0 8px">提出するとこの形でPDFになります（写真は後ろに付きます）。</p><div style="overflow:auto"><div style="transform:scale(.62);transform-origin:0 0;width:794px">${pages.map(p=>`<div style="margin-bottom:16px;box-shadow:0 1px 6px rgba(0,0,0,.2)">${p}</div>`).join('')}</div></div>`,
+    foot:'<button class="btn" data-act="close">閉じる</button>'}; };
+
+/* ---- 検収サイン ---- */
+SHEETS.rbSign=()=>{ const b=get('rbundles',sheet.id); if(!b) return {title:'検収',body:''};
+  const rows=rbRows(b.id), s=rbSum(rows), left=rows.filter(r=>!rbRowDone(r,b));
+  return {title:'検収サインをもらう',body:`<div class="sec">
+    ${left.length?`<div class="callout w" style="display:block;margin-bottom:10px">未入力の行が${left.length}件あります（${esc(left.slice(0,6).map(r=>r.tenant).join('、'))}${left.length>6?' ほか':''}）。そのまま提出すると、その作業予定は完了になりません。</div>`:''}
+    <p style="margin:0 0 8px">実施 <b>${s.done}</b>台／総台数 ${s.total}台</p>
+    <label class="fld"><span>お客様確認台数（言われた数。空欄でも可）</span><input class="inp num" inputmode="numeric" id="rbs-conf" value="${esc(sheet.conf??'')}"></label>
+    <label class="fld"><span>検収者のお名前（任意）</span><input class="inp" id="rbs-name" value="${esc(sheet.name||'')}"></label>
+    <div class="fld"><span>サイン（お客様に書いてもらう）</span><canvas id="rbs-pad" width="600" height="220" style="width:100%;max-width:600px;height:180px;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none"></canvas>
+    <div><button class="btn sm" data-act="rbSignClear">書き直す</button></div></div></div>`,
+  foot:`<button class="btn" data-act="close">やめる</button><button class="btn pri" data-act="rbSubmit">提出する</button>`,
+  after(){ const c=ROOT.querySelector('#rbs-pad'); if(!c||c.dataset.on) return; c.dataset.on='1'; const g=c.getContext('2d'); g.lineWidth=3.2; g.lineCap='round'; g.strokeStyle='#111'; let dn=false;
+    const pt=e=>{ const r=c.getBoundingClientRect(); return [(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height]; };
+    c.onpointerdown=e=>{ dn=true; c.setPointerCapture(e.pointerId); const [x,y]=pt(e); g.beginPath(); g.moveTo(x,y); sheet.signed=true; };
+    c.onpointermove=e=>{ if(!dn) return; const [x,y]=pt(e); g.lineTo(x,y); g.stroke(); };
+    c.onpointerup=()=>{ dn=false; }; } }; };
+
+/* ---- 作業予定を完了にする（社内の提出はその場で、協力会社の提出は事務所の確認で） ---- */
+async function rbApply(b){
+  const rows=rbRows(b.id).filter(r=>rbRowDone(r,b));
+  const list=rows.flatMap(r=>(r.vids||[]).map((vid,i)=>({vid,date:r.date||today(),done:i===0?+r.done||0:0})));
+  const att=b.pdf?{id:b.pdf.id,name:b.pdf.name,size:b.pdf.size,type:'application/pdf',from:'まとめ報告'}:null;
+  const r=await G_API.rbComplete({list,att,bundleId:b.id,primary:list[0]?.vid||''});
+  await put('rbundles',b.id,{...get('rbundles',b.id),status:'confirmed',confirmed:{at:new Date().toISOString(),by:meId(),n:r.n},primaryVid:list[0]?.vid||''});
+  return r;
+}
+Object.assign(ACT_S,{
+  rbOpen(el){ RB_ST.view=el.dataset.id; RB_ST.q=''; RB_ST.only=false; render(); window.scrollTo(0,0); },
+  rbBack(){ RB_ST.view=''; RB_ST.sort=false; render(); },
+  rbSortOn(){ RB_ST.sort=true; RB_ST.q=''; RB_ST.only=false; render(); },
+  rbSortOff(){ RB_ST.sort=false; render(); },
+  async rbMove(el){ const r=get('rbrows',el.dataset.id); if(!r) return; const rows=rbRows(r.bundleId), i=rows.findIndex(x=>x.id===r.id), j=i+(+el.dataset.d); if(j<0||j>=rows.length) return;
+    const o=rows[j]; const a=r.ord, c=o.ord===a?a+(+el.dataset.d):o.ord; await put('rbrows',r.id,{...r,ord:c}); await put('rbrows',o.id,{...o,ord:a}); },
+  async rbFloorSort(){ const b=get('rbundles',RB_ST.view); if(!b) return; const fk=f=>{ const s=String(f||'').toUpperCase(), m=s.match(/(B)?(\d+)/); return m?(m[1]?-+m[2]:+m[2]):999; };
+    const rows=rbRows(b.id).slice().sort((x,y)=>fk(x.floor)-fk(y.floor)||(x.ord-y.ord)); let i=0; for(const r of rows){ i++; if(r.ord!==i) await put('rbrows',r.id,{...r,ord:i}); } toast('フロア順に並べました'); },
+  async rbSaveOrder(){ const b=get('rbundles',RB_ST.view); if(!b||!G_API.rbSaveOrder) return; await G_API.rbSaveOrder(b.siteId,rbRows(b.id).map(r=>({t:r.tenant,f:r.floor||''}))); toast('並び順とフロアを現場に保存しました。次に作る表から同じ順になります'); },
+  rbNew(){ openSheet({kind:'rbNew'}); },
+  rbMake(el){ rbCreate(el.dataset.site,el.dataset.p); },
+  rbCreate(){ const sid=ROOT.querySelector('#rbn-site')?.value, per=ROOT.querySelector('#rbn-per')?.value; if(!sid||!per) return toast('現場と期間を選んでください'); rbCreate(sid,per); },
+  async rbAll(el){ const r=get('rbrows',el.dataset.id), b=get('rbundles',r?.bundleId); if(!r||!b) return; await rbTouch(r,{done:r.done!==''&&r.done!=null?r.done:r.total,checks:rbChecksOf(b).map(()=>true)}); },
+  async rbRefresh(){ const b=get('rbundles',RB_ST.view); if(b) await rbRefresh(b); },
+  async rbDel(el){ const b=get('rbundles',RB_ST.view); if(!b) return; if(el.dataset.ok!=='1'){ el.dataset.ok='1'; el.textContent='本当に削除する（入力内容も消えます）'; return; }
+    for(const r of rbRows(b.id)) await del('rbrows',r.id); await del('rbundles',b.id); RB_ST.view=''; render(); toast('表を削除しました'); },
+  async rbPhDel(el){ const b=get('rbundles',RB_ST.view); if(!b) return; const ph=[...(b.photos||[])]; ph.splice(+el.dataset.i,1); await put('rbundles',b.id,{...b,photos:ph}); },
+  rbPreview(){ openSheet({kind:'rbPreview',id:RB_ST.view}); },
+  rbSign(){ openSheet({kind:'rbSign',id:RB_ST.view}); },
+  rbSignClear(){ const c=ROOT.querySelector('#rbs-pad'); if(c){ c.getContext('2d').clearRect(0,0,c.width,c.height); sheet.signed=false; } },
+  async rbSubmit(el){ const b=get('rbundles',sheet.id); if(!b) return; if(!sheet.signed&&el.dataset.ok!=='1'){ el.dataset.ok='1'; el.textContent='サインなしで提出する'; return toast('サインがありません'); }
+    const c=ROOT.querySelector('#rbs-pad'), conf=(ROOT.querySelector('#rbs-conf')?.value||'').trim(), name=(ROOT.querySelector('#rbs-name')?.value||'').trim();
+    const sign={img:sheet.signed&&c?c.toDataURL('image/png'):'',at:today(),name,confirm:conf,by:meId()};
+    el.disabled=true; el.textContent='報告書を作っています…';
+    try{ const f=await rbMakePdf(b,sign); if(!assets) throw new Error('この画面では保存できません');
+      const u=await assets.upload(f,isPartnerUser()?'partner/'+meId():undefined);
+      const nb={...get('rbundles',b.id),sign,head:{...(b.head||{}),confirm:conf},pdf:{id:u.id,name:f.name,size:u.sizeBytes||f.size},status:'submitted',submitted:{at:new Date().toISOString(),by:meId()}};
+      await put('rbundles',b.id,nb); closeSheet();
+      if(rbInternal()&&G_API.rbComplete){ const r=await rbApply(nb); toast(`提出しました。作業予定${r.n}件を完了にしました`); }
+      else toast('提出しました。事務所が確認すると作業予定が完了になります');
+      render();
+    }catch(err){ el.disabled=false; el.textContent='提出する'; toast('提出できませんでした（'+(err?.message||'エラー')+'）'); } },
+  async rbConfirm(){ const b=get('rbundles',RB_ST.view); if(!b) return; const r=await rbApply(b); toast(`確認しました。作業予定${r.n}件を完了にしました`); render(); },
+  async rbReopen(){ const b=get('rbundles',RB_ST.view); if(!b) return; await put('rbundles',b.id,{...b,status:'open'}); toast('入力中に戻しました'); },
+  rbSend(){ const b=get('rbundles',RB_ST.view); if(b?.primaryVid) SHELL.openVisit(b.primaryVid); },
+});
+
 window.S_API={
   go(r){ VS.route=r; closeSheet(); render(); },
   route:()=>VS.route,
@@ -9109,7 +9386,83 @@ docOn('click',e=>{ if(e.target.closest&&e.target.closest('[data-rkline]')&&sheet
 setTimeout(async()=>{ try{ if(!SHELL.reportApi||roleOf(meStaff())!=='admin') return; const k='rk-usage-day', d=today(); if(localStorage.getItem(k)===d) return; localStorage.setItem(k,d);
   const u=await SHELL.reportApi({action:'usage'}); if(u.files/RK_FREE.files>=.8||u.db/RK_FREE.db>=.8) toast('サーバーの使用量が8割を超えています（マスタ・設定 → 報告書アプリ）'); }catch(_){} },15000);
 
-window.G_API={rkOpenVisit:id=>rkOpenVisit(id),rkOpenPorder:(p,k)=>rkOpenPorder(p,k),
+/* =========================================================
+   まとめ報告表（S側 s_bundle）のための業務側の処理と、指定の書式（表形式）
+   書式：meta/renkei.forms[{id,group,name,from,ver,title1,title2,shopName,shopShort,storeNo,partner,tel,fax,leader,leaderTel,start,end,workLabel,unitLabel,match,defectNote,checks[],work[{cat,place,detail,count}]}]
+   現場・顧客の rform は書式のグループ（毎年の版をまとめたもの）。作業の期間の初日に有効な版を使う
+   現場の bundle：'month'｜'day'｜''（まとめない）
+   ========================================================= */
+const rbForms=()=>rkCfg().forms||[];
+function rbFormFor(g,period){ const d=period.length===7?period+'-01':period; const fs=rbForms().filter(f=>f.group===g).sort(by(f=>f.from||'')); if(!fs.length) return null; const ok=fs.filter(f=>(f.from||'')<=d); return ok.length?ok[ok.length-1]:fs[0]; }
+const rbTenant=sv=>{ const s=String(sv||''); const t=s.replace(/\s*(テナント|コンセ)?\s*(フィルター清掃|分解洗浄清掃|分解洗浄|空調フィルター清掃).*$/,'').trim(); return t||s; };
+function rbSource(siteId,period){
+  const s=get('sites',siteId); if(!s) return null; const cu=get('customers',s.customerId);
+  const grp=s.rform||cu?.rform||'', form=grp?rbFormFor(grp,period):null;
+  const vs=all('visits').filter(v=>{ if(v.status==='中止') return false; const c=get('contracts',v.contractId), j=get('jobs',v.jobId); if((c?.siteId||j?.siteId||v.siteId)!==siteId) return false;
+    if(period.length===7){ if(vMonth(v)!==period) return false; } else if(v.date!==period) return false;
+    if(form?.match){ const nm=(c?.service||j?.service||visitTitle(v)); if(!String(nm).includes(form.match)) return false; } return true; });
+  const map=new Map();
+  vs.sort(by(v=>String(v.contractId||v.id).replace(/\d+/g,d=>d.padStart(6,'0')))).forEach(v=>{ const c=get('contracts',v.contractId); const name=rbTenant(c?.service||visitTitle(v));
+    const r=map.get(name)||{tenant:name,total:0,vids:[]}; r.total+=+(v.qty??c?.qty??1)||0; r.vids.push(v.id); map.set(name,r); });
+  const ids=[...new Set(vs.flatMap(v=>v.staffIds||[]))], pids=ids.filter(id=>get('staff',id)?.kind==='協力会社');
+  const f=form?{...structuredClone(form),storeNo:form.storeNo||s.storeNo||''}:{name:'標準のまとめ報告',title1:'作業実施報告書',title2:'作業実施チェック表',shopName:siteLabel(s),partner:S().companyName||'',tel:S().companyTel||'',checks:['作業完了'],work:[{cat:'作業',place:'',detail:'',count:true}],unitLabel:'台'};
+  const od=Array.isArray(s.rbOrder)?s.rbOrder:[], oi=new Map(od.map((x,i)=>[x.t,i])), fl=new Map(od.map(x=>[x.t,x.f||'']));
+  const rows=[...map.values()].map((r,i)=>({...r,floor:fl.get(r.tenant)||'',_i:i})).sort((a,b)=>(oi.has(a.tenant)?oi.get(a.tenant):1e6+a._i)-(oi.has(b.tenant)?oi.get(b.tenant):1e6+b._i)).map(({_i,...r})=>r);
+  return {rows,partnerIds:pids,staffIds:ids.filter(id=>!pids.includes(id)),form:f};
+}
+function rbSuggest(ym){ const out=[]; const t=today();
+  all('sites').filter(s=>s.bundle==='month'||s.bundle==='day').forEach(s=>{ const per=s.bundle==='day'?t:ym; const src=rbSource(s.id,per); if(src&&src.rows.length) out.push({id:`rb_${s.id}_${per}`,siteId:s.id,siteName:s.name||'',unit:s.bundle,period:per,n:src.rows.reduce((a,r)=>a+r.vids.length,0)}); });
+  return out; }
+async function rbComplete({list,att,bundleId,primary}){
+  const now=nowIso(), me=SHELL.meId(), items=[]; let n=0;
+  for(const x of list){ const v=get('visits',x.vid); if(!v) continue;
+    const d={...v,bundleId,doneQty:x.done||v.doneQty||''};
+    if(d.status!=='完了'){ const date=v.date||x.date; Object.assign(d,{status:'完了',completedAt:today(),date,month:v.month||ymOf(date),doneVia:'まとめ報告'}); const sn=snapOf(d); if(sn) d.snap=sn; n++; }
+    if(att&&!(d.attachments||[]).some(a=>a.id===att.id)) d.attachments=[...(d.attachments||[]),att];
+    if(x.vid!==primary&&!d.reportSent) d.reportSent={at:now,by:me,via:['まとめ報告'],bundle:bundleId};
+    items.push({col:'visits',id:v.id,data:d}); }
+  if(items.length) await putMany(items);
+  return {n,total:items.length};
+}
+async function rbSaveOrder(siteId,list){ const s=get('sites',siteId); if(s) await patch('sites',siteId,{rbOrder:list}); }
+/* 現場・顧客：まとめ方と書式 */
+{ const r0=rkSec; rkSec=function(col,o,chain){ let h=r0(col,o,chain); if(col!=='sites'&&col!=='customers') return h;
+  const groups=[...new Map(rbForms().map(f=>[f.group,f])).values()];
+  const add=`<div class="form" style="margin-top:8px">${col==='sites'?fld('まとめ報告表',`<select class="inp" data-rk="bundle" data-col="${col}" data-id="${esc(o.id||'')}">${opt('','まとめない（作業ごとに報告）',o.bundle||'')}${opt('month','月ごとにまとめる',o.bundle||'')}${opt('day','日ごとにまとめる',o.bundle||'')}</select>`):''}
+    ${fld('お客様指定の書式（まとめ報告表）',`<select class="inp" data-rk="rform" data-col="${col}" data-id="${esc(o.id||'')}">${opt('',col==='sites'?'顧客の設定に従う・なし':'なし',o.rform||'')}${groups.map(f=>opt(f.group,f.groupName||f.name,o.rform||'')).join('')}</select>`)}</div>`;
+  return h.replace(/<\/section>$/,add+'</section>'); }; }
+
+/* 設定：指定の書式（表形式） */
+const RB_FKEYS=[['name','書式の名前',1],['from','使い始める日',0,'date'],['ver','版の表示（例：2026.9版）'],['title1','1ページ目の題名'],['title2','チェック表の題名'],['shopName','店名（1ページ目）',1],['shopShort','店舗名（チェック表）'],['storeNo','店番'],
+  ['partner','作業パートナー（自社名）'],['tel','TEL'],['fax','FAX'],['leader','作業責任者（初期値）'],['leaderTel','責任者の連絡先（初期値）'],['start','開始時間（初期値）'],['end','終了時間（初期値。26:30も可）'],
+  ['workLabel','作業内容（チェック表の上）'],['unitLabel','実施台数の単位（例：台・枚）'],['match','対象にする作業（作業名に含む言葉。例：フィルター清掃）'],['defectNote','不具合欄の注意書き',1]];
+function rbFormEditHtml(){ const f=RK_ST.fedit; if(!f) return '';
+  return `<div class="callout" style="display:block;margin:10px 0"><div class="form">${RB_FKEYS.map(([k,l,w,ty])=>fld(l,`<input class="inp" type="${ty||'text'}" id="rbf_${k}" value="${esc(f[k]||'')}">`,!!w)).join('')}
+    ${fld('チェック項目（1行に1つ。チェック表の列になります）',`<textarea class="inp" id="rbf_checks" rows="5">${esc((f.checks||[]).join('\n'))}</textarea>`,true)}
+    ${fld('作業内容の表（1行に「項目｜作業箇所｜詳細｜台数を入れる行は ○」）',`<textarea class="inp" id="rbf_work" rows="4">${esc((f.work||[]).map(w=>[w.cat,w.place,String(w.detail||'').replace(/\n/g,'\\n'),w.count?'○':''].join('｜')).join('\n'))}</textarea>`,true)}
+  </div><p class="small muted" style="margin:6px 0 0">詳細の中の改行は \n と書きます。</p><div class="toolbar" style="margin:8px 0 0"><button class="btn" data-act="rbf-cancel">やめる</button><button class="btn pri" data-act="rbf-save">保存</button></div></div>`; }
+function rbFormsSec(){ const ed=rkCanEdit(), fs=rbForms(), groups=[...new Set(fs.map(f=>f.group))];
+  const use=g=>['sites','customers'].reduce((a,c)=>a+all(c).filter(x=>x.rform===g).length,0);
+  return `<section class="sec"><h3>お客様指定の書式（まとめ報告表）</h3><p class="small muted" style="margin:0 0 8px">同じ現場の作業をまとめて報告するときの書式です。毎年変わるときは「新しい版を作る」で、使い始める日を入れた版を足してください（作業の期間で自動で切り替わります。前の報告書は前の版のまま残ります）。現場の画面で「まとめ報告表」と書式を選びます。</p>
+    ${groups.length?groups.map(g=>{ const vs=fs.filter(f=>f.group===g).sort(by(f=>f.from||'')); return `<div class="list" style="margin-bottom:8px">${vs.map(f=>`<div class="li" style="cursor:default"><span class="grow"><b>${esc(f.name)}</b>　<span class="small muted">${esc(f.ver||'')}　${f.from?esc(f.from)+'から':''}　チェック${(f.checks||[]).length}列${f===vs[0]?'　使っている現場・顧客 '+use(g)+'件':''}</span></span>${ed?`<button class="btn sm" data-act="rbf-edit" data-id="${f.id}">編集</button><button class="btn sm" data-act="rbf-copy" data-id="${f.id}">新しい版を作る</button><button class="btn ghost sm" data-act="rbf-del" data-id="${f.id}">削除</button>`:''}</div>`).join('')}</div>`; }).join(''):'<div class="small muted">まだありません。</div>'}
+    ${rbFormEditHtml()}${ed&&!RK_ST.fedit?'<div class="toolbar" style="margin:8px 0 0"><button class="btn" data-act="rbf-new">＋ 書式を作る</button></div>':''}</section>`; }
+{ const m0=MTABS.renkei; MTABS.renkei=()=>{ const h=m0(); const i=h.indexOf('<section class="sec"><h3>アプリとリンク'); return i>=0?h.slice(0,i)+rbFormsSec()+h.slice(i):h+rbFormsSec(); }; }
+Object.assign(ACT_G,{
+  'rbf-new'(){ RK_ST.fedit={id:'',group:'',name:'',checks:['作業完了'],work:[{cat:'作業',place:'',detail:'',count:true}],unitLabel:'台',partner:S().companyName||'',tel:S().companyTel||''}; render(); },
+  'rbf-edit'(el){ const f=rbForms().find(x=>x.id===el.dataset.id); if(f){ RK_ST.fedit=structuredClone(f); render(); } },
+  'rbf-copy'(el){ const f=rbForms().find(x=>x.id===el.dataset.id); if(!f) return; const y=+(f.from||today()).slice(0,4)+1; RK_ST.fedit={...structuredClone(f),id:'',from:`${y}${(f.from||'-09-01').slice(4)}`,ver:''}; render(); toast('前の版をもとにしました。変わった所を直して保存してください'); },
+  'rbf-cancel'(){ RK_ST.fedit=null; render(); },
+  async 'rbf-save'(){ const e=RK_ST.fedit, v=k=>(ROOT.querySelector('#rbf_'+k)?.value||'').trim(); const f={...e}; RB_FKEYS.forEach(([k])=>f[k]=v(k));
+    if(!f.name) return toast('書式の名前を入れてください');
+    f.checks=v('checks').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,10);
+    f.work=v('work').split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map(s=>{ const [cat,place,detail,c]=s.split(/[｜|]/).map(x=>(x||'').trim()); return {cat:cat||'',place:place||'',detail:(detail||'').replace(/\\n/g,'\n'),count:!!c}; });
+    f.id=e.id||('rf'+Math.random().toString(36).slice(2,9)); f.group=e.group||f.id; f.groupName=f.groupName||f.name;
+    const fs=rbForms(); await rkCfgPut({forms:fs.some(x=>x.id===f.id)?fs.map(x=>x.id===f.id?f:x):[...fs,f]}); RK_ST.fedit=null; toast(`書式「${f.name}」を保存しました`); render(); },
+  async 'rbf-del'(el){ const fs=rbForms(), f=fs.find(x=>x.id===el.dataset.id); if(!f) return; if(el.dataset.ok!=='1'){ el.dataset.ok='1'; el.textContent='本当に削除'; return; }
+    await rkCfgPut({forms:fs.filter(x=>x.id!==f.id)}); toast(`「${f.name}」を削除しました（作成済みの表はそのまま残ります）`); render(); },
+});
+
+window.G_API={rkOpenVisit:id=>rkOpenVisit(id),rbSource:(s,p)=>rbSource(s,p),rbSuggest:m=>rbSuggest(m),rbComplete:o=>rbComplete(o),rbSaveOrder:(s,l)=>rbSaveOrder(s,l),pdfLib:()=>loadPdfLib(),upload:(f,prefix)=>assets?assets.upload(f,prefix):Promise.reject(new Error('この画面ではファイルを保存できません')),openRsend:id=>{ if(get('visits',id)) openSheet({kind:'rsend',id}); },rkOpenPorder:(p,k)=>rkOpenPorder(p,k),
   go(r){ if(r!=='schedule') VS.multi=null; VS.route=r; VS.more=false; VS.placing=null; VS.picker=null; sheet=null; render(); },
   route:()=>VS.route,
   badges(){ const c=counts(); return {jobs:c.follow+c.rec, schedule:c.unsched+c.late}; },
