@@ -685,7 +685,10 @@ $("#pvRotate").onclick=async()=>{
   try{
     const m=(await pGet(k+"|m"))||{},r=rot90(await blobImg(rb));
     const c=document.createElement("canvas");c.width=r.width;c.height=r.height;const g=c.getContext("2d");g.drawImage(r,0,0);
-    if(m.board&&D.cfg.board.on)drawBoard(g,c.width,c.height,boardRows(D.cfg,D.meta,PV.slot.name,PV.stage,new Date(m.date||Date.now())),D.cfg.board.pos,D.cfg.board.size);
+    // 看板は撮影したときの内容・位置・大きさのまま入れ直す（その情報がない写真だけ今の設定で）
+    if(m.board&&(m.rows||D.cfg.board.on)){
+      const rows=Array.isArray(m.rows)?m.rows:boardRows(D.cfg,D.meta,PV.slot.name,PV.stage,new Date(m.date||Date.now()));
+      drawBoard(g,c.width,c.height,rows,m.pos||D.cfg.board.pos,m.size||D.cfg.board.size)}
     const blob=await toBlob(c,.92),th=await makeThumb(blob);
     await pPut(k,blob);await pPut(k+"|t",th);await pPut(k+"|r",await toBlob(r,.9));dropThumb(k);dirty=true;
     URL.revokeObjectURL(PV.url);PV.blob=blob;PV.url=URL.createObjectURL(blob);pvImg.src=PV.url;
@@ -812,7 +815,7 @@ $("#accept").onclick=async()=>{
   const k=pk(cur.slot.id,cur.stage),b=$("#accept");b.disabled=true;
   try{const th=await makeThumb(reviewBlob);await pPut(k,reviewBlob);await pPut(k+"|t",th);dropThumb(k);
     // 看板を入れる前の写真も残す（あとで「回転」したときに看板まで横にならないように）
-    if(raw){await pPut(k+"|r",await toBlob(raw,.9));await pPut(k+"|m",{date:+(cur.date||new Date()),board:boardActive()})}}
+    if(raw){await pPut(k+"|r",await toBlob(raw,.9));await pPut(k+"|m",{date:+(cur.date||new Date()),board:boardActive(),rows:boardActive()?curRows():null,pos:D.cfg.board.pos,size:D.cfg.board.size})}}
   finally{b.disabled=false}
   const name=cur.slot.name,stage=cur.stage;
   closeCamera();renderSlots();
