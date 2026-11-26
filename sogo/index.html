@@ -733,6 +733,7 @@ body.kiosk-on .app,body.kiosk-on #shell-tab{display:none}
 #S .callout.w{background:var(--warn-soft)}
 #S .callout.g{background:var(--ok-soft)}
 #S .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
+@media (min-width:760px){ #S .tabs.settabs,#G .tabs.settabs{flex-wrap:wrap;overflow:visible;row-gap:2px} }
 #S .tabs button{border:0;background:none;padding:8px 12px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
 #S .tabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:700}
 #S .toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(16px + env(safe-area-inset-top,0px));background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:9px;z-index:80;font-size:13px;box-shadow:var(--shadow);max-width:calc(100% - 32px)}
@@ -1054,7 +1055,7 @@ const SHELL=(()=>{
         <div class="kq-pin">${'●'.repeat(KQ.pin.length)||'<span>暗証番号</span>'}</div>
         <div class="kq-keys">${[1,2,3,4,5,6,7,8,9,'消',0,'戻'].map(x=>`<button data-k="key" data-v="${x}">${x}</button>`).join('')}</div>
         <div class="kq-acts"><button class="kq-in" data-k="in" ${k!=='before'||KQ.busy?'disabled':''}>出勤</button><button class="kq-out" data-k="out" ${k!=='work'||KQ.busy?'disabled':''}>退勤</button></div>
-        <button class="kq-back" data-k="back">名前の一覧にもどる</button></div>`;
+        <button class="kq-back" data-k="back">名前の一覧に戻る</button></div>`;
     }
     h+=`<div class="kq-foot">${KQ.api.live?'':'<span>試作：暗証番号は確認しません（本番ではサーバーで確認します）</span>'}<button data-k="quit">${KQ.api.live?'この端末をログアウト':'試作を閉じる'}</button></div>`;
     el.innerHTML=`<div class="kq">${h}</div>`;
@@ -1308,7 +1309,7 @@ const SHELL=(()=>{
     const lv=LVS[st.role]??4; return lv<=t[4]||(!!t[5]&&(st.extra||[]).includes(t[5]))||(t[5]==='price.edit'&&(st.extra||[]).includes('master.edit'));
   }
   function setKeyOf(m,t){ if(m==='G') return {settings:'company',staff:'users',prices:'prices',templates:'prices',renkei:'renkei',data:'data',auth:'perm'}[t]||''; return {time:'time',cal:'cal',work:'work',view:'view',data:'sdata'}[t]||''; }
-  function setTabsHtml(curKey){ return `<div class="tabs" role="tablist">${SET_TABS.filter(t=>t[3]&&setTabOk(t[0])).map(t=>`<button role="tab" data-sgo="settab" data-k="${t[0]}" aria-selected="${t[0]===curKey}">${t[3]}</button>`).join('')}</div>`; }
+  function setTabsHtml(curKey){ return `<div class="tabs settabs" role="tablist">${SET_TABS.filter(t=>t[3]&&setTabOk(t[0])).map(t=>`<button role="tab" data-sgo="settab" data-k="${t[0]}" aria-selected="${t[0]===curKey}">${t[3]}</button>`).join('')}</div>`; }
   function goSet(k){
     if(!k||!setTabOk(k)) k=(lastSet&&setTabOk(lastSet)?lastSet:'')||(SET_TABS.find(t=>t[3]&&setTabOk(t[0]))||[])[0]||'view';
     const t=SET_TABS.find(x=>x[0]===k); lastSet=k;
@@ -3703,7 +3704,6 @@ function ruleDates(r,start,to,from){
   return out;
 }
 const horizonOf=r=>addDays(today(),['daily','weekday'].includes(r.kind)?183:366);
-const seriesOcc=sid=>all('events').filter(e=>e.seriesId===sid);
 const rootOf=e=>e.rootId||e.seriesId;
 const lineOcc=e=>{ const rt=rootOf(e); return all('events').filter(o=>o.seriesId&&rootOf(o)===rt); };
 async function makeOccurrences(base,r,start,from){
@@ -4150,7 +4150,7 @@ function rvOpen(key){
 const ACT_S={
   resGoSet(){ SHELL.goSet('cal'); },
   async resPick(el){ if(sheet?.kind!=='event') return; sheet.e.res=resToggle(sheet.e.res,el.dataset.rid); sheet.resErr=null; renderOverlay(); },
-  resEdit(el){ if(!canRes()) return toast('登録できるのは権限3（営業・事務）までの方です'); const id=el.dataset.id; const r=id?structuredClone(get('resources',id)):{id:null,cat:VS.rvCat||'car',name:'',qty:1,inspects:(VS.rvCat||'car')==='car'?[{label:'車検',date:''},{label:'任意保険の更新',date:''}]:[],off:[],active:true}; openSheet({kind:'resEdit',r}); },
+  resEdit(el){ if(!canRes()) return toast('登録できるのは段階1〜3（管理者・責任者・営業事務）の人です'); const id=el.dataset.id; const r=id?structuredClone(get('resources',id)):{id:null,cat:VS.rvCat||'car',name:'',qty:1,inspects:(VS.rvCat||'car')==='car'?[{label:'車検',date:''},{label:'任意保険の更新',date:''}]:[],off:[],active:true}; openSheet({kind:'resEdit',r}); },
   resCat(el){ sheet.r.cat=el.dataset.v; if(sheet.r.cat==='car'&&!(sheet.r.inspects||[]).length) sheet.r.inspects=[{label:'車検',date:''},{label:'任意保険の更新',date:''}]; if(sheet.r.cat==='equip'&&sheet.r.track&&!(sheet.r.inspects||[]).length) sheet.r.inspects=[{label:'点検',date:''}]; renderOverlay(); },
   resInsAdd(){ (sheet.r.inspects=sheet.r.inspects||[]).push({label:sheet.r.cat==='car'?'定期点検':'点検',date:''}); renderOverlay(); },
   resInsDel(el){ sheet.r.inspects.splice(+el.dataset.i,1); renderOverlay(); },
@@ -5636,7 +5636,6 @@ const rbN=v=>v===''||v==null?'':Math.max(0,Math.round(+v||0));
 function rbSum(rows){ let total=0,done=0,n=0; rows.forEach(r=>{ total+=+r.total||0; if(r.done!==''&&r.done!=null){ done+=+r.done||0; n++; } }); return {total,done,n}; }
 const rbChecksOf=b=>(b.form&&b.form.checks)||[];
 const rbRowDone=(r,b)=>r.done!==''&&r.done!=null&&(rbChecksOf(b).length?(r.checks||[]).filter(Boolean).length>=rbChecksOf(b).length:true);
-const rbWorkersFrom=(b,rows)=>{ const s=new Set((b.head?.workers||[]).filter(Boolean)); return [...s]; };
 const rbDates=rows=>[...new Set(rows.map(r=>r.date).filter(Boolean))].sort();
 
 /* ---- 一覧と表 ---- */
@@ -5715,7 +5714,7 @@ SHEETS.rbNew=()=>{
     <label class="fld"><span>まとめる単位</span><select class="inp" id="rbn-unit"><option value="month" ${unit!=='day'?'selected':''}>月ごと</option><option value="day" ${unit==='day'?'selected':''}>日ごと</option></select></label>
     <label class="fld"><span>${unit==='day'?'作業日':'対象月'}</span><input class="inp" id="rbn-per" type="${unit==='day'?'date':'month'}" value="${esc(per)}"></label>
   </div><p class="small muted">その現場・期間の作業予定から行を作ります。書式は現場（なければ顧客）に設定したものを使います。</p></div>`,
-  foot:`<button class="btn" data-act="close">やめる</button><button class="btn pri" data-act="rbCreate">作る</button>`};
+  foot:`<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="rbCreate">作る</button>`};
 };
 async function rbCreate(siteId,period){
   const site=get('sites',siteId); if(!site) return toast('現場を選んでください');
@@ -5834,7 +5833,7 @@ SHEETS.rbSign=()=>{ const b=get('rbundles',sheet.id); if(!b) return {title:'検�
     <label class="fld"><span>検収者のお名前（任意）</span><input class="inp" id="rbs-name" value="${esc(sheet.name||'')}"></label>
     <div class="fld"><span>サイン（お客様に書いてもらう）</span><canvas id="rbs-pad" width="600" height="220" style="width:100%;max-width:600px;height:180px;border:1px solid var(--line);border-radius:8px;background:#fff;touch-action:none"></canvas>
     <div><button class="btn sm" data-act="rbSignClear">書き直す</button></div></div></div>`,
-  foot:`<button class="btn" data-act="close">やめる</button><button class="btn pri" data-act="rbSubmit">提出する</button>`,
+  foot:`<button class="btn" data-act="close">キャンセル</button><button class="btn pri" data-act="rbSubmit">提出する</button>`,
   after(){ const c=ROOT.querySelector('#rbs-pad'); if(!c||c.dataset.on) return; c.dataset.on='1'; const g=c.getContext('2d'); g.lineWidth=3.2; g.lineCap='round'; g.strokeStyle='#111'; let dn=false;
     const pt=e=>{ const r=c.getBoundingClientRect(); return [(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height]; };
     c.onpointerdown=e=>{ dn=true; c.setPointerCapture(e.pointerId); const [x,y]=pt(e); g.beginPath(); g.moveTo(x,y); sheet.signed=true; };
@@ -5879,8 +5878,8 @@ Object.assign(ACT_S,{
       const u=await assets.upload(f,isPartnerUser()?'partner/'+meId():undefined);
       const nb={...get('rbundles',b.id),sign,head:{...(b.head||{}),confirm:conf},pdf:{id:u.id,name:f.name,size:u.sizeBytes||f.size},status:'submitted',submitted:{at:new Date().toISOString(),by:meId()}};
       await put('rbundles',b.id,nb); closeSheet();
-      if(rbInternal()&&G_API.rbComplete){ const r=await rbApply(nb); toast(`提出しました。作業予定${r.n}件を完了にしました`); }
-      else toast('提出しました。事務所が確認すると作業予定が完了になります');
+      let done=null; if(rbInternal()&&G_API.rbComplete){ try{ done=await rbApply(nb); }catch(_){ done=null; } }
+      toast(done?`提出しました。作業予定${done.n}件を完了にしました`:'提出しました。事務所が確認すると作業予定が完了になります');
       render();
     }catch(err){ el.disabled=false; el.textContent='提出する'; toast('提出できませんでした（'+(err?.message||'エラー')+'）'); } },
   async rbConfirm(){ const b=get('rbundles',RB_ST.view); if(!b) return; const r=await rbApply(b); toast(`確認しました。作業予定${r.n}件を完了にしました`); render(); },
@@ -7592,12 +7591,6 @@ async function saveContract(){
   else toast(isDaily(c)?'日常清掃の契約を保存しました':'定期契約を保存しました');
   openSheet({kind:'contract',live:false,staffChanged,draft:JSON.parse(JSON.stringify(get('contracts',c.id)))});
 }
-function planVisits0(cs,from,n){
-  const have=new Set(all('visits').filter(v=>v.contractId).map(v=>v.contractId+'|'+vMonth(v)));
-  const out=[];
-  cs.forEach(c=>{ if(!c||c.cycle?.kind==='flat') return; cycleMonths(c,from,n).forEach(m=>{ if(have.has(c.id+'|'+m)) return; out.push({col:'visits',id:`g-${c.id}-${m}`,data:{contractId:c.id,month:m,date:'',start:'',end:'',staffIds:c.staffIds||[],status:'予定',qty:c.qty??1,...(c.demo?{demo:true}:{})}}); }); });
-  return out;
-}
 async function genVisits(cs,from,n,onProg){ const items=planVisits(cs,from,n); await putMany(items,onProg); return items.length; }
 async function saveNewJob(){
   if(!can('job.edit')) return toast('権限がありません');
@@ -8119,7 +8112,7 @@ SHEETS.jdone=({id})=>{ const j=get('jobs',id);
     foot:`<button class="btn" data-act="close-sheet">まだ</button><button class="btn pri" data-act="qa-done" data-id="${id}">完了にする</button>`}; };
 SHEETS.lost=({id})=>{ const j=get('jobs',id);
   return {title:'失注にする',body:`<section class="sec"><p style="margin:0 0 8px"><b>${esc(j?.title||'')}</b></p><div class="form">${fld('失注の理由',`<select class="inp" id="lost_reason">${LOST_REASONS.map(r=>opt(r,r,j?.lostReason)).join('')}</select>`)}${fld('メモ（任意）',`<input class="inp" id="lost_note" value="${esc(j?.lostNote||'')}">`,true)}</div></section>`,
-    foot:`<button class="btn" data-act="close-sheet">やめる</button><button class="btn danger" data-act="qa-lost-yes" data-id="${id}">失注にする</button>`}; };
+    foot:`<button class="btn" data-act="close-sheet">キャンセル</button><button class="btn danger" data-act="qa-lost-yes" data-id="${id}">失注にする</button>`}; };
 SHEETS.osend=({id})=>{
   const o=get('orders',id); if(!o) return {title:'発注書',body:'<p class="empty">見つかりません</p>'};
   const sup=get('staff',o.supplierId)||{}, partner=sup.kind==='協力会社';
@@ -8739,7 +8732,7 @@ function sealBar(st,doc,id){
   return `<div class="callout ${on&&!approved?'w':''}" style="display:block;margin-bottom:10px">
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>角印</b>
     ${ok&&has?`<div class="seg">${[['1','押す'],['0','押さない']].map(([v,l])=>`<button data-act="seal-tgl" data-v="${v}" aria-pressed="${on===(v==='1')}">${l}</button>`).join('')}</div>`
-      :`<span class="small">${!has?'印影がまだ登録されていません（設定 → 会社情報）':'押さずに出します（押せるのは権限1・2と、個別に許可された人）'}</span>`}
+      :`<span class="small">${!has?'印影がまだ登録されていません（設定 → 会社情報）':'押さずに出します（押せるのは段階1・2と、個別に許可された人）'}</span>`}
     <span class="small">${approved?'<span class="pill g">承認済み</span>':ap&&ap.status==='申請中'?'<span class="pill w">承認待ち</span>':'<span class="pill">承認なし</span>'}${on&&!approved?'　承認前に角印ありで出すと、その旨が記録されます':''}</span></div>
     ${logs.length?`<div class="small muted" style="margin-top:4px">出した記録：${logs.map(l=>`${esc(String(l.at||'').slice(5,16).replace('T',' '))} ${esc(staffName(l.by))} ${l.sealed?'角印あり':'角印なし'}${l.sealed&&!l.approved?'（承認前）':''}・${esc(l.how)}`).join('　／　')}</div>`:''}</div>`;
 }
@@ -8768,7 +8761,7 @@ function sealSettingsSec(){ const d=sealDoc(), admin=roleOf(meStaff())==='admin'
   return `<section class="sec"><h3>角印（見積書・発注書）</h3>
     <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">${d?.img?`<img src="${d.img}" alt="角印" style="width:90px;height:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px">`:'<span class="small muted">まだ登録されていません</span>'}
     ${admin?`<label class="btn sm">画像を選ぶ<input type="file" accept="image/*" id="seal-file" hidden></label>${d?.img?`<label class="small">大きさ <input class="inp num" id="seal-size" style="width:64px;text-align:right" value="${esc(d.size||21)}"> mm</label><button class="btn sm danger" data-act="seal-del">登録を消す</button>`:''}`:canSealG()?'':'<span class="small muted">（角印を押せる人だけに表示されます）</span>'}</div>
-    <p class="small muted" style="margin:6px 0 0">スキャンや写真の画像から、白い部分を透明にして登録します。登録・変更は管理者だけです。角印を押せるのは権限1・2と「角印を押す」を個別に付けた人で、承認前でも出せます。角印の有無・承認の有無は、出すたびに記録されます。</p></section>`; }
+    <p class="small muted" style="margin:6px 0 0">スキャンや写真の画像から、白い部分を透明にして登録します。登録・変更は管理者だけです。角印を押せるのは段階1・2の人と「角印を押す」を個別に付けた人で、承認前でも出せます。角印の有無・承認の有無は、出すたびに記録されます。</p></section>`; }
 { const s0=MTABS.settings; MTABS.settings=()=>{ const h=s0(); const i=h.indexOf('<section class="sec"><h3>会社情報'); const sec=sealSettingsSec(); return i>=0?h.slice(0,i)+sec+h.slice(i):sec+h; }; }
 docOn('change',async e=>{ const t=e.target;
   if(t.id==='seal-file'&&t.files&&t.files[0]){ if(roleOf(meStaff())!=='admin') return toast('角印の登録は管理者だけができます');
@@ -8854,7 +8847,7 @@ SHEETS.csvImp=(st)=>{ const p=st.plan;
       ${sk.length?`<li>取り込まない行：${sk.map(([k,v])=>`${esc(k)} ${v}行`).join('、')}（契約資料はすでに定期契約にあり、施工月分は月ごとの請求合計で作業内容がないため）</li>`:''}
       ${p.newP.length?`<li>追加する協力会社：${esc(p.newP.map(x=>x.data.name).join('、'))}</li>`:''}
     </ul>${st.prog?`<div class="callout"><span>取り込み中… ${st.prog}</span></div>`:''}`,
-    foot:`<button class="btn" data-act="close-sheet">やめる</button><button class="btn pri" data-act="ci-go" ${st.prog?'disabled':''}>${p.items.length}件を取り込む</button>`}; };
+    foot:`<button class="btn" data-act="close-sheet">キャンセル</button><button class="btn pri" data-act="ci-go" ${st.prog?'disabled':''}>${p.items.length}件を取り込む</button>`}; };
 Object.assign(ACT_G,{
   'ci-open'(){ if(!can('import')) return toast('取り込みは管理者だけができます'); openSheet({kind:'csvImp',live:false}); },
   async 'ci-go'(){ const st=sheet; if(!st?.plan||st.prog) return; st.prog='0/'+st.plan.items.length; refreshSheet();
