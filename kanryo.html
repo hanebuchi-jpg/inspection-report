@@ -9,6 +9,7 @@
 <meta name="author" content="株式会社オーアンドケー 羽根淵">
 <meta name="copyright" content="© 2026 株式会社オーアンドケー">
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1f4e5f">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -33,11 +34,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#11181d; --surface:#1a242b; --ink:#e4eaee; --muted:#9aa8b1; --line:#2c3a43;
   --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
-  --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; color-scheme:dark}}
+  --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; --brand-text:#86c8de; --on-ok:#062012; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#11181d; --surface:#1a242b; --ink:#e4eaee; --muted:#9aa8b1; --line:#2c3a43;
   --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
-  --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; color-scheme:dark}
+  --ok:#4fb47a; --ng:#e8695b; --na:#8d9aa3; --chip:#24323b; --brand-text:#86c8de; --on-ok:#062012; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6}
@@ -117,7 +118,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .chk .txt{min-width:0}
 .seg{grid-column:2;display:flex;gap:6px;flex-wrap:wrap}
 .seg button{border:1px solid var(--line);background:var(--bg);border-radius:20px;padding:5px 14px;font-size:13px;font-weight:700;min-width:64px}
-.seg button[aria-pressed="true"][data-v="ok"]{background:var(--ok);border-color:var(--ok);color:#fff}
+.seg button[aria-pressed="true"][data-v="ok"]{background:var(--ok);border-color:var(--ok);color:var(--on-ok,#fff)}
 .seg button[aria-pressed="true"][data-v="ng"]{background:var(--ng);border-color:var(--ng);color:#fff}
 .seg button[aria-pressed="true"][data-v="na"]{background:var(--na);border-color:var(--na);color:#fff}
 .chk input.note{grid-column:2;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 8px;font-size:13px;min-width:0}
@@ -184,7 +185,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 #boardPrev{width:100%;max-width:440px;height:auto;border-radius:6px;display:block}
 .tpl-list{display:flex;flex-direction:column;gap:6px}
 .tpl-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg);border-radius:6px;flex-wrap:wrap}
-.tpl-item .nm{flex:1;min-width:0;font-weight:700;text-align:left;background:none;border:0;padding:4px 0;color:var(--brand);text-decoration:underline;text-underline-offset:3px;font-size:15px}
+.tpl-item .nm{flex:1;min-width:0;font-weight:700;text-align:left;background:none;border:0;padding:4px 0;color:var(--brand-text,var(--brand));text-decoration:underline;text-underline-offset:3px;font-size:15px}
 .tpl-item.active{outline:2px solid var(--accent)}
 .tpledit{border:2px solid var(--accent)}
 .tplrecv{border:2px solid var(--ok)}
@@ -251,7 +252,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .om-bar-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted)}
 .om-bar .om-btns{display:flex;gap:8px;flex-wrap:wrap}
 .om-bar .om-btns .btn{flex:1 1 140px;padding:12px 14px}
-.om-link{border:0;background:transparent;color:var(--brand);font-size:13px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit}
+.om-link{border:0;background:transparent;color:var(--brand-text,var(--brand));font-size:13px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit}
 .om-md{position:fixed;inset:0;z-index:2000;background:rgba(10,14,20,.55);display:flex;justify-content:center;align-items:flex-start;overflow:auto;overscroll-behavior:contain;
   padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .om-md[hidden]{display:none!important}
@@ -277,7 +278,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .om-empty{font-size:13px;color:var(--muted);background:var(--bg);border-radius:10px;padding:10px 12px;margin:0}
 .om-add{display:grid;grid-template-columns:1fr 1.6fr auto;gap:6px}
 @media (max-width:480px){.om-add{grid-template-columns:1fr auto}.om-add input:first-child{grid-column:1/-1}}
-.om-add button{border:1px solid var(--brand);color:var(--brand);background:transparent;border-radius:8px;padding:0 16px;font-weight:700;min-height:42px;cursor:pointer;font-family:inherit}
+.om-add button{border:1px solid var(--brand);color:var(--brand-text,var(--brand));background:transparent;border-radius:8px;padding:0 16px;font-weight:700;min-height:42px;cursor:pointer;font-family:inherit}
 .om-big{width:100%;padding:16px!important;font-size:16px!important}
 .om-done{background:#2e7d32!important;color:#fff!important;border-color:#2e7d32!important}
 .om-warn{background:#b3261e!important;color:#fff!important;border-color:#b3261e!important}

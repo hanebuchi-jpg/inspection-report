@@ -9,6 +9,7 @@
 <meta name="author" content="株式会社オーアンドケー 羽根淵">
 <meta name="copyright" content="© 2026 株式会社オーアンドケー">
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -33,11 +34,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#11181d; --surface:#1a242b; --ink:#e4eaee; --muted:#9aa8b1; --line:#2c3a43;
   --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
-  --ok:#4fb47a; --ng:#e8695b; --chip:#24323b; color-scheme:dark}}
+  --ok:#4fb47a; --ng:#e8695b; --chip:#24323b; --brand-text:#86c8de; --on-ok:#062012; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#11181d; --surface:#1a242b; --ink:#e4eaee; --muted:#9aa8b1; --line:#2c3a43;
   --brand:#2f6f85; --brand-ink:#ffffff; --accent:#f0b14f; --accent-ink:#2a1a00;
-  --ok:#4fb47a; --ng:#e8695b; --chip:#24323b; color-scheme:dark}
+  --ok:#4fb47a; --ng:#e8695b; --chip:#24323b; --brand-text:#86c8de; --on-ok:#062012; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 img{max-width:100%}
@@ -142,7 +143,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .om-bar-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--muted)}
 .om-bar .om-btns{display:flex;gap:8px;flex-wrap:wrap}
 .om-bar .om-btns .btn{flex:1 1 140px;padding:12px 14px}
-.om-link{border:0;background:transparent;color:var(--brand);font-size:13px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit}
+.om-link{border:0;background:transparent;color:var(--brand-text,var(--brand));font-size:13px;font-weight:700;padding:6px 2px;cursor:pointer;font-family:inherit}
 .om-md{position:fixed;inset:0;z-index:2000;background:rgba(10,14,20,.55);display:flex;justify-content:center;align-items:flex-start;overflow:auto;overscroll-behavior:contain;
   padding:calc(12px + env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 .om-md[hidden]{display:none!important}
@@ -168,7 +169,7 @@ textarea.list{width:100%;border:1px solid var(--line);border-radius:6px;padding:
 .om-empty{font-size:13px;color:var(--muted);background:var(--bg);border-radius:10px;padding:10px 12px;margin:0}
 .om-add{display:grid;grid-template-columns:1fr 1.6fr auto;gap:6px}
 @media (max-width:480px){.om-add{grid-template-columns:1fr auto}.om-add input:first-child{grid-column:1/-1}}
-.om-add button{border:1px solid var(--brand);color:var(--brand);background:transparent;border-radius:8px;padding:0 16px;font-weight:700;min-height:42px;cursor:pointer;font-family:inherit}
+.om-add button{border:1px solid var(--brand);color:var(--brand-text,var(--brand));background:transparent;border-radius:8px;padding:0 16px;font-weight:700;min-height:42px;cursor:pointer;font-family:inherit}
 .om-big{width:100%;padding:16px!important;font-size:16px!important}
 .om-done{background:#2e7d32!important;color:#fff!important;border-color:#2e7d32!important}
 .om-warn{background:#b3261e!important;color:#fff!important;border-color:#b3261e!important}

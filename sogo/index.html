@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>真総合アプリ</title>
@@ -1749,7 +1750,7 @@ function monthCal(ids){
     const d=addDays(start,i); if(i===35&&ymOf(d)!==m) break;
     const evs=eventsFor(d,ids); const wd=i%7;
     h+=`<div class="cd ${VS.wishMode?'wishing':''} ${ymOf(d)!==m?'out':''} ${d===today()?'today':''} ${d===VS.calSel?'sel':''}" data-act="calDay" data-date="${d}" data-fit>
-      <div class="cdn"><span class="${wd===0||hoco(d)?'sun':wd===6?'sat':''}" ${hoco(d)?`title="${esc(hoco(d))}"`:''}>${+d.slice(8)}</span>${hoco(d)?`<small class="muted" style="font-size:10px;color:var(--danger,#c33)">${esc(hoco(d))}</small>`:''}${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
+      <div class="cdn"><span class="${wd===0||hoco(d)?'sun':wd===6?'sat':''}" ${hoco(d)?`title="${esc(hoco(d))}"`:''}>${+d.slice(8)}</span>${hoco(d)?`<small class="muted" style="font-size:10px;color:var(--bad,#c33)">${esc(hoco(d))}</small>`:''}${ids.length===1&&isShiftStaff(get('staff',ids[0]))?wishBadge(wishOf(ids[0],d)):''}${evs.length?`<span class="cnt">${evs.length}件</span>`:''}</div>
       ${evs.map(e=>evChip(e,multi)).join('')}
       <div class="cdots">${evs.slice(0,4).map(e=>e.rp?'<i class="rpdot"></i>':`<i class="ty${tyIdx(e.type)}" style="background:var(--c)"></i>`).join('')}</div></div>`;
   }
@@ -4693,6 +4694,7 @@ Object.assign(ACT_S,{
 #S .cev.rpc .tm,#S .cev.rpc .muted{color:rgba(255,255,255,.85)}
 #S .cev.rpc .rpk{margin-right:3px}
 #S .cev.rpc .rpb{font-weight:400;color:rgba(255,255,255,.88)}
+@media (prefers-color-scheme: dark){#S .cev.rpc{color:#062012}#S .cev.rpc .tm,#S .cev.rpc .muted,#S .cev.rpc .rpb{color:rgba(6,32,18,.85)}}
 #S .cdots i.rpdot{background:var(--ok)!important}
 #S .li.rpl{border-left:4px solid var(--ok)}
 `; const el=document.createElement('style'); el.textContent=css; document.head.appendChild(el); })();
@@ -5514,8 +5516,8 @@ document.head.insertAdjacentHTML('beforeend',`<style>
 #S .costbar{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:flex-end;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 14px;margin:0 0 10px}
 #S .costbar .ttl{width:100%;font-weight:700;display:flex;gap:8px;align-items:center}
 #S .costbar .l{font-size:11px;color:var(--muted)} #S .costbar .v{font-weight:700}
-#S .costbar .bad .v,#S td.bad{color:var(--danger,#c62828)} #S .costbar.over{border-color:var(--danger,#c62828)}
-#S .costbar .msg{width:100%;color:var(--danger,#c62828);font-size:12px;font-weight:700}
+#S .costbar .bad .v,#S td.bad{color:var(--bad,#c62828)} #S .costbar.over{border-color:var(--bad,#c62828)}
+#S .costbar .msg{width:100%;color:var(--bad,#c62828);font-size:12px;font-weight:700}
 #S tr.tot td{border-top:2px solid var(--line)}
 </style>`);
 
@@ -5670,9 +5672,9 @@ function rbDetail(b){
   const hd=b.head||{};
   let h=`<div class="vhead"><button class="btn sm" data-act="rbBack">‹ 一覧</button><h1 style="margin-left:8px">${esc(b.siteName)}　${esc(rbPeriodL(b))}</h1><span class="pill ${st[0]}" style="margin-left:8px">${st[1]}</span></div>
   <style>.rb-wrap{overflow:auto;max-height:calc(100dvh - 260px);border:1px solid var(--line);border-radius:10px}.rb-tab{border-collapse:separate;border-spacing:0;width:100%;font-size:14px}
-  .rb-tab th{position:sticky;top:0;background:var(--panel,#fff);z-index:2;font-size:12px;padding:6px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
-  .rb-tab td{padding:4px;border-bottom:1px solid var(--line);vertical-align:middle}.rb-tab .rb-t{position:sticky;left:0;background:var(--panel,#fff);z-index:1;min-width:9em;max-width:14em}
-  .rb-tab .rb-ck{text-align:center;width:34px}.rb-tab .rb-ck input{width:22px;height:22px}.rb-n{width:64px}.rb-note{min-width:10em}.rb-done td{background:color-mix(in srgb,var(--ok,#16794a) 8%,transparent)}.rb-done .rb-t{background:color-mix(in srgb,var(--ok,#16794a) 8%,var(--panel,#fff))}
+  .rb-tab th{position:sticky;top:0;background:var(--surface,#fff);z-index:2;font-size:12px;padding:6px 4px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .rb-tab td{padding:4px;border-bottom:1px solid var(--line);vertical-align:middle}.rb-tab .rb-t{position:sticky;left:0;background:var(--surface,#fff);z-index:1;min-width:9em;max-width:14em}
+  .rb-tab .rb-ck{text-align:center;width:34px}.rb-tab .rb-ck input{width:22px;height:22px}.rb-n{width:64px}.rb-note{min-width:10em}.rb-done td{background:color-mix(in srgb,var(--ok,#16794a) 8%,transparent)}.rb-done .rb-t{background:color-mix(in srgb,var(--ok,#16794a) 8%,var(--surface,#fff))}
   .rb-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:6px 0}</style>
   <div class="panel" style="margin-bottom:12px"><div class="pbody">
     <div style="display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center"><span>書式：<b>${esc(f.name||'')}</b>${f.ver?` <span class="small muted">${esc(f.ver)}</span>`:''}</span><span>入力済み <b>${fin}</b>/${rows.length}行</span><span>実施 <b>${s.done}</b>／総台数 ${s.total}台</span>${dates.length?`<span class="small muted">作業日 ${dates.map(d=>+d.slice(8)+'日').join('・')}</span>`:''}</div>
@@ -5802,7 +5804,7 @@ async function rbPhotoPages(b,start){
   const ph=b.photos||[]; if(!ph.length) return [];
   const urls=[]; for(const p of ph){ try{ const bl=await SHELL.fileBlob(p.id); urls.push({u:await new Promise(ok=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.readAsDataURL(bl); }),n:p.name||''}); }catch(_){} }
   const out=[]; for(let i=0;i<urls.length;i+=4){ const g=urls.slice(i,i+4);
-    out.push(`<div class="rbp" style="width:794px;height:1123px;box-sizing:border-box;padding:46px 48px;background:#fff;font-family:sans-serif;position:relative"><div style="font-size:16px;font-weight:700;margin-bottom:10px">作業写真　${esc(b.siteName)}　${esc(rbPeriodL(b))}</div>
+    out.push(`<div class="rbp" style="width:794px;height:1123px;box-sizing:border-box;padding:46px 48px;background:#fff;color:#111;font-family:sans-serif;position:relative"><div style="font-size:16px;font-weight:700;margin-bottom:10px">作業写真　${esc(b.siteName)}　${esc(rbPeriodL(b))}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">${g.map(x=>`<div style="text-align:center"><img src="${x.u}" style="width:100%;height:440px;object-fit:contain;background:#f4f4f4"><div style="font-size:11px;margin-top:4px">${esc(x.n)}</div></div>`).join('')}</div>
       <div style="position:absolute;bottom:22px;right:48px;font-size:10px;color:#666">${start+out.length}</div></div>`); }
   return out;
@@ -8502,7 +8504,7 @@ function partnerRows(pid){
 }
 VIEWS.partners={
   shell:()=>`<div class="vhead"><h1>協力会社別の発注</h1></div><div class="toolbar" id="tools" style="flex-wrap:wrap;align-items:center"></div>`,
-  tools:()=>`${VS.pvSel?`<button class="btn" data-act="pv-open" data-id="">← 全社の集計</button>`:''}<select class="inp auto" id="pvSel" aria-label="協力会社" style="width:auto;max-width:360px;flex:0 1 auto;color:var(--text);background:var(--surface);font-weight:700"><option value="">協力会社を選ぶ（全社の集計）</option>${partners().map(p=>`<option value="${p.id}" ${VS.pvSel===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+  tools:()=>`${VS.pvSel?`<button class="btn" data-act="pv-open" data-id="">← 全社の集計</button>`:''}<select class="inp auto" id="pvSel" aria-label="協力会社" style="width:auto;max-width:360px;flex:0 1 auto;color:var(--fg);background:var(--surface);font-weight:700"><option value="">協力会社を選ぶ（全社の集計）</option>${partners().map(p=>`<option value="${p.id}" ${VS.pvSel===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
     ${VS.pvSel?`<div class="seg" role="group" aria-label="状態">${[['now','依頼中'],['past','過去'],['all','すべて']].map(([k,l])=>`<button data-act="pvF" data-v="${k}" aria-pressed="${(VS.pvF||'now')===k}">${l}</button>`).join('')}</div>
     <label class="small" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pvNoPo" ${VS.pvNoPo?'checked':''}> 発注書なしだけ</label>`:''}
     <button class="btn" data-act="pv-csv" style="margin-left:auto">CSVで保存（${VS.pvSel?esc(staffName(VS.pvSel)):'全社'}）</button>`,
@@ -8597,7 +8599,7 @@ const PERM_ROWS=[
 const SET_EXTRA_L={'cost.view':'原価・粗利を見る','ana.all':'全員の分析を見る','wage.view':'時給・人件費を見る','wage.edit':'時給の変更','stock.edit':'在庫・物品発注の管理','seal.use':'角印を押す','visit.assign':'日程の差配・定期契約の編集','approve':'承認する（責任者と同じ）','price.edit':'価格表・見積テンプレートの変更','staff.edit':'利用者の追加・編集','time.close':'勤怠の締め','res.edit':'予約できるもの・予定の種別の設定'};
 MTABS.auth=()=>{
   const me=meStaff(), myRole=roleOf(me);
-  const rows=PERM_ROWS.map(([l,k,n])=>{ const rs=Array.isArray(k)?k:(PERMS[k]||[]); return `<tr><td>${esc(l)}${n?`<div class="small muted">${esc(n)}</div>`:''}</td>${SET_ROLES.map(r=>`<td class="c" style="text-align:center">${rs.includes(r)?'<b style="color:var(--good)">○</b>':'<span class="muted">－</span>'}</td>`).join('')}</tr>`; }).join('');
+  const rows=PERM_ROWS.map(([l,k,n])=>{ const rs=Array.isArray(k)?k:(PERMS[k]||[]); return `<tr><td>${esc(l)}${n?`<div class="small muted">${esc(n)}</div>`:''}</td>${SET_ROLES.map(r=>`<td class="c" style="text-align:center">${rs.includes(r)?'<b style="color:var(--ok)">○</b>':'<span class="muted">－</span>'}</td>`).join('')}</tr>`; }).join('');
   const ex=all('staff').filter(s=>!s.inactive&&(s.extra||[]).length);
   return `<section class="sec"><h3>誰が何をできるか</h3><p class="small muted" style="margin:0 0 8px">あなたは「${esc(ROLES[myRole]||'未設定')}」です。段階は「利用者・権限」で人ごとに決めます（段階の変更は管理者だけ）。</p>
     <div class="scroll"><table class="t"><thead><tr><th>できること</th>${SET_COLS.map(c=>`<th style="text-align:center">${c}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></section>
@@ -9159,7 +9161,7 @@ document.head.insertAdjacentHTML('beforeend',`<style>
 #G .cu-lh{display:flex;align-items:center;gap:8px;padding:10px 10px 6px 14px}#G .cu-lh button{margin-left:auto}
 #G .cu-chips{display:flex;gap:4px;flex-wrap:wrap;padding:0 10px 8px;border-bottom:1px solid var(--line)}
 #G .cu-chips button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--muted)}
-#G .cu-chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+#G .cu-chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg,#fff)}
 #G .cu-lb{overflow:auto}
 #G .cu-li{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;padding:10px 14px;cursor:pointer;color:var(--fg)}
 #G .cu-li b{display:block;font-size:13.5px}#G .cu-li small{color:var(--muted);font-size:11.5px}
@@ -9287,7 +9289,7 @@ function rkUsageHtml(){
   const u=RK_ST.usage; if(!u) return `<button class="btn" data-act="rk-usage">使用量を確認する</button>`;
   if(u.err) return `<div class="callout w"><span>${esc(u.err)}</span></div><button class="btn" data-act="rk-usage">もう一度確認する</button>`;
   const mb=n=>(n/1048576).toFixed(n<10485760?1:0)+'MB';
-  const bar=(n,max,l)=>{ const p=Math.min(100,Math.round(n/max*100)); return `<div style="margin:6px 0"><div class="small" style="display:flex;justify-content:space-between"><span>${l}</span><b style="color:${p>=80?'var(--danger,#c0392b)':'inherit'}">${mb(n)} / ${mb(max)}（${p}%）</b></div><div style="height:10px;border-radius:6px;background:var(--line);overflow:hidden"><div style="height:100%;width:${p}%;background:${p>=80?'#c0392b':p>=60?'#e08a00':'var(--accent,#0b3f7a)'}"></div></div></div>`; };
+  const bar=(n,max,l)=>{ const p=Math.min(100,Math.round(n/max*100)); return `<div style="margin:6px 0"><div class="small" style="display:flex;justify-content:space-between"><span>${l}</span><b style="color:${p>=80?'var(--bad,#c0392b)':'inherit'}">${mb(n)} / ${mb(max)}（${p}%）</b></div><div style="height:10px;border-radius:6px;background:var(--line);overflow:hidden"><div style="height:100%;width:${p}%;background:${p>=80?'#c0392b':p>=60?'#e08a00':'var(--accent,#0b3f7a)'}"></div></div></div>`; };
   const hi=u.files/RK_FREE.files>=.8||u.db/RK_FREE.db>=.8;
   return `${hi?'<div class="callout w"><span>使用量が8割を超えています。Supabaseの有料プラン（Pro）への切り替えを検討してください。</span></div>':''}
     ${bar(u.files,RK_FREE.files,`ファイル保存（うち報告書 ${mb(u.reports)}・${u.n}件）`)}${bar(u.db,RK_FREE.db,'データベース')}
@@ -9543,20 +9545,20 @@ function selKey(sel){ const E=ents(); const vals=[...sel.options].map(o=>o.value
   if(sel.id) return 'id:'+sel.id.replace(/\d+/g,''); const d=Object.entries(sel.dataset)[0]; return d?'d:'+d[0]+'='+d[1]:'x'; }
 /* ---------- 1) 検索付きの選択画面 ---------- */
 const css=`#pk-ov{position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.35);display:flex;align-items:flex-start;justify-content:center;padding:8vh 12px 12px}
-#pk-ov .pk{background:var(--surface,#fff);color:var(--ink,#111);width:min(520px,100%);max-height:80vh;display:flex;flex-direction:column;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
+#pk-ov .pk{background:var(--surface,#fff);color:var(--fg,#111);width:min(520px,100%);max-height:80vh;display:flex;flex-direction:column;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
 #pk-ov .pk-h{display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid var(--line,#e5e7eb)}
 #pk-ov .pk-h input{flex:1;font-size:16px;padding:10px 12px;border:1px solid var(--line,#d1d5db);border-radius:10px;background:var(--bg,#fff);color:inherit}
 #pk-ov .pk-h button{border:0;background:none;font-size:20px;padding:4px 8px;cursor:pointer;color:inherit}
 #pk-ov .pk-b{overflow:auto;padding:4px 0}
 #pk-ov .pk-g{font-size:11px;color:var(--muted,#6b7280);padding:10px 14px 4px;font-weight:700}
 #pk-ov .pk-o{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;border:0;background:none;padding:10px 14px;font-size:15px;cursor:pointer;color:inherit}
-#pk-ov .pk-o:hover,#pk-ov .pk-o.on{background:var(--accent-s,#e8efff)}
+#pk-ov .pk-o:hover,#pk-ov .pk-o.on{background:var(--accent-soft,#e8efff)}
 #pk-ov .pk-o.sel{font-weight:700} #pk-ov .pk-o small{color:var(--muted,#6b7280);font-size:12px;margin-left:auto;white-space:nowrap}
 #pk-ov .pk-e{padding:20px;color:var(--muted,#6b7280);text-align:center}
 @media (max-width:700px){#pk-ov{padding:0;align-items:flex-end}#pk-ov .pk{max-height:88vh;border-radius:14px 14px 0 0}}
-.sg-box{position:fixed;z-index:9998;background:var(--surface,#fff);color:var(--ink,#111);border:1px solid var(--line,#d1d5db);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.18);max-height:320px;overflow:auto;min-width:240px}
+.sg-box{position:fixed;z-index:9998;background:var(--surface,#fff);color:var(--fg,#111);border:1px solid var(--line,#d1d5db);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.18);max-height:320px;overflow:auto;min-width:240px}
 .sg-box .sg-o{display:flex;gap:8px;align-items:baseline;width:100%;text-align:left;border:0;background:none;padding:9px 12px;font-size:14px;cursor:pointer;color:inherit}
-.sg-box .sg-o:hover,.sg-box .sg-o.on{background:var(--accent-s,#e8efff)}
+.sg-box .sg-o:hover,.sg-box .sg-o.on{background:var(--accent-soft,#e8efff)}
 .sg-box .sg-t{font-size:11px;border-radius:6px;padding:1px 6px;background:var(--line,#eef0f3);color:var(--muted,#555);white-space:nowrap}
 .sg-box small{color:var(--muted,#6b7280);font-size:12px;margin-left:auto}
 .sg-box .sg-f{font-size:11px;color:var(--muted,#6b7280);padding:6px 12px;border-top:1px solid var(--line,#eee)}`;
