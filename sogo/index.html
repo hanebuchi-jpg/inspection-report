@@ -3132,7 +3132,131 @@ async function boot(){
     const s=makeSample(); Object.entries(s).forEach(([c,l])=>l.forEach(r=>D[c].set(r.id,{...r})));
     COLS.forEach(c=>loaded.add(c)); dataVer++; if(!get('staff',P.me)) P.me='smp_s1'; render();
   }
-}
+}/* ---- 周期（繰り返し）の共通部品：定期契約とカレンダーの予定で同じ決め方を使う ---- */
+window.CYC=window.CYC||(()=>{
+  const pd=s=>{ const [y,m,d]=String(s).split('-').map(Number); return new Date(y,m-1,d||1); };
+  const p2=n=>String(n).padStart(2,'0');
+  const fmt=dt=>dt.getFullYear()+'-'+p2(dt.getMonth()+1)+'-'+p2(dt.getDate());
+  const add=(s,n)=>{ const d=pd(s); d.setDate(d.getDate()+n); return fmt(d); };
+  const wkMon=s=>{ const d=pd(s); d.setDate(d.getDate()-((d.getDay()+6)%7)); return fmt(d); };
+  const lastDay=s=>new Date(+s.slice(0,4),+s.slice(5,7),0).getDate();
+  const WD='日月火水木金土';
+  const NTH={1:'第1',2:'第2',3:'第3',4:'第4',5:'第5','-1':'最終'};
+  const H=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const C={holName:()=>'',NTH,WD,pd,fmt,add};
+  C.blank=k=>({kind:k||'monthly',every:1,wds:[],mdays:[],nths:[],wnths:[],months:[],ydates:[],ws:0,hol:'keep',sat:false});
+  /* 第○週：1日を含む週が第1週（週の始まりは r.ws：0＝日曜、1＝月曜） */
+  C.weekNo=(d,ws)=>{ const dt=pd(d); const f=new Date(dt.getFullYear(),dt.getMonth(),1).getDay(); return Math.floor((dt.getDate()-1+((f-(+ws||0)+7)%7))/7)+1; };
+  C.hit=(r,start,d)=>{
+    if(!r||!start||d<start) return false;
+    const mo=+d.slice(5,7); if(r.kind!=='yearly'&&(r.months||[]).length&&!r.months.map(Number).includes(mo)) return false;
+    const wd=pd(d).getDay(), ev=Math.max(1,+r.every||1);
+    if(r.kind==='daily'){ const n=Math.round((pd(d)-pd(start))/864e5); return n%ev===0; }
+    if(r.kind==='weekday') return wd>=1&&wd<=5;
+    if(r.kind==='weekly'){ const wk=Math.round((pd(wkMon(d))-pd(wkMon(start)))/864e5/7); return wk%ev===0&&(r.wds||[]).map(Number).includes(wd); }
+    if(r.kind==='monthly'){
+      if(!(r.months||[]).length){ const m=(+d.slice(0,4)-+start.slice(0,4))*12+(mo-+start.slice(5,7)); if(m%ev!==0) return false; }
+      const day=+d.slice(8), last=lastDay(d);
+      if((r.mdays||[]).some(x=>x==='L'?day===last:+x===day)) return true;
+      if((r.nths||[]).some(x=>+x.wd===wd&&(+x.n===-1?day+7>last:Math.ceil(day/7)===+x.n))) return true;
+      if((r.wnths||[]).some(x=>+x.wd===wd&&(+x.n===-1?C.weekNo(d,r.ws)===C.weekNo(d.slice(0,8)+p2(last),r.ws):C.weekNo(d,r.ws)===+x.n))) return true;
+      return false; }
+    if(r.kind==='yearly'){ const md=d.slice(5); if((r.ydates||[]).length) return r.ydates.includes(md); return md===start.slice(5); }
+    return false;
+  };
+  /* start から to までの回。休み（日曜・祝日・土曜）と、現場の休業日（opt.closed）を避けてずらす */
+  C.dates=(r,start,from,to,opt={})=>{
+    const out=[], seen=new Set(); if(!r||!start) return out;
+    const base=x=>{ const w=pd(x).getDay(); return w===0||(r.sat&&w===6)||!!C.holName(x); };
+    const closed=opt.closed||(()=>false);
+    const until=r.end?.kind==='until'&&r.end.until?r.end.until:'9999'; const maxN=r.end?.kind==='count'?Math.max(1,+r.end.count||1):1e9;
+    let n=0;
+    for(let d=start;d<=to&&d<=until&&n<maxN;d=add(d,1)){
+      if(!C.hit(r,start,d)) continue; n++;
+      const shiftHol=r.hol&&r.hol!=='keep';
+      const bad=x=>(shiftHol&&base(x))||closed(x);
+      let x=d;
+      if(bad(x)){ const mode=shiftHol?r.hol:'next'; if(mode==='skip') continue; let g=0; while(bad(x)&&g<14){ x=add(x,mode==='prev'?-1:1); g++; } if(g>=14) continue; }
+      if(seen.has(x)) continue; seen.add(x); if(!from||x>=from) out.push({date:x,occ:d,seq:n});
+    }
+    return out;
+  };
+  C.wdList=ws=>[...(ws||[])].map(Number).sort((a,b)=>((a+6)%7)-((b+6)%7)).map(w=>WD[w]).join('・');
+  C.text=r=>{
+    if(!r||!r.kind||r.kind==='none') return '';
+    const ms=r.kind!=='yearly'&&(r.months||[]).length&&r.months.length<12?r.months.map(Number).sort((a,b)=>a-b).join('・')+'月の':'';
+    const ev=+r.every||1; let s='';
+    if(r.kind==='daily') s=ev>1?`${ev}日おき`:'毎日';
+    if(r.kind==='weekday') s='平日（月〜金）';
+    if(r.kind==='weekly') s=`${ms}${ev===1?'毎週':ev===2?'隔週':ev+'週おき'} ${C.wdList(r.wds)}曜`;
+    if(r.kind==='monthly'){ const parts=[...(r.mdays||[]).map(d=>d==='L'?'末日':d+'日'),...(r.nths||[]).map(x=>NTH[x.n]+WD[x.wd]+'曜'),...(r.wnths||[]).map(x=>(+x.n===-1?'最終':'第'+x.n)+'週の'+WD[x.wd]+'曜')];
+      s=`${ms||(ev>1?ev+'か月おき ':'毎月 ')}${parts.join('・')}`; }
+    if(r.kind==='yearly') s=(r.ydates||[]).length?`年${r.ydates.length}回 ${[...r.ydates].sort().map(x=>+x.slice(0,2)+'/'+ +x.slice(3)).join('・')}`:'毎年';
+    return s;
+  };
+  C.holText=r=>({prev:'休みの日は前の平日へ',next:'休みの日は次の平日へ',skip:'休みの日はその回なし'}[r?.hol]||'');
+
+  /* ---- 編集部品（data-cyx）。C.bind(rule, 再描画) で編集中の周期を決める ---- */
+  let cur=null, redraw=()=>{};
+  C.bind=(r,f)=>{ cur=r; redraw=f||(()=>{}); return r; };
+  const chip=(act,v,on,l,st)=>`<button type="button" data-cyx="${act}" data-v="${v}" aria-pressed="${!!on}"${st?` style="${st}"`:''}>${l}</button>`;
+  C.partKind=(r,kinds)=>`<div class="chips">${kinds.map(([k,l])=>chip('kind',k,r.kind===k,l)).join('')}</div>`;
+  C.partEvery=(r)=>{ if(r.kind==='weekly') return `<label class="fld"><span>間隔</span><select class="inp" data-cyx="every">${[1,2,3,4,5,6,8].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎週':n===2?'隔週（2週おき）':n+'週おき'}</option>`).join('')}</select></label>`;
+    if(r.kind==='monthly'&&!(r.months||[]).length) return `<label class="fld"><span>間隔</span><select class="inp" data-cyx="every">${[1,2,3,4,6,12].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎月':n+'か月おき'}</option>`).join('')}</select></label>`;
+    if(r.kind==='daily') return `<label class="fld"><span>間隔</span><select class="inp" data-cyx="every">${[1,2,3,4,5,6,7].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎日':n+'日おき'}</option>`).join('')}</select></label>`;
+    return ''; };
+  C.partWds=r=>`<div class="fld"><span>曜日（複数可）</span><div class="chips">${[1,2,3,4,5,6,0].map(w=>chip('wd',w,(r.wds||[]).map(Number).includes(w),WD[w])).join('')}</div></div>`;
+  C.partMdays=r=>`<div class="fld"><span>日付（複数可）</span><div class="chips" style="flex-wrap:wrap">${[...Array(31)].map((_,i)=>chip('md',i+1,(r.mdays||[]).map(String).includes(String(i+1)),i+1,'min-width:2.4em')).join('')}${chip('md','L',(r.mdays||[]).includes('L'),'末日')}</div></div>`;
+  const pills=(list,del,lab)=>(list||[]).map((x,i)=>`<span class="pill">${lab(x)} <button type="button" class="x" data-cyx="${del}" data-i="${i}" aria-label="外す">×</button></span>`).join('');
+  const wdSel=k=>`<select class="inp auto" data-cyk="${k}" aria-label="曜日">${[1,2,3,4,5,6,0].map(w=>`<option value="${w}">${WD[w]}曜</option>`).join('')}</select>`;
+  C.partNths=r=>`<div class="fld"><span>第○曜日（その月の○回目の曜日・複数可）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pills(r.nths,'nthDel',x=>NTH[x.n]+WD[x.wd]+'曜')}
+    <select class="inp auto" data-cyk="nn" aria-label="何回目">${Object.entries(NTH).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>${wdSel('nw')}<button type="button" class="btn sm" data-cyx="nthAdd">＋ 追加</button></div></div>`;
+  C.partWnths=r=>`<div class="fld"><span>第○週の曜日（カレンダーの○段目の週・複数可）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pills(r.wnths,'wnDel',x=>(+x.n===-1?'最終':'第'+x.n)+'週の'+WD[x.wd]+'曜')}
+    <select class="inp auto" data-cyk="wn" aria-label="何週目">${[1,2,3,4,5,-1].map(n=>`<option value="${n}">${n===-1?'最終週':'第'+n+'週'}</option>`).join('')}</select>${wdSel('ww')}<button type="button" class="btn sm" data-cyx="wnAdd">＋ 追加</button>
+    <select class="inp auto" data-cyx="ws" aria-label="週の始まり"><option value="0" ${+r.ws?'':'selected'}>日曜はじまりで数える</option><option value="1" ${+r.ws===1?'selected':''}>月曜はじまりで数える</option></select></div>
+    <p class="small muted" style="margin:4px 0 0;font-weight:400">1日を含む週が第1週です。例：1日が木曜の月は、第1週に水曜がありません。</p></div>`;
+  C.partMonths=r=>`<div class="fld"><span>実施する月（選ばない＝毎月）</span><div class="chips" style="flex-wrap:wrap">${[...Array(12)].map((_,i)=>chip('mon',i+1,(r.months||[]).map(Number).includes(i+1),(i+1)+'月')).join('')}${(r.months||[]).length?chip('monClr','',false,'クリア'):''}</div></div>`;
+  C.partYdates=r=>`<div class="fld"><span>実施日（年○回・月日を並べる）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pills([...(r.ydates||[])].sort(),'ydDel',x=>+x.slice(0,2)+'月'+ +x.slice(3)+'日')}
+    <select class="inp auto" data-cyk="ym" aria-label="月">${[...Array(12)].map((_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('')}</select><select class="inp auto" data-cyk="yd" aria-label="日">${[...Array(31)].map((_,i)=>`<option value="${i+1}">${i+1}日</option>`).join('')}</select><button type="button" class="btn sm" data-cyx="ydAdd">＋ 追加</button></div>
+    ${(r.ydates||[]).length?'':'<p class="small muted" style="margin:4px 0 0;font-weight:400">追加しないときは、開始日と同じ月日に年1回です。</p>'}</div>`;
+  C.partHol=(r,label)=>`<label class="fld"><span>${label||'日曜・祝日に当たったら'}</span><select class="inp" data-cyx="hol">${[['keep','そのまま'],['prev','前の平日にずらす'],['next','次の平日にずらす'],['skip','その回は休み']].map(([k,l])=>`<option value="${k}" ${(r.hol||'keep')===k?'selected':''}>${l}</option>`).join('')}</select></label>
+    <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-cyx="sat" ${r.sat?'checked':''}> 土曜も休みの日として扱う</label>`;
+  C.partBody=r=>{ let h='';
+    if(r.kind==='weekly') h+=`<div class="form">${C.partEvery(r)}</div>${C.partWds(r)}${C.partMonths(r)}`;
+    if(r.kind==='monthly') h+=`${C.partMonths(r)}<div class="form">${C.partEvery(r)}</div>${C.partMdays(r)}${C.partNths(r)}${C.partWnths(r)}`;
+    if(r.kind==='yearly') h+=C.partYdates(r);
+    if(r.kind==='daily') h+=`<div class="form">${C.partEvery(r)}</div>${C.partMonths(r)}`;
+    if(r.kind==='weekday') h+=C.partMonths(r);
+    return `<div data-cyb style="display:grid;gap:10px;margin-top:8px">${h}</div>`; };
+  C.preview=(list,hol)=>`<div class="callout" style="display:block"><b class="small">次の${list.length}回</b><div class="small" style="margin-top:4px">${list.length?list.map((o,i)=>`${i===0||o.date.slice(0,4)!==list[i-1].date.slice(0,4)?o.date.slice(0,4)+'年 ':''}${+o.date.slice(5,7)}/${+o.date.slice(8)}(${WD[pd(o.date).getDay()]})${o.occ&&o.occ!==o.date?`<span class="muted">←${+o.occ.slice(5,7)}/${+o.occ.slice(8)}${hol&&hol(o.occ)?' '+H(hol(o.occ)):''}</span>`:''}`).join('　'):'条件に合う日がありません'}</div></div>`;
+  C.problem=r=>{ if(!r) return ''; if(r.kind==='weekly'&&!(r.wds||[]).length) return '曜日を選んでください';
+    if(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length&&!(r.wnths||[]).length) return '日付・第○曜日・第○週の曜日のどれかを選んでください'; return ''; };
+  const box=el=>el.closest('[data-cyb]')||el.closest('section')||document;
+  const act=(el,ev)=>{ const r=cur; if(!r) return; const a=el.dataset.cyx, v=el.dataset.v; const q=k=>box(el).querySelector(`[data-cyk="${k}"]`)?.value;
+    const tog=(k,x)=>{ const l=(r[k]||[]).map(String); r[k]=l.includes(String(x))?(r[k]||[]).filter(y=>String(y)!==String(x)):[...(r[k]||[]),x]; };
+    if(a==='kind'){ r.kind=v; r.every=r.every||1; }
+    else if(a==='every') r.every=+el.value;
+    else if(a==='wd') tog('wds',+v);
+    else if(a==='md') tog('mdays',v==='L'?'L':+v);
+    else if(a==='mon'){ tog('months',+v); r.months=(r.months||[]).map(Number).sort((x,y)=>x-y); }
+    else if(a==='monClr') r.months=[];
+    else if(a==='nthAdd'){ const n=+q('nn'), wd=+q('nw'); if(!(r.nths||[]).some(x=>+x.n===n&&+x.wd===wd)) r.nths=[...(r.nths||[]),{n,wd}]; }
+    else if(a==='nthDel') r.nths.splice(+el.dataset.i,1);
+    else if(a==='wnAdd'){ const n=+q('wn'), wd=+q('ww'); if(!(r.wnths||[]).some(x=>+x.n===n&&+x.wd===wd)) r.wnths=[...(r.wnths||[]),{n,wd}]; }
+    else if(a==='wnDel') r.wnths.splice(+el.dataset.i,1);
+    else if(a==='ws') r.ws=+el.value;
+    else if(a==='ydAdd'){ const m=+q('ym'), d=+q('yd'); const md=p2(m)+'-'+p2(Math.min(d,new Date(2024,m,0).getDate())); if(!(r.ydates||[]).includes(md)) r.ydates=[...(r.ydates||[]),md].sort(); }
+    else if(a==='ydDel'){ const s=[...(r.ydates||[])].sort(); s.splice(+el.dataset.i,1); r.ydates=s; }
+    else if(a==='hol') r.hol=el.value;
+    else if(a==='sat') r.sat=el.checked;
+    else return;
+    redraw(a);
+  };
+  document.addEventListener('click',e=>{ const el=e.target.closest&&e.target.closest('[data-cyx]'); if(!el||el.tagName==='SELECT'||el.type==='checkbox') return; e.preventDefault(); e.stopPropagation(); act(el,e); },true);
+  document.addEventListener('change',e=>{ const el=e.target; if(!el.dataset||!el.dataset.cyx) return; act(el,e); },true);
+  return C;
+})();
+
 /* =========================================================
    発注書（協力会社が見る画面）
    読むのは協力会社向けの発注データ（porders）だけ。社内の顧客・単価・粗利は読まない。
@@ -3665,34 +3789,19 @@ function jpHolidays(y){
 }
 const holName=d=>d?jpHolidays(+d.slice(0,4)).get(d)||'':'';
 /* ---------- 繰り返しのルール ---------- */
-const RK_L={none:'しない',daily:'毎日',weekday:'平日（月〜金）',weekly:'毎週・隔週・○週おき',monthly:'毎月（日付・第○曜日）',yearly:'毎年'};
+const RK_L={none:'しない',daily:'毎日',weekday:'平日（月〜金）',weekly:'毎週・隔週・○週おき',monthly:'毎月（日付・第○曜日・第○週）',yearly:'毎年（年○回の日付）'};
 const NTH_L={1:'第1',2:'第2',3:'第3',4:'第4',5:'第5','-1':'最終'};
 function ruleText(r){
   if(!r||r.kind==='none') return '';
-  let s='';
-  if(r.kind==='daily') s=+r.every>1?`${r.every}日おき`:'毎日';
-  if(r.kind==='weekday') s='平日（月〜金）';
-  if(r.kind==='weekly') s=`${+r.every===1?'毎週':+r.every===2?'隔週':r.every+'週おき'} ${(r.wds||[]).slice().sort((a,b)=>((a+6)%7)-((b+6)%7)).map(w=>WD[w]).join('・')}曜`;
-  if(r.kind==='monthly') s=`${+r.every>1?r.every+'か月おき':'毎月'} ${[...(r.mdays||[]).map(d=>d==='L'?'末日':d+'日'),...(r.nths||[]).map(x=>NTH_L[x.n]+WD[x.wd]+'曜')].join('・')}`;
-  if(r.kind==='yearly') s='毎年';
+  let s=CYC.text(r);
   if(r.times?.length) s+=`（1日${r.times.length+1}回）`;
   if(r.end?.kind==='until'&&r.end.until) s+=`　${jd(r.end.until)}まで`;
   if(r.end?.kind==='count') s+=`　${r.end.count}回`;
   return s;
 }
 const isOffDay=(d,r)=>parseD(d).getDay()===0||(r.sat&&parseD(d).getDay()===6)||!!holName(d);
-function ruleHit(r,start,d){
-  const diffD=Math.round((parseD(d)-parseD(start))/864e5); if(diffD<0) return false; const wd=parseD(d).getDay(), ev=Math.max(1,+r.every||1);
-  if(r.kind==='daily') return diffD%ev===0;
-  if(r.kind==='weekday') return wd>=1&&wd<=5;
-  if(r.kind==='weekly'){ const wk=Math.round((parseD(weekMon(d))-parseD(weekMon(start)))/864e5/7); return wk%ev===0&&(r.wds||[]).includes(wd); }
-  if(r.kind==='monthly'){ const mo=(+d.slice(0,4)-+start.slice(0,4))*12+(+d.slice(5,7)-+start.slice(5,7)); if(mo%ev!==0) return false;
-    const day=+d.slice(8), last=new Date(+d.slice(0,4),+d.slice(5,7),0).getDate();
-    if((r.mdays||[]).some(x=>x==='L'?day===last:+x===day)) return true;
-    return (r.nths||[]).some(x=>x.wd===wd&&(+x.n===-1?day+7>last:Math.ceil(day/7)===+x.n)); }
-  if(r.kind==='yearly') return d.slice(5)===start.slice(5);
-  return false;
-}
+function ruleHit(r,start,d){ return CYC.hit(r,start,d); }
+CYC.holName=d=>holName(d);
 /* start から to までの回の日付（休みの日の扱い込み）。fromSeq 以降の回番号も返す */
 function ruleDates(r,start,to,from){
   const out=[], seen=new Set(); let n=0; const maxN=r.end?.kind==='count'?Math.max(1,+r.end.count||1):1e9; const until=r.end?.kind==='until'&&r.end.until?r.end.until:'9999';
@@ -3728,28 +3837,30 @@ async function recurTopUp(){
 /* ---------- 予定の画面：繰り返しの欄 ---------- */
 function recurBox(e){
   const r=sheet.rule||(sheet.rule=structuredClone(e.recur||{kind:'none',every:1,wds:[],mdays:[],nths:[],end:{kind:'never'},hol:'keep',times:[]}));
+  CYC.bind(r,()=>renderOverlay());
   const on=r.kind!=='none';
   const prev=on&&e.date?ruleDates(r,e.seriesStart&&sheet.scope!=='from'?e.seriesStart:e.date,addDays(e.date,800)).slice(0,10):[];
   const chipsWd=[1,2,3,4,5,6,0].map(w=>`<button type="button" data-act="rcWd" data-v="${w}" aria-pressed="${(r.wds||[]).includes(w)}">${WD[w]}</button>`).join('');
   let h=`<details class="more" ${on||sheet.rcOpen?'open':''}><summary>繰り返し <span class="s muted">${on?esc(ruleText(r)):'しない'}</span></summary><div class="in">
     <div class="chips">${Object.entries(RK_L).map(([k,l])=>`<button type="button" data-act="rcKind" data-v="${k}" aria-pressed="${r.kind===k}">${l}</button>`).join('')}</div>`;
   if(r.kind==='daily') h+=`<label class="fld" style="margin-top:8px"><span>間隔</span><select class="inp auto" data-rc="every">${[1,2,3,4,5,6,7].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎日':n+'日おき'}</option>`).join('')}</select></label>`;
-  if(r.kind==='weekly') h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>間隔</span><select class="inp" data-rc="every">${[1,2,3,4,5,6,8].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎週':n===2?'隔週（2週おき）':n+'週おき'}</option>`).join('')}</select></label></div><div class="fld"><span>曜日（複数可）</span><div class="chips">${chipsWd}</div></div>`;
+  if(r.kind==='weekly') h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>間隔</span><select class="inp" data-rc="every">${[1,2,3,4,5,6,8].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎週':n===2?'隔週（2週おき）':n+'週おき'}</option>`).join('')}</select></label></div><div class="fld"><span>曜日（複数可）</span><div class="chips">${chipsWd}</div></div><div data-cyb style="margin-top:8px">${CYC.partMonths(r)}</div>`;
   if(r.kind==='monthly') h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>間隔</span><select class="inp" data-rc="every">${[1,2,3,4,6,12].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎月':n+'か月おき'}</option>`).join('')}</select></label></div>
     <div class="fld"><span>日付（複数可）</span><div class="chips" style="flex-wrap:wrap">${[...Array(31)].map((_,i)=>`<button type="button" data-act="rcMd" data-v="${i+1}" aria-pressed="${(r.mdays||[]).includes(i+1)}" style="min-width:2.4em">${i+1}</button>`).join('')}<button type="button" data-act="rcMd" data-v="L" aria-pressed="${(r.mdays||[]).includes('L')}">末日</button></div></div>
     <div class="fld"><span>第○曜日（複数可）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${(r.nths||[]).map((x,i)=>`<span class="pill">${NTH_L[x.n]}${WD[x.wd]}曜 <button type="button" class="x" data-act="rcNthDel" data-i="${i}" aria-label="外す">×</button></span>`).join('')}
-      <select class="inp auto" id="rc-nn">${Object.entries(NTH_L).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select><select class="inp auto" id="rc-nw">${[1,2,3,4,5,6,0].map(w=>`<option value="${w}">${WD[w]}曜</option>`).join('')}</select><button type="button" class="btn sm" data-act="rcNthAdd">追加</button></div></div>`;
+      <select class="inp auto" id="rc-nn">${Object.entries(NTH_L).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select><select class="inp auto" id="rc-nw">${[1,2,3,4,5,6,0].map(w=>`<option value="${w}">${WD[w]}曜</option>`).join('')}</select><button type="button" class="btn sm" data-act="rcNthAdd">追加</button></div></div><div data-cyb style="display:grid;gap:10px;margin-top:8px">${CYC.partWnths(r)}${CYC.partMonths(r)}</div>`;
+  if(r.kind==='yearly') h+=`<div data-cyb style="margin-top:8px">${CYC.partYdates(r)}</div>`;
   if(on){
     h+=`<div class="form" style="margin-top:8px"><label class="fld"><span>いつまで</span><select class="inp" data-rc="endKind"><option value="never" ${r.end?.kind==='never'?'selected':''}>終わりなし</option><option value="until" ${r.end?.kind==='until'?'selected':''}>日付まで</option><option value="count" ${r.end?.kind==='count'?'selected':''}>回数</option></select></label>
       ${r.end?.kind==='until'?`<label class="fld"><span>最終日</span><input class="inp" type="date" data-rc="until" value="${esc(r.end.until||'')}"></label>`:''}${r.end?.kind==='count'?`<label class="fld"><span>回数</span><input class="inp num" type="number" min="1" max="500" data-rc="count" value="${esc(r.end.count||10)}"></label>`:''}
       <label class="fld"><span>日曜・祝日に当たったら</span><select class="inp" data-rc="hol">${[['keep','そのまま'],['prev','前の平日にずらす'],['next','次の平日にずらす'],['skip','その回は休み']].map(([k,l])=>`<option value="${k}" ${r.hol===k?'selected':''}>${l}</option>`).join('')}</select></label></div>
       <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-rc="sat" ${r.sat?'checked':''}> 土曜も休みの日として扱う</label>
       <div class="fld" style="margin-top:8px"><span>1日に複数回（2回目以降の時間）</span>${(r.times||[]).map((x,i)=>`<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px"><input class="inp" type="time" data-rct="${i}|start" value="${esc(x.start)}" style="width:8em">〜<input class="inp" type="time" data-rct="${i}|end" value="${esc(x.end)}" style="width:8em"><button type="button" class="btn sm ghost" data-act="rcTimeDel" data-i="${i}">削除</button></div>`).join('')}<button type="button" class="btn sm" data-act="rcTimeAdd">＋ 時間を追加</button></div>
-      <div class="callout" style="margin-top:8px;display:block"><b class="small">次の${prev.length}回</b><div class="small" style="margin-top:4px">${prev.length?prev.map(o=>`${jd(o.date)}${holName(o.date)?'<span class="muted">（'+esc(holName(o.date))+'）</span>':''}`).join('　'):'条件に合う日がありません'}</div>${(r.kind==='weekly'&&!(r.wds||[]).length)||(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length)?'<div class="small" style="color:var(--warn)">曜日・日付を選んでください</div>':''}</div>`;
+      <div class="callout" style="margin-top:8px;display:block"><b class="small">次の${prev.length}回</b><div class="small" style="margin-top:4px">${prev.length?prev.map(o=>`${jd(o.date)}${holName(o.date)?'<span class="muted">（'+esc(holName(o.date))+'）</span>':''}`).join('　'):'条件に合う日がありません'}</div>${(r.kind==='weekly'&&!(r.wds||[]).length)||(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length&&!(r.wnths||[]).length)?'<div class="small" style="color:var(--warn)">曜日・日付を選んでください</div>':''}</div>`;
   }
   return h+`</div></details>`;
 }
-function recurValid(r){ if(r.kind==='weekly'&&!(r.wds||[]).length) return '曜日を選んでください'; if(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length) return '日付か第○曜日を選んでください'; if(r.end?.kind==='until'&&!r.end.until) return '最終日を入れてください'; return ''; }
+function recurValid(r){ if(r.kind==='weekly'&&!(r.wds||[]).length) return '曜日を選んでください'; if(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length&&!(r.wnths||[]).length) return '日付・第○曜日・第○週の曜日のどれかを選んでください'; if(r.end?.kind==='until'&&!r.end.until) return '最終日を入れてください'; return ''; }
 /* 保存：繰り返しなら回をまとめて作る。既存の回を直すときは範囲を選ぶ */
 async function saveEventR(){
   const e=sheet.e, r=sheet.rule||{kind:'none'};
@@ -7727,7 +7838,131 @@ async function autoGen(){
   if(!items.length) return;
   await putMany(items); toast(`定期の作業予定を ${items.length}件追加しました（先3か月分の不足分）`);
 }
-function refreshLiveSheet(){ if(sheet&&sheet.live!==false) renderOverlay(); }
+function refreshLiveSheet(){ if(sheet&&sheet.live!==false) renderOverlay(); }/* ---- 周期（繰り返し）の共通部品：定期契約とカレンダーの予定で同じ決め方を使う ---- */
+window.CYC=window.CYC||(()=>{
+  const pd=s=>{ const [y,m,d]=String(s).split('-').map(Number); return new Date(y,m-1,d||1); };
+  const p2=n=>String(n).padStart(2,'0');
+  const fmt=dt=>dt.getFullYear()+'-'+p2(dt.getMonth()+1)+'-'+p2(dt.getDate());
+  const add=(s,n)=>{ const d=pd(s); d.setDate(d.getDate()+n); return fmt(d); };
+  const wkMon=s=>{ const d=pd(s); d.setDate(d.getDate()-((d.getDay()+6)%7)); return fmt(d); };
+  const lastDay=s=>new Date(+s.slice(0,4),+s.slice(5,7),0).getDate();
+  const WD='日月火水木金土';
+  const NTH={1:'第1',2:'第2',3:'第3',4:'第4',5:'第5','-1':'最終'};
+  const H=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const C={holName:()=>'',NTH,WD,pd,fmt,add};
+  C.blank=k=>({kind:k||'monthly',every:1,wds:[],mdays:[],nths:[],wnths:[],months:[],ydates:[],ws:0,hol:'keep',sat:false});
+  /* 第○週：1日を含む週が第1週（週の始まりは r.ws：0＝日曜、1＝月曜） */
+  C.weekNo=(d,ws)=>{ const dt=pd(d); const f=new Date(dt.getFullYear(),dt.getMonth(),1).getDay(); return Math.floor((dt.getDate()-1+((f-(+ws||0)+7)%7))/7)+1; };
+  C.hit=(r,start,d)=>{
+    if(!r||!start||d<start) return false;
+    const mo=+d.slice(5,7); if(r.kind!=='yearly'&&(r.months||[]).length&&!r.months.map(Number).includes(mo)) return false;
+    const wd=pd(d).getDay(), ev=Math.max(1,+r.every||1);
+    if(r.kind==='daily'){ const n=Math.round((pd(d)-pd(start))/864e5); return n%ev===0; }
+    if(r.kind==='weekday') return wd>=1&&wd<=5;
+    if(r.kind==='weekly'){ const wk=Math.round((pd(wkMon(d))-pd(wkMon(start)))/864e5/7); return wk%ev===0&&(r.wds||[]).map(Number).includes(wd); }
+    if(r.kind==='monthly'){
+      if(!(r.months||[]).length){ const m=(+d.slice(0,4)-+start.slice(0,4))*12+(mo-+start.slice(5,7)); if(m%ev!==0) return false; }
+      const day=+d.slice(8), last=lastDay(d);
+      if((r.mdays||[]).some(x=>x==='L'?day===last:+x===day)) return true;
+      if((r.nths||[]).some(x=>+x.wd===wd&&(+x.n===-1?day+7>last:Math.ceil(day/7)===+x.n))) return true;
+      if((r.wnths||[]).some(x=>+x.wd===wd&&(+x.n===-1?C.weekNo(d,r.ws)===C.weekNo(d.slice(0,8)+p2(last),r.ws):C.weekNo(d,r.ws)===+x.n))) return true;
+      return false; }
+    if(r.kind==='yearly'){ const md=d.slice(5); if((r.ydates||[]).length) return r.ydates.includes(md); return md===start.slice(5); }
+    return false;
+  };
+  /* start から to までの回。休み（日曜・祝日・土曜）と、現場の休業日（opt.closed）を避けてずらす */
+  C.dates=(r,start,from,to,opt={})=>{
+    const out=[], seen=new Set(); if(!r||!start) return out;
+    const base=x=>{ const w=pd(x).getDay(); return w===0||(r.sat&&w===6)||!!C.holName(x); };
+    const closed=opt.closed||(()=>false);
+    const until=r.end?.kind==='until'&&r.end.until?r.end.until:'9999'; const maxN=r.end?.kind==='count'?Math.max(1,+r.end.count||1):1e9;
+    let n=0;
+    for(let d=start;d<=to&&d<=until&&n<maxN;d=add(d,1)){
+      if(!C.hit(r,start,d)) continue; n++;
+      const shiftHol=r.hol&&r.hol!=='keep';
+      const bad=x=>(shiftHol&&base(x))||closed(x);
+      let x=d;
+      if(bad(x)){ const mode=shiftHol?r.hol:'next'; if(mode==='skip') continue; let g=0; while(bad(x)&&g<14){ x=add(x,mode==='prev'?-1:1); g++; } if(g>=14) continue; }
+      if(seen.has(x)) continue; seen.add(x); if(!from||x>=from) out.push({date:x,occ:d,seq:n});
+    }
+    return out;
+  };
+  C.wdList=ws=>[...(ws||[])].map(Number).sort((a,b)=>((a+6)%7)-((b+6)%7)).map(w=>WD[w]).join('・');
+  C.text=r=>{
+    if(!r||!r.kind||r.kind==='none') return '';
+    const ms=r.kind!=='yearly'&&(r.months||[]).length&&r.months.length<12?r.months.map(Number).sort((a,b)=>a-b).join('・')+'月の':'';
+    const ev=+r.every||1; let s='';
+    if(r.kind==='daily') s=ev>1?`${ev}日おき`:'毎日';
+    if(r.kind==='weekday') s='平日（月〜金）';
+    if(r.kind==='weekly') s=`${ms}${ev===1?'毎週':ev===2?'隔週':ev+'週おき'} ${C.wdList(r.wds)}曜`;
+    if(r.kind==='monthly'){ const parts=[...(r.mdays||[]).map(d=>d==='L'?'末日':d+'日'),...(r.nths||[]).map(x=>NTH[x.n]+WD[x.wd]+'曜'),...(r.wnths||[]).map(x=>(+x.n===-1?'最終':'第'+x.n)+'週の'+WD[x.wd]+'曜')];
+      s=`${ms||(ev>1?ev+'か月おき ':'毎月 ')}${parts.join('・')}`; }
+    if(r.kind==='yearly') s=(r.ydates||[]).length?`年${r.ydates.length}回 ${[...r.ydates].sort().map(x=>+x.slice(0,2)+'/'+ +x.slice(3)).join('・')}`:'毎年';
+    return s;
+  };
+  C.holText=r=>({prev:'休みの日は前の平日へ',next:'休みの日は次の平日へ',skip:'休みの日はその回なし'}[r?.hol]||'');
+
+  /* ---- 編集部品（data-cyx）。C.bind(rule, 再描画) で編集中の周期を決める ---- */
+  let cur=null, redraw=()=>{};
+  C.bind=(r,f)=>{ cur=r; redraw=f||(()=>{}); return r; };
+  const chip=(act,v,on,l,st)=>`<button type="button" data-cyx="${act}" data-v="${v}" aria-pressed="${!!on}"${st?` style="${st}"`:''}>${l}</button>`;
+  C.partKind=(r,kinds)=>`<div class="chips">${kinds.map(([k,l])=>chip('kind',k,r.kind===k,l)).join('')}</div>`;
+  C.partEvery=(r)=>{ if(r.kind==='weekly') return `<label class="fld"><span>間隔</span><select class="inp" data-cyx="every">${[1,2,3,4,5,6,8].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎週':n===2?'隔週（2週おき）':n+'週おき'}</option>`).join('')}</select></label>`;
+    if(r.kind==='monthly'&&!(r.months||[]).length) return `<label class="fld"><span>間隔</span><select class="inp" data-cyx="every">${[1,2,3,4,6,12].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎月':n+'か月おき'}</option>`).join('')}</select></label>`;
+    if(r.kind==='daily') return `<label class="fld"><span>間隔</span><select class="inp" data-cyx="every">${[1,2,3,4,5,6,7].map(n=>`<option value="${n}" ${+r.every===n?'selected':''}>${n===1?'毎日':n+'日おき'}</option>`).join('')}</select></label>`;
+    return ''; };
+  C.partWds=r=>`<div class="fld"><span>曜日（複数可）</span><div class="chips">${[1,2,3,4,5,6,0].map(w=>chip('wd',w,(r.wds||[]).map(Number).includes(w),WD[w])).join('')}</div></div>`;
+  C.partMdays=r=>`<div class="fld"><span>日付（複数可）</span><div class="chips" style="flex-wrap:wrap">${[...Array(31)].map((_,i)=>chip('md',i+1,(r.mdays||[]).map(String).includes(String(i+1)),i+1,'min-width:2.4em')).join('')}${chip('md','L',(r.mdays||[]).includes('L'),'末日')}</div></div>`;
+  const pills=(list,del,lab)=>(list||[]).map((x,i)=>`<span class="pill">${lab(x)} <button type="button" class="x" data-cyx="${del}" data-i="${i}" aria-label="外す">×</button></span>`).join('');
+  const wdSel=k=>`<select class="inp auto" data-cyk="${k}" aria-label="曜日">${[1,2,3,4,5,6,0].map(w=>`<option value="${w}">${WD[w]}曜</option>`).join('')}</select>`;
+  C.partNths=r=>`<div class="fld"><span>第○曜日（その月の○回目の曜日・複数可）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pills(r.nths,'nthDel',x=>NTH[x.n]+WD[x.wd]+'曜')}
+    <select class="inp auto" data-cyk="nn" aria-label="何回目">${Object.entries(NTH).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>${wdSel('nw')}<button type="button" class="btn sm" data-cyx="nthAdd">＋ 追加</button></div></div>`;
+  C.partWnths=r=>`<div class="fld"><span>第○週の曜日（カレンダーの○段目の週・複数可）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pills(r.wnths,'wnDel',x=>(+x.n===-1?'最終':'第'+x.n)+'週の'+WD[x.wd]+'曜')}
+    <select class="inp auto" data-cyk="wn" aria-label="何週目">${[1,2,3,4,5,-1].map(n=>`<option value="${n}">${n===-1?'最終週':'第'+n+'週'}</option>`).join('')}</select>${wdSel('ww')}<button type="button" class="btn sm" data-cyx="wnAdd">＋ 追加</button>
+    <select class="inp auto" data-cyx="ws" aria-label="週の始まり"><option value="0" ${+r.ws?'':'selected'}>日曜はじまりで数える</option><option value="1" ${+r.ws===1?'selected':''}>月曜はじまりで数える</option></select></div>
+    <p class="small muted" style="margin:4px 0 0;font-weight:400">1日を含む週が第1週です。例：1日が木曜の月は、第1週に水曜がありません。</p></div>`;
+  C.partMonths=r=>`<div class="fld"><span>実施する月（選ばない＝毎月）</span><div class="chips" style="flex-wrap:wrap">${[...Array(12)].map((_,i)=>chip('mon',i+1,(r.months||[]).map(Number).includes(i+1),(i+1)+'月')).join('')}${(r.months||[]).length?chip('monClr','',false,'クリア'):''}</div></div>`;
+  C.partYdates=r=>`<div class="fld"><span>実施日（年○回・月日を並べる）</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${pills([...(r.ydates||[])].sort(),'ydDel',x=>+x.slice(0,2)+'月'+ +x.slice(3)+'日')}
+    <select class="inp auto" data-cyk="ym" aria-label="月">${[...Array(12)].map((_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('')}</select><select class="inp auto" data-cyk="yd" aria-label="日">${[...Array(31)].map((_,i)=>`<option value="${i+1}">${i+1}日</option>`).join('')}</select><button type="button" class="btn sm" data-cyx="ydAdd">＋ 追加</button></div>
+    ${(r.ydates||[]).length?'':'<p class="small muted" style="margin:4px 0 0;font-weight:400">追加しないときは、開始日と同じ月日に年1回です。</p>'}</div>`;
+  C.partHol=(r,label)=>`<label class="fld"><span>${label||'日曜・祝日に当たったら'}</span><select class="inp" data-cyx="hol">${[['keep','そのまま'],['prev','前の平日にずらす'],['next','次の平日にずらす'],['skip','その回は休み']].map(([k,l])=>`<option value="${k}" ${(r.hol||'keep')===k?'selected':''}>${l}</option>`).join('')}</select></label>
+    <label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-cyx="sat" ${r.sat?'checked':''}> 土曜も休みの日として扱う</label>`;
+  C.partBody=r=>{ let h='';
+    if(r.kind==='weekly') h+=`<div class="form">${C.partEvery(r)}</div>${C.partWds(r)}${C.partMonths(r)}`;
+    if(r.kind==='monthly') h+=`${C.partMonths(r)}<div class="form">${C.partEvery(r)}</div>${C.partMdays(r)}${C.partNths(r)}${C.partWnths(r)}`;
+    if(r.kind==='yearly') h+=C.partYdates(r);
+    if(r.kind==='daily') h+=`<div class="form">${C.partEvery(r)}</div>${C.partMonths(r)}`;
+    if(r.kind==='weekday') h+=C.partMonths(r);
+    return `<div data-cyb style="display:grid;gap:10px;margin-top:8px">${h}</div>`; };
+  C.preview=(list,hol)=>`<div class="callout" style="display:block"><b class="small">次の${list.length}回</b><div class="small" style="margin-top:4px">${list.length?list.map((o,i)=>`${i===0||o.date.slice(0,4)!==list[i-1].date.slice(0,4)?o.date.slice(0,4)+'年 ':''}${+o.date.slice(5,7)}/${+o.date.slice(8)}(${WD[pd(o.date).getDay()]})${o.occ&&o.occ!==o.date?`<span class="muted">←${+o.occ.slice(5,7)}/${+o.occ.slice(8)}${hol&&hol(o.occ)?' '+H(hol(o.occ)):''}</span>`:''}`).join('　'):'条件に合う日がありません'}</div></div>`;
+  C.problem=r=>{ if(!r) return ''; if(r.kind==='weekly'&&!(r.wds||[]).length) return '曜日を選んでください';
+    if(r.kind==='monthly'&&!(r.mdays||[]).length&&!(r.nths||[]).length&&!(r.wnths||[]).length) return '日付・第○曜日・第○週の曜日のどれかを選んでください'; return ''; };
+  const box=el=>el.closest('[data-cyb]')||el.closest('section')||document;
+  const act=(el,ev)=>{ const r=cur; if(!r) return; const a=el.dataset.cyx, v=el.dataset.v; const q=k=>box(el).querySelector(`[data-cyk="${k}"]`)?.value;
+    const tog=(k,x)=>{ const l=(r[k]||[]).map(String); r[k]=l.includes(String(x))?(r[k]||[]).filter(y=>String(y)!==String(x)):[...(r[k]||[]),x]; };
+    if(a==='kind'){ r.kind=v; r.every=r.every||1; }
+    else if(a==='every') r.every=+el.value;
+    else if(a==='wd') tog('wds',+v);
+    else if(a==='md') tog('mdays',v==='L'?'L':+v);
+    else if(a==='mon'){ tog('months',+v); r.months=(r.months||[]).map(Number).sort((x,y)=>x-y); }
+    else if(a==='monClr') r.months=[];
+    else if(a==='nthAdd'){ const n=+q('nn'), wd=+q('nw'); if(!(r.nths||[]).some(x=>+x.n===n&&+x.wd===wd)) r.nths=[...(r.nths||[]),{n,wd}]; }
+    else if(a==='nthDel') r.nths.splice(+el.dataset.i,1);
+    else if(a==='wnAdd'){ const n=+q('wn'), wd=+q('ww'); if(!(r.wnths||[]).some(x=>+x.n===n&&+x.wd===wd)) r.wnths=[...(r.wnths||[]),{n,wd}]; }
+    else if(a==='wnDel') r.wnths.splice(+el.dataset.i,1);
+    else if(a==='ws') r.ws=+el.value;
+    else if(a==='ydAdd'){ const m=+q('ym'), d=+q('yd'); const md=p2(m)+'-'+p2(Math.min(d,new Date(2024,m,0).getDate())); if(!(r.ydates||[]).includes(md)) r.ydates=[...(r.ydates||[]),md].sort(); }
+    else if(a==='ydDel'){ const s=[...(r.ydates||[])].sort(); s.splice(+el.dataset.i,1); r.ydates=s; }
+    else if(a==='hol') r.hol=el.value;
+    else if(a==='sat') r.sat=el.checked;
+    else return;
+    redraw(a);
+  };
+  document.addEventListener('click',e=>{ const el=e.target.closest&&e.target.closest('[data-cyx]'); if(!el||el.tagName==='SELECT'||el.type==='checkbox') return; e.preventDefault(); e.stopPropagation(); act(el,e); },true);
+  document.addEventListener('change',e=>{ const el=e.target; if(!el.dataset||!el.dataset.cyx) return; act(el,e); },true);
+  return C;
+})();
+
 /* =========================================================
    協力会社向けの発注データ（porders）
    発行済み・中止の発注書から、その協力会社に見せてよい分だけを書き出す。
@@ -9455,6 +9690,203 @@ Object.assign(ACT_G,{
     const fs=rbForms(); await rkCfgPut({forms:fs.some(x=>x.id===f.id)?fs.map(x=>x.id===f.id?f:x):[...fs,f]}); RK_ST.fedit=null; toast(`書式「${f.name}」を保存しました`); render(); },
   async 'rbf-del'(el){ const fs=rbForms(), f=fs.find(x=>x.id===el.dataset.id); if(!f) return; if(el.dataset.ok!=='1'){ el.dataset.ok='1'; el.textContent='本当に削除'; return; }
     await rkCfgPut({forms:fs.filter(x=>x.id!==f.id)}); toast(`「${f.name}」を削除しました（作成済みの表はそのまま残ります）`); render(); },
+});
+/* ---- 定期契約の周期：日付・曜日まで決める周期、周期の切り替え、今回だけの変更、現場の休業日、年間作業予定表 ---- */
+{ const st=document.createElement('style'); st.textContent=`#G .chips{display:flex;flex-wrap:wrap;gap:6px}#G .chips button{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:999px;padding:4px 11px;font-size:13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit}#G .chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg,#fff);font-weight:700}#G .inp.auto{width:auto;display:inline-block;min-width:0}#G .pill .x{border:0;background:none;cursor:pointer;color:inherit;padding:0 2px;font-size:14px;line-height:1}`; document.head.appendChild(st); }
+const CY_KINDS=[['months','実施する月を選ぶ'],['interval','○か月ごと'],['rule','日付・曜日で決める'],['flat','日常・月額（日程は作らない）']];
+const CY_RKINDS=[['weekly','毎週・隔週'],['monthly','毎月・指定の月'],['yearly','年○回（日付を並べる）']];
+const cyRuleBlank=()=>({kind:'rule',rule:{...CYC.blank('monthly'),hol:'next'},start:'',end:''});
+/* その月に効いている周期（「○月から」の切り替えを考える） */
+function cycleAt(c,ym){ let cy=c.cycle||{}; (c.cycleChanges||[]).filter(x=>x.from&&x.cycle&&x.from<=ym).sort(by(x=>x.from)).forEach(x=>{ cy=x.cycle; }); return cy; }
+const cySegs=c=>{ const ch=(c.cycleChanges||[]).filter(x=>x.from&&x.cycle).sort(by(x=>x.from)); const out=[{from:'',cycle:c.cycle||{}}]; ch.forEach(x=>out.push({from:x.from,cycle:x.cycle})); return out.map((s,i)=>({...s,to:out[i+1]?.from||''})); };
+/* 現場の休業日・休館日 */
+const CL_K={wd:'毎週',nth:'毎月',date:'日付',md:'毎年'};
+function closedText(x){ if(x.k==='wd') return `毎週${WD[x.wd]}曜`; if(x.k==='nth') return `毎月${CYC.NTH[x.n]}${WD[x.wd]}曜`; if(x.k==='md') return `毎年${+x.md.slice(0,2)}/${+x.md.slice(3)}`; if(x.k==='date') return jd(x.d); return ''; }
+function siteClosed(s,d){ const l=s?.closed||[]; if(!l.length) return false; const w=parseD(d).getDay(), day=+d.slice(8), last=new Date(+d.slice(0,4),+d.slice(5,7),0).getDate();
+  return l.some(x=>(x.k==='wd'&&+x.wd===w)||(x.k==='nth'&&+x.wd===w&&(+x.n===-1?day+7>last:Math.ceil(day/7)===+x.n))||(x.k==='date'&&x.d===d)||(x.k==='md'&&x.md===d.slice(5))); }
+/* 日付まで決める周期の回（from〜to）。契約の開始・終了、周期の切り替え、現場の休業日を考える */
+const cyCache=new Map();
+function contractDates(c,from,to){
+  const s=get('sites',c.siteId);
+  const key=JSON.stringify([c.id,c.cycle,c.cycleChanges,c.start,c.end,s?.closed||[],from,to]);
+  if(cyCache.has(key)) return cyCache.get(key); if(cyCache.size>800) cyCache.clear();
+  const out=[];
+  for(const sg of cySegs(c)){ const cy=sg.cycle; if(cy.kind!=='rule'||!cy.rule) continue;
+    const segA=sg.from?sg.from+'-01':'', segB=sg.to?addDays(sg.to+'-01',-1):'9999-12-31';
+    const lo=[from,segA,c.start||''].filter(Boolean).sort().pop(), hi=[to,segB,c.end||'9999-12-31'].sort()[0]; if(lo>hi) continue;
+    const anchor=cy.rule.anchor||[segA,c.start||''].filter(Boolean).sort().pop()||lo;
+    CYC.dates(cy.rule,anchor<lo?anchor:lo,lo,hi,{closed:d=>siteClosed(s,d)}).forEach(o=>{ if(o.date>=lo&&o.date<=hi) out.push({...o,cy}); }); }
+  cyCache.set(key,out); return out;
+}
+{ const t0=cycleText; cycleText=function(cy){ if(cy?.kind==='rule'){ const r=cy.rule||{}; const t=CYC.text(r)||'未設定'; return t+(cy.start?`　${cy.start}${cy.end?'〜'+cy.end:''}`:''); } return t0(cy); }; }
+const cyTextC=c=>{ const segs=cySegs(c), tm=ymOf(today()); const now=segs.filter(s=>!s.from||s.from<=tm).pop()||segs[0]; const nx=segs.find(s=>s.from&&s.from>tm);
+  return cycleText(now.cycle)+(nx?`（${ymLabel(nx.from)}から ${cycleText(nx.cycle)}）`:''); };
+{ const t0=cycleMonths; cycleMonths=function(c,fromYm,n){ if(!c) return [];
+    const simple=!(c.cycleChanges||[]).length&&c.cycle?.kind!=='rule'; if(simple) return t0(c,fromYm,n);
+    const out=[]; let dates=null;
+    for(let i=0;i<n;i++){ const m=ymAdd(fromYm,i), cy=cycleAt(c,m);
+      if(cy.kind==='rule'){ if(!dates){ dates=contractDates(c,fromYm+'-01',addDays(ymAdd(fromYm,n)+'-01',-1)); } dates.filter(o=>ymOf(o.date)===m).forEach(()=>out.push(m)); }
+      else if(cy.kind!=='flat') t0({...c,cycle:cy,cycleChanges:[]},m,1).forEach(x=>out.push(x)); }
+    return out; }; }
+{ const t0=planVisits; planVisits=function(cs,from,n){
+    const out=t0(cs.map(c=>c&&((c.cycleChanges||[]).length||c.cycle?.kind==='rule')?{...c,__cy:1}:c).filter(c=>c&&!c.__cy),from,n);
+    const vs=all('visits').filter(v=>v.contractId); const ids=new Set(vs.map(v=>v.id));
+    const haveM=new Set(vs.filter(v=>!v.occ).flatMap(v=>[v.contractId+'|'+vMonth(v),v.contractId+'|'+(v.month||'')]));
+    const haveD=new Set(vs.map(v=>v.contractId+'@'+(v.occ||v.date)));
+    cs.forEach(c=>{ if(!c||!((c.cycleChanges||[]).length||c.cycle?.kind==='rule')) return;
+      const skipM=new Set(c.skipMonths||[]), skipD=new Set(c.skipDates||[]);
+      const base={contractId:c.id,staffIds:c.staffIds||[],status:'予定',qty:c.qty??1,...(c.demo?{demo:true}:{})};
+      for(let i=0;i<n;i++){ const m=ymAdd(from,i), cy=cycleAt(c,m); if(cy.kind==='rule'||cy.kind==='flat') continue;
+        if(!cycleMonths({...c,cycle:cy,cycleChanges:[]},m,1).length) continue; const id=`g-${c.id}-${m}`;
+        if(haveM.has(c.id+'|'+m)||ids.has(id)||skipM.has(m)) continue; out.push({col:'visits',id,data:{...base,month:m,date:'',start:'',end:''}}); }
+      contractDates(c,[from+'-01',today()].sort().pop(),addDays(ymAdd(from,n)+'-01',-1)).forEach(o=>{ const id=`g-${c.id}-${o.occ}`;
+        if(haveD.has(c.id+'@'+o.occ)||haveD.has(c.id+'@'+o.date)||ids.has(id)||skipD.has(o.occ)) return;
+        out.push({col:'visits',id,data:{...base,month:ymOf(o.date),date:o.date,occ:o.occ,gdate:o.date,start:o.cy.start||'',end:o.cy.end||''}}); }); });
+    return out; }; }
+{ const t0=noteSkip; noteSkip=async function(vs){ const occ=(vs||[]).filter(v=>v?.contractId&&v.occ); const rest=(vs||[]).filter(v=>!(v?.contractId&&v.occ)); if(rest.length) await t0(rest);
+    const by=new Map(); occ.forEach(v=>{ if(!by.has(v.contractId)) by.set(v.contractId,new Set()); by.get(v.contractId).add(v.occ); });
+    for(const [cid,ds] of by){ const c=get('contracts',cid); if(c) await put('contracts',cid,{...c,skipDates:[...new Set([...(c.skipDates||[]),...ds])].sort().slice(-300)}); } }; }
+
+/* ---- 定期契約の画面：周期の欄 ---- */
+const cyTarget=(c,st)=>{ const i=st.cycIdx??-1; if(i>=0&&c.cycleChanges?.[i]) return c.cycleChanges[i]; return null; };
+const cyOf=(c,st)=>{ const t=cyTarget(c,st); if(t) return t.cycle||(t.cycle={kind:'months',months:[]}); return c.cycle||(c.cycle={kind:'months',months:[]}); };
+function cySection(c,st){
+  const cy=cyOf(c,st), tm=ymOf(today()), chs=c.cycleChanges||[], i=st.cycIdx??-1;
+  const tabs=chs.length?`<div class="chips" style="margin-bottom:10px;flex-wrap:wrap">${[['-1','最初の周期'],...chs.map((x,k)=>[String(k),`${x.from?ymLabel(x.from):'（月未定）'}から`])].map(([k,l])=>`<button type="button" data-act="cy-tab" data-v="${k}" aria-pressed="${String(i)===k}">${esc(l)}</button>`).join('')}</div>`:'';
+  const t=cyTarget(c,st);
+  let h=`<section class="sec"><h3>周期<span class="sp"><button class="btn sm" data-act="cy-chg">＋ 周期の切り替えを追加</button></span></h3>${tabs}
+    ${t?`<div class="form" style="margin-bottom:10px">${fld('この周期にする月',`<input class="inp" type="month" data-cyf="from" value="${esc(t.from||'')}">`)}<div style="align-self:end"><button class="btn danger sm" data-act="cy-chgdel">この切り替えを削除</button></div></div>`:''}
+    <div class="seg" role="group" style="margin-bottom:10px;flex-wrap:wrap">${CY_KINDS.map(([k,l])=>`<button data-act="cy-kind" data-v="${k}" aria-pressed="${cy.kind===k}">${l}</button>`).join('')}</div>`;
+  if(cy.kind==='months') h+=`<div class="months">${[...Array(12)].map((_,k)=>`<label><input type="checkbox" data-cm2 value="${k+1}" ${(cy.months||[]).map(Number).includes(k+1)?'checked':''} hidden>${k+1}月</label>`).join('')}</div><div class="toolbar" style="margin:8px 0 0"><button class="btn sm" data-act="cy-all">毎月</button><button class="btn sm" data-act="cy-none">クリア</button></div><p class="small muted" style="margin:6px 0 0">月ごとに作業予定を1件作ります。日付は「日程・差配」で決めます。</p>`;
+  if(cy.kind==='interval') h+=`<div class="form">${fld('間隔（か月）',`<input class="inp num" data-cyf="every" inputmode="numeric" value="${esc(cy.every||3)}">`)}${fld('起点の月',`<input class="inp" type="month" data-cyf="anchor" value="${esc(cy.anchor||ymOf(c.start)||tm)}">`)}</div><p class="small muted">例：3年に1回の分解洗浄は「36」。日付は「日程・差配」で決めます。</p>`;
+  if(cy.kind==='flat') h+='<p class="small muted" style="margin:0">日常清掃や常駐など、毎月同じ金額で作業予定を個別に管理しない契約です。売上は毎月計上されます。</p>';
+  if(cy.kind==='rule'){ const r=cy.rule||(cy.rule={...CYC.blank('monthly'),hol:'next'}); CYC.bind(r,()=>{ readDraftForm(); refreshSheet(); });
+    const s=get('sites',c.siteId); const from=[today(),t?.from?t.from+'-01':''].filter(Boolean).sort().pop();
+    const prev=contractDates({...c,cycle:t?{kind:'flat'}:cy,cycleChanges:t?[...chs.filter(x=>x!==t),{...t,cycle:cy}]:chs},from,addDays(from,800)).filter(o=>t?true:!chs.some(x=>x.from&&x.from<=ymOf(o.date))).slice(0,10);
+    h+=`${CYC.partKind(r,CY_RKINDS)}${CYC.partBody(r)}
+      <div class="form" style="margin-top:10px">${fld('作業の開始',`<input class="inp" type="time" data-cyf="start" value="${esc(cy.start||'')}">`)}${fld('作業の終了（開始より早い時刻＝翌日）',`<input class="inp" type="time" data-cyf="end" value="${esc(cy.end||'')}">`)}
+      ${CYC.partHol(r,'日曜・祝日に当たったら')}</div>
+      <p class="small muted" style="margin:6px 0 0">現場の休業日・休館日（現場の画面で登録）に当たった回は、上の設定（「そのまま」のときは次の日）でずらします。${s?'':'現場を選ぶと休業日も考えます。'}</p>
+      <div style="margin-top:8px">${CYC.preview(prev,d=>CYC.holName(d)||(siteClosed(s,d)?'休業日':parseD(d).getDay()===0?'日曜':parseD(d).getDay()===6?'土曜':''))}</div>
+      ${CYC.problem(r)?`<p class="small" style="color:var(--warn);margin:6px 0 0">${CYC.problem(r)}</p>`:''}
+      <p class="small muted" style="margin:6px 0 0">作業予定は1回ごとに日付・時間・標準の担当が入った状態で作られます（12か月先まで）。その回だけの変更は作業予定の画面で行えます。</p>`; }
+  if(!st.isNew) h+=`<div class="toolbar" style="margin:10px 0 0"><button class="btn sm" data-act="cy-addone" data-id="${c.id}">＋ この契約の作業を1回追加</button>${c.siteId?`<button class="btn sm" data-act="cy-year" data-site="${c.siteId}">年間作業予定表</button>`:''}</div>`;
+  return h+'</section>';
+}
+{ const c0=SHEETS.contract; SHEETS.contract=(st)=>{ const r=c0(st); if(!r||!r.body||!st.draft) return r;
+    const a=r.body.indexOf('<section class="sec"><h3>周期</h3>'), b=r.body.indexOf('<section class="sec"><h3>単価の改定');
+    if(a>=0&&b>a) r.body=r.body.slice(0,a)+cySection(st.draft,st)+r.body.slice(b); return r; }; }
+{ const t0=readDraftForm; readDraftForm=function(){ t0(); if(sheet?.kind!=='contract'||!sheet.draft) return; const c=sheet.draft, cy=cyOf(c,sheet), t=cyTarget(c,sheet);
+    const q=k=>ROOT.querySelector(`#overlay [data-cyf="${k}"]`);
+    if(cy.kind==='months'&&ROOT.querySelector('#overlay [data-cm2]')) cy.months=[...ROOT.querySelectorAll('#overlay [data-cm2]:checked')].map(x=>+x.value);
+    if(cy.kind==='interval'&&q('every')){ cy.every=Math.max(1,num(q('every').value)); cy.anchor=q('anchor').value; }
+    if(cy.kind==='rule'&&q('start')){ cy.start=q('start').value; cy.end=q('end').value; }
+    if(t&&q('from')) t.from=q('from').value; }; }
+const cyProblem=c=>{ for(const sg of cySegs(c)){ const cy=sg.cycle, w=sg.from?`（${ymLabel(sg.from)}からの周期）`:'';
+    if(cy.kind==='months'&&!(cy.months||[]).length) return '実施する月を選んでください'+w;
+    if(cy.kind==='rule'){ const p=CYC.problem(cy.rule); if(p) return p+w; } }
+  if((c.cycleChanges||[]).some(x=>!x.from)) return '周期を切り替える月を入れてください'; return ''; };
+const cyKey=c=>JSON.stringify([c.cycle,c.cycleChanges||[],c.start,c.end,c.staffIds,get('sites',c.siteId)?.closed||[]]);
+/* 周期を変えたら、手を付けていない今後の作業予定を作り直す */
+async function cyRegen(c){
+  const t=today(), tm=ymOf(t);
+  const old=all('visits').filter(v=>v.contractId===c.id&&v.status==='予定'&&(String(v.id).startsWith('g-')||!v.date)&&!(v.attachments||[]).length&&!v.reportNote&&!v.notice&&!v.moved&&(v.date?v.date>=t:vMonth(v)>=tm)&&(!v.occ||v.date===(v.gdate||v.occ)));
+  await delMany(old.map(v=>({col:'visits',id:v.id})));
+  const n=c.cycle?.kind==='flat'&&!(c.cycleChanges||[]).length?0:await genVisits([get('contracts',c.id)],tm,12); return {del:old.length,add:n};
+}
+{ const t0=saveContract; saveContract=async function(){
+    if(!can('contract.edit')) return toast('権限がありません');
+    readDraftForm(); const c=sheet.draft; const p=cyProblem(c); if(p) return toast(p);
+    c.cycleChanges=(c.cycleChanges||[]).filter(x=>x.from&&x.cycle).sort(by(x=>x.from));
+    const before=get('contracts',c.id), was=before?cyKey(before):'', isNew=sheet.isNew;
+    await t0();
+    const now=get('contracts',c.id); if(!isNew&&now&&was&&was!==cyKey(now)&&now.active!==false){ const r=await cyRegen(now); if(r.del||r.add) toast(`周期の変更に合わせて、今後の作業予定を作り直しました（${r.add}件）`); }
+  }; }
+
+/* ---- 作業予定の画面：その回だけの変更 ---- */
+{ const v0=SHEETS.visit; SHEETS.visit=(st)=>{ const r=v0(st); if(!r||!r.body) return r; const v=get('visits',st.id); if(!v||!v.contractId) return r;
+    let box='';
+    if(v.occ){ const g=v.gdate||v.occ, moved=v.date&&v.date!==g; box=`<div class="callout ${moved?'w':''}"><span>周期どおりの日：${esc(jd(v.occ))}${g!==v.occ?`（休みの日のため ${esc(jd(g))}）`:''}${moved?`　→ この回だけ ${esc(jd(v.date))} に変更しています`:''}${v.status==='中止'?'　（この回は休み）':''}</span>${moved?`<button class="btn sm" data-act="cy-back" data-id="${v.id}">周期どおりの日に戻す</button>`:''}${v.status==='中止'?`<button class="btn sm" data-act="cy-unskip" data-id="${v.id}">休みを取り消す</button>`:`<button class="btn sm" data-act="cy-skip" data-id="${v.id}">この回は休みにする</button>`}</div>`; }
+    else if(v.extra) box=`<div class="callout"><span>周期とは別に追加した回です</span></div>`;
+    if(box){ const i=r.body.indexOf('<section class="sec"><h3>日程・担当'); r.body=i>=0?r.body.slice(0,i)+box+r.body.slice(i):box+r.body; }
+    return r; }; }
+
+/* ---- 現場の画面：休業日・休館日 ---- */
+function closedSec(s){ const l=s.closed||[];
+  return `<section class="sec"><h3>休業日・休館日<span class="sp small muted">定期作業はこの日を避けます</span></h3>
+    ${l.length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${l.map((x,i)=>`<span class="pill">${esc(closedText(x))}${x.note?' '+esc(x.note):''} <button type="button" class="x" data-act="cl-del" data-i="${i}" aria-label="外す">×</button></span>`).join('')}</div>`:'<p class="small muted" style="margin:0 0 8px">登録はありません。</p>'}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><select class="inp auto" id="cl_k" aria-label="種類">${['wd','nth','md','date'].map(k=>`<option value="${k}" ${sheet.clK===k?'selected':''}>${CL_K[k]}</option>`).join('')}</select>
+      ${(sheet.clK||'wd')==='nth'?`<select class="inp auto" id="cl_n" aria-label="何回目">${Object.entries(CYC.NTH).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}</select>`:''}
+      ${['wd','nth'].includes(sheet.clK||'wd')?`<select class="inp auto" id="cl_w" aria-label="曜日">${[1,2,3,4,5,6,0].map(w=>`<option value="${w}">${WD[w]}曜</option>`).join('')}</select>`:''}
+      ${sheet.clK==='date'?`<input class="inp auto" type="date" id="cl_d" aria-label="日付">`:''}
+      ${sheet.clK==='md'?`<input class="inp auto" type="date" id="cl_d" aria-label="月日（年は使いません）">`:''}
+      <input class="inp auto" id="cl_note" placeholder="メモ（例：館内点検）" style="width:12em"><button type="button" class="btn sm" data-act="cl-add">＋ 追加</button></div></section>`; }
+{ const s0=SHEETS.site; SHEETS.site=(st)=>{ const r=s0(st); if(!r||!r.body||!st.draft) return r; const s=st.draft;
+    r.body+=closedSec(s)+(st.isNew?'':`<section class="sec"><h3>年間作業予定表</h3><p class="small muted" style="margin:0 0 8px">この現場の定期作業を1年分まとめた表です。お客様に印刷・PDFで渡せます。</p><button class="btn" data-act="cy-year" data-site="${s.id}">年間作業予定表を開く</button></section>`); return r; }; }
+const siteRead=()=>{ const d=sheet?.draft; if(!d) return; ROOT.querySelectorAll('#overlay [id^="s_"]').forEach(e=>{ if(e.type==='checkbox') return; d[e.id.slice(2)]=e.value; }); };
+docOn('change',e=>{ if(e.target.id==='cl_k'&&sheet?.kind==='site'){ siteRead(); sheet.clK=e.target.value; refreshSheet(); } });
+async function clSave(l){ siteRead(); const d=sheet.draft; d.closed=l; if(!sheet.isNew&&get('sites',d.id)){ await patch('sites',d.id,{closed:l}); const cs=all('contracts').filter(c=>c.siteId===d.id&&c.active!==false&&(c.cycle?.kind==='rule'||(c.cycleChanges||[]).some(x=>x.cycle?.kind==='rule'))); let n=0; for(const c of cs){ const r=await cyRegen(c); n+=r.add; } toast(cs.length?`休業日を保存し、定期作業の日程を見直しました（${n}件）`:'休業日を保存しました'); } refreshSheet(); }
+
+/* ---- 年間作業予定表 ---- */
+function cyYearData(siteId,from){
+  const s=get('sites',siteId), to=ymAdd(from,11), months=[...Array(12)].map((_,i)=>ymAdd(from,i));
+  const cs=all('contracts').filter(c=>c.siteId===siteId&&c.active!==false&&!(c.cycle?.kind==='flat'&&!(c.cycleChanges||[]).length)&&(!c.end||ymOf(c.end)>=from)&&(!c.start||ymOf(c.start)<=to)).sort(by(c=>c.service||''));
+  const rows=cs.map(c=>{ const vs=all('visits').filter(v=>v.contractId===c.id&&v.status!=='中止');
+    const cells=months.map(m=>{ const mv=vs.filter(v=>vMonth(v)===m); if(mv.length) return mv.map(v=>v.date?{d:v.date}:{u:1});
+      const cy=cycleAt(c,m); if(cy.kind==='rule') return contractDates(c,m+'-01',addDays(ymAdd(m,1)+'-01',-1)).map(o=>({d:o.date}));
+      return cycleMonths({...c,cycle:cy,cycleChanges:[]},m,1).length?[{u:1}]:[]; });
+    return {c,cells}; });
+  return {s,months,rows};
+}
+function cyYearHtml(siteId,from,paper){
+  const {s,months,rows}=cyYearData(siteId,from); const cu=get('customers',s?.customerId);
+  const cell=l=>l.map(x=>x.d?`${+x.d.slice(8)}<small>(${WD[parseD(x.d).getDay()]})</small>`:'●').join('<br>');
+  const th='border:1px solid #999;padding:4px 3px;font-size:11px;background:#eef1f3;color:#111', td='border:1px solid #999;padding:4px 3px;font-size:11px;text-align:center;vertical-align:top;color:#111';
+  return `<div style="${paper?'background:#fff;color:#111;':''}font-family:'Yu Gothic','Hiragino Sans','Noto Sans JP',sans-serif">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px"><div><div style="font-size:18px;font-weight:700">年間作業予定表</div><div style="font-size:12px">${esc(cu?.name||'')} 様　${esc(s?.name||s?.facility||'')}</div></div><div style="font-size:11px;text-align:right">${esc(ymLabel(from))}〜${esc(ymLabel(months[11]))}<br>${esc(S().companyName||'')}</div></div>
+    <table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr><th style="${th};width:22%;text-align:left">作業</th>${months.map(m=>`<th style="${th}">${+m.slice(5)}月${m.slice(5)==='01'||m===from?`<br><small>${m.slice(0,4)}</small>`:''}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r=>`<tr><td style="${td};text-align:left"><b>${esc(r.c.service||'')}</b><br><small>${esc(cyTextC(r.c))}</small></td>${r.cells.map(l=>`<td style="${td}">${cell(l)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="13" style="${td}">この期間の定期作業はありません</td></tr>`}</tbody></table>
+    <div style="font-size:10.5px;margin-top:6px">数字は作業日（曜日）、●はその月に実施（日程は別途ご連絡）です。${(s?.closed||[]).length?`休業日（${esc((s.closed||[]).map(closedText).join('・'))}）は避けて予定しています。`:''}日程は変わることがあります。</div></div>`;
+}
+SHEETS.cyYear=(st)=>({title:'年間作業予定表',body:`<div class="form" style="margin-bottom:10px">${fld('始まりの月',`<input class="inp" type="month" id="cyy_from" value="${esc(st.from)}">`)}</div>
+  <div class="scroll" style="border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff;color:#111">${cyYearHtml(st.siteId,st.from,true)}</div>`,
+  foot:`<button class="btn" data-act="close-sheet">閉じる</button><button class="btn" data-act="cy-yprint">印刷</button><button class="btn pri" data-act="cy-ypdf">PDFで保存・送る</button>`});
+docOn('change',e=>{ if(e.target.id==='cyy_from'&&sheet?.kind==='cyYear'&&e.target.value){ sheet.from=e.target.value; refreshSheet(); } });
+async function cyYearPdf(st){
+  await loadPdfLib(); const s=get('sites',st.siteId);
+  const box=document.createElement('div'); box.style.cssText='position:absolute;left:-10000px;top:0;width:1080px;padding:28px;background:#fff;color:#111';
+  box.innerHTML=cyYearHtml(st.siteId,st.from,true); document.body.appendChild(box);
+  try{ const cv=await window.html2canvas(box,{scale:2,backgroundColor:'#ffffff',logging:false}); const {jsPDF}=window.jspdf; const pdf=new jsPDF({unit:'mm',format:'a4',orientation:'l'});
+    const W=297, Hh=210, ih=cv.height*W/cv.width; const img=cv.toDataURL('image/jpeg',0.92); let y=0; pdf.addImage(img,'JPEG',0,0,W,ih); while(ih-y>Hh+1){ y+=Hh; pdf.addPage(); pdf.addImage(img,'JPEG',0,-y,W,ih); }
+    return new File([pdf.output('blob')],`年間作業予定表_${safeName(s?.name||'')}_${st.from}.pdf`,{type:'application/pdf'}); } finally{ box.remove(); }
+}
+
+Object.assign(ACT_G,{
+  'cy-tab'(el){ readDraftForm(); sheet.cycIdx=+el.dataset.v; refreshSheet(); },
+  'cy-chg'(){ readDraftForm(); const c=sheet.draft; const base=cycleAt(c,ymAdd(ymOf(today()),12)); c.cycleChanges=[...(c.cycleChanges||[]),{from:ymAdd(ymOf(today()),1),cycle:structuredClone(base)}]; sheet.cycIdx=c.cycleChanges.length-1; refreshSheet(); toast('切り替える月と、その月からの周期を設定して保存してください'); },
+  'cy-chgdel'(){ const c=sheet.draft; c.cycleChanges.splice(sheet.cycIdx,1); sheet.cycIdx=-1; refreshSheet(); },
+  'cy-kind'(el){ readDraftForm(); const c=sheet.draft, t=cyTarget(c,sheet), cur=cyOf(c,sheet), k=el.dataset.v; if(cur.kind===k) return;
+    const nx=k==='rule'?{...cyRuleBlank(),...(cur.rule?{rule:cur.rule,start:cur.start,end:cur.end}:{})}:k==='months'?{kind:'months',months:cur.months||[]}:k==='interval'?{kind:'interval',every:cur.every||3,anchor:cur.anchor||''}:{kind:'flat'};
+    if(k==='rule'&&!cur.rule){ const r=nx.rule; if((cur.months||[]).length&&cur.months.length<12) r.months=[...cur.months]; r.mdays=[]; }
+    if(t) t.cycle=nx; else c.cycle=nx; refreshSheet(); },
+  'cy-all'(){ readDraftForm(); cyOf(sheet.draft,sheet).months=[1,2,3,4,5,6,7,8,9,10,11,12]; refreshSheet(); },
+  'cy-none'(){ readDraftForm(); cyOf(sheet.draft,sheet).months=[]; refreshSheet(); },
+  async 'cy-addone'(el){ const c=get('contracts',el.dataset.id); if(!c) return; const cy=cycleAt(c,ymOf(today()));
+    const id=await put('visits',null,{contractId:c.id,month:ymOf(today()),date:'',start:cy.start||'',end:cy.end||'',staffIds:c.staffIds||[],status:'予定',qty:c.qty??1,extra:true}); openSheet({kind:'visit',id}); toast('作業予定を追加しました。日付を入れてください'); },
+  async 'cy-back'(el){ const v=get('visits',el.dataset.id); if(!v?.occ) return; const g=v.gdate||v.occ; await patch('visits',v.id,{date:g,month:ymOf(g)}); toast('周期どおりの日に戻しました'); refreshSheet(); },
+  async 'cy-skip'(el){ await patch('visits',el.dataset.id,{status:'中止'}); toast('この回は休みにしました（周期全体は変わりません）'); refreshSheet(); },
+  async 'cy-unskip'(el){ await patch('visits',el.dataset.id,{status:'予定'}); toast('休みを取り消しました'); refreshSheet(); },
+  'cy-year'(el){ const sid=el.dataset.site; if(!get('sites',sid)) return toast('現場が見つかりません'); openSheet({kind:'cyYear',siteId:sid,from:ymOf(today())}); },
+  'cy-yprint'(){ const s=get('sites',sheet.siteId); printHtml(`年間作業予定表 ${s?.name||''}`,`<style>@page{size:A4 landscape;margin:10mm}</style>`+cyYearHtml(sheet.siteId,sheet.from,true)); },
+  async 'cy-ypdf'(){ toast('PDFを作っています…'); let f; try{ f=await cyYearPdf(sheet); }catch(e){ return toast((e&&e.message)||'PDFを作れませんでした'); }
+    const s=get('sites',sheet.siteId), cu=get('customers',s?.customerId);
+    await mailWithFiles({files:[f],to:cu?.email||'',subject:`年間作業予定表のご送付（${s?.name||''}）`,body:`${cu?.name||''} 様\n\n${ymLabel(sheet.from)}からの年間作業予定表をお送りします。\nご確認のほど、よろしくお願いいたします。`}); },
+  async 'cl-add'(){ const k=ROOT.querySelector('#cl_k')?.value||'wd', note=(ROOT.querySelector('#cl_note')?.value||'').trim(); let x={k,note};
+    if(k==='wd') x.wd=+ROOT.querySelector('#cl_w').value;
+    if(k==='nth'){ x.n=+ROOT.querySelector('#cl_n').value; x.wd=+ROOT.querySelector('#cl_w').value; }
+    if(k==='date'||k==='md'){ const d=ROOT.querySelector('#cl_d')?.value; if(!d) return toast('日付を選んでください'); if(k==='date') x.d=d; else x.md=d.slice(5); }
+    await clSave([...(sheet.draft.closed||[]),x]); },
+  async 'cl-del'(el){ const l=[...(sheet.draft.closed||[])]; l.splice(+el.dataset.i,1); await clSave(l); },
 });
 
 window.G_API={rkOpenVisit:id=>rkOpenVisit(id),rbSource:(s,p)=>rbSource(s,p),rbSuggest:m=>rbSuggest(m),rbComplete:o=>rbComplete(o),rbSaveOrder:(s,l)=>rbSaveOrder(s,l),pdfLib:()=>loadPdfLib(),upload:(f,prefix)=>assets?assets.upload(f,prefix):Promise.reject(new Error('この画面ではファイルを保存できません')),openRsend:id=>{ if(get('visits',id)) openSheet({kind:'rsend',id}); },rkOpenPorder:(p,k)=>rkOpenPorder(p,k),
